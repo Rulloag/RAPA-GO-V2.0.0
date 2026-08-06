@@ -1002,6 +1002,20 @@ ion-toolbar.rapago-modal-toolbar .rapago-modal-close {
   text-transform: none !important;
 }
 
+/* global.css:3740 fuerza a BLANCO el `::part(native)` de todo botón dentro de
+   un ion-toolbar. La variable `--color` de arriba no le gana: el color literal
+   está escrito sobre el propio elemento interno. En modo noche daba igual —el
+   blanco se veía— pero en modo día la cabecera del modal es superficie clara y
+   el "Cerrar" quedaba blanco sobre crema, es decir invisible. */
+ion-toolbar.rapago-modal-toolbar .rapago-modal-close::part(native) {
+  color: var(--rp-icon-fg) !important;
+  background: transparent !important;
+}
+
+ion-toolbar.rapago-modal-toolbar ion-buttons ion-button::part(native) {
+  color: var(--rp-icon-fg) !important;
+}
+
 ion-content.rapago-modal-content {
   --background: var(--rp-page-bg) !important;
 }
@@ -1134,5 +1148,89 @@ ion-content.rapago-modal-content {
   }
   .rapago-star-rating__star:active {
     transform: none;
+  }
+}
+/* RapaGo más veloz ---------------------------------------------------------
+   Este panel conserva el significado promocional dorado, pero en dark mode
+   necesita una superficie volcánica y texto claro. Los !important aquí son
+   intencionales: el bloque de TripsPage mantiene estilos inline por sus estados
+   de pago y esta capa debe garantizar contraste sobre esos valores. */
+.rapago-fast-search-panel {
+  background: var(--rp-fast-bg, #fffdf6) !important;
+  border-color: var(--rp-fast-border, #d49b16) !important;
+  color: var(--rp-fast-fg, #1a1a1a) !important;
+}
+
+.rapago-fast-search-panel__icon {
+  background: var(--rp-fast-icon-bg, #111827) !important;
+  color: var(--rp-fast-icon-fg, #ffffff) !important;
+}
+
+.rapago-fast-search-panel__icon ion-icon {
+  color: var(--rp-fast-icon-fg, #f8d879) !important;
+  --color: var(--rp-fast-icon-fg, #f8d879) !important;
+  font-size: 1.35rem !important;
+  opacity: 1 !important;
+}
+
+[data-rapago-theme="dark"] .rapago-fast-search-panel__icon {
+  background: #0d1117 !important;
+  color: #f8d879 !important;
+  border: 1px solid rgba(248, 216, 121, 0.3);
+}
+
+[data-rapago-theme="dark"] .rapago-fast-search-panel__icon ion-icon {
+  color: #f8d879 !important;
+  --color: #f8d879 !important;
+}
+
+[data-rapago-theme="light"] .rapago-fast-search-panel__icon {
+  background: #111827 !important;
+  color: #f8d879 !important;
+  border: 1px solid rgba(17, 24, 39, 0.2);
+}
+
+[data-rapago-theme="light"] .rapago-fast-search-panel__icon ion-icon {
+  color: #f8d879 !important;
+  --color: #f8d879 !important;
+}
+
+.rapago-fast-search-panel__eyebrow,
+.rapago-fast-search-panel__title,
+.rapago-fast-search-panel__detail,
+.rapago-fast-search-panel__note {
+  color: var(--rp-fast-fg, #1a1a1a) !important;
+}
+
+.rapago-fast-search-panel__detail {
+  background: var(--rp-fast-detail-bg, rgba(255, 255, 255, 0.82)) !important;
+  border-color: var(--rp-fast-detail-border, rgba(117, 80, 0, 0.22)) !important;
+}
+
+.rapago-fast-search-panel__value {
+  color: var(--rp-fast-value, var(--rp-accent, #f8d879)) !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.01em;
+}
+
+.rapago-fast-search-panel__primary {
+  background: var(--rp-fast-primary-bg, #111827) !important;
+  color: var(--rp-fast-primary-fg, #ffffff) !important;
+}
+
+.rapago-fast-search-panel__secondary {
+  background: var(--rp-fast-secondary-bg, #fffaf0) !important;
+  border-color: var(--rp-fast-secondary-border, #a8781f) !important;
+  color: var(--rp-fast-secondary-fg, #6b4b00) !important;
+}
+
+@media (max-width: 380px) {
+  .rapago-fast-search-panel {
+    padding: 13px !important;
+    border-radius: 18px !important;
+  }
+
+  .rapago-fast-search-panel__detail {
+    font-size: 0.76rem !important;
   }
 }

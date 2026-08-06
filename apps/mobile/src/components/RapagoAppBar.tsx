@@ -1,6 +1,5 @@
 import {
   IonAlert,
-  IonButton,
   IonHeader,
   IonIcon,
   IonPopover,
@@ -109,17 +108,9 @@ function displayNameOf(name: unknown, email: unknown): string {
   return fromEmail || "usuario";
 }
 
-/** Marca recortada: sólo el moái, sin las letras del archivo.
- *
- *  El logo original es un lockup horizontal (moái + "RAPA GO" en dos líneas) de
- *  1254×1254. A 32px las letras miden ~5px de alto: una mancha marrón con un
- *  punto rojo. Recortando el moái (x=105, y=145, 540×540 — dentro del squircle
- *  impreso, así que las esquinas las pone el CSS y no quedan dobles) la marca
- *  se lee a cualquier tamaño, y el wordmark se compone en tipografía.
- *
- *  Efecto secundario útil: como el recorte deja fuera las letras del archivo,
- *  logotipo impreso y wordmark tipográfico NUNCA aparecen juntos, así que no
- *  importa que la fuente del sistema no sea la del original.
+/** Marca completa. El lockup original mantiene el moái y el wordmark RAPA GO
+ * dentro del mismo asset; mostrarlo completo evita que el encabezado parezca
+ * usar un logo distinto al de Welcome y Login.
  */
 function RapagoMark({ size }: { size: number }): JSX.Element {
   return (
@@ -173,11 +164,19 @@ export function RapagoAppBar({
   const name = displayNameOf(user?.name, user?.email);
   const initials = initialsOf(String(user?.name ?? user?.email ?? ""));
   const role = String(user?.role ?? "");
-  const isDriver = role === "driver";
 
-  const profileHref = isDriver
-    ? ROUTES.DRIVER.PROFILE
-    : ROUTES.PASSENGER.PROFILE;
+  /* Destino de la entrada de cuenta del menú.
+     Antes era un ternario conductor/pasajero, así que el administrador —que no
+     tiene pantalla de perfil personal— acababa en `/passenger/profile`: una
+     ruta que su rol no puede abrir y de la que el guardián de rutas lo expulsa.
+     El panel no tiene "mi perfil" que enseñar; lo equivalente para quien
+     administra es la configuración de la plataforma, y así se nombra. */
+  const account =
+    role === "driver"
+      ? { href: ROUTES.DRIVER.PROFILE, label: "Mi perfil" }
+      : role === "admin"
+        ? { href: ROUTES.ADMIN.SETTINGS, label: "Configuración" }
+        : { href: ROUTES.PASSENGER.PROFILE, label: "Mi perfil" };
 
   const showBack = Boolean(backHref) || typeof onBack === "function";
   const isRoot = variant === "root";
@@ -241,7 +240,7 @@ export function RapagoAppBar({
       >
         <div className="rp-account-menu__card" role="menu">
           <div className="rp-account-menu__head">
-            <RapagoMark size={40} />
+            <RapagoMark size={44} />
             <div className="rp-account-menu__who">
               <strong>Hola, {name}</strong>
               {roleLabel && <small>{roleLabel}</small>}
@@ -271,11 +270,11 @@ export function RapagoAppBar({
               className="rp-account-menu__item"
               onClick={() => {
                 setMenuOpen(false);
-                history.push(profileHref);
+                history.push(account.href);
               }}
             >
               <IonIcon icon={personOutline} aria-hidden="true" />
-              <span>Mi perfil</span>
+              <span>{account.label}</span>
             </button>
 
             <button
@@ -349,7 +348,7 @@ export function RapagoAppBar({
     return (
       <>
         <div className="rp-appbar rp-appbar--overlay" role="banner">
-          <RapagoMark size={28} />
+            <RapagoMark size={44} />
           {title && <span className="rp-appbar__overlay-title">{title}</span>}
           {accountButton}
         </div>
@@ -394,7 +393,7 @@ export function RapagoAppBar({
               <IonIcon icon={arrowBackOutline} aria-hidden="true" />
             </button>
           ) : (
-            <RapagoMark size={isRoot ? 40 : 32} />
+            <RapagoMark size={44} />
           )}
 
           {/* Zona B: identidad de pantalla. La ÚNICA que encoge, y por eso la
@@ -420,7 +419,7 @@ export function RapagoAppBar({
               </>
             ) : (
               <>
-                {showBack && <RapagoMark size={26} />}
+                {showBack && <RapagoMark size={44} />}
                 {/* h1 único de la pantalla y enfocable: es lo que anuncia el
                     lector al entrar. Alineado a la izquierda para que la
                     elipsis se coma el final del título y no el principio. */}

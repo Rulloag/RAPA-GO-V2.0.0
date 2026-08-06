@@ -1,11 +1,10 @@
 import {
+  IonBadge,
   IonButton,
-  IonCard,
-  IonCardContent,
-  IonCardHeader,
-  IonCardTitle,
+  IonButtons,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -14,18 +13,25 @@ import {
   IonSelect,
   IonSelectOption,
   IonSpinner,
-  IonText,
   IonTitle,
   IonToolbar,
-  IonButtons,
-  IonBadge,
 } from "@ionic/react";
+import {
+  addOutline,
+  alertCircleOutline,
+  checkmarkCircleOutline,
+  giftOutline,
+} from "ionicons/icons";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../../features/auth/index.js";
 import { referralsService, type ReferralCodeData, type ReferralUseData } from "../../../features/referrals/referrals.service.js";
+import { RapagoAppBar } from "../../../components/RapagoAppBar.js";
+import { ROUTES } from "../../../navigation/routes.js";
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 
 export function AdminReferralsPage(): JSX.Element {
   const { session } = useAuth();
+  const { theme } = useRapagoSectionTheme("admin");
 
   const [codes,    setCodes]    = useState<ReferralCodeData[]>([]);
   const [total,    setTotal]    = useState(0);
@@ -112,110 +118,231 @@ export function AdminReferralsPage(): JSX.Element {
   const totalRewards     = codes.reduce((s, c) => s + (c.totalReward ?? 0), 0);
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="primary">
-          <IonTitle>Referidos</IonTitle>
-          <IonButtons slot="end">
-            <IonButton onClick={() => setShowCampaignModal(true)}>+ Campaña</IonButton>
-          </IonButtons>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Referidos"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={addOutline}
+        actionLabel="Crear campaña de referidos"
+        onAction={() => setShowCampaignModal(true)}
+      />
 
-      <IonContent className="ion-padding">
-        {/* Summary cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "16px" }}>
-          {[
-            { label: "Códigos activos", value: totalActive },
-            { label: "Conversiones",    value: totalConversions },
-            { label: "Recompensas pagadas", value: `$${totalRewards.toLocaleString("es-CL")} CLP` },
-            { label: "Total códigos",   value: total },
-          ].map(card => (
-            <IonCard key={card.label} style={{ margin: 0 }}>
-              <IonCardContent style={{ textAlign: "center", padding: "12px 8px" }}>
-                <div style={{ fontSize: "1.4rem", fontWeight: "bold" }}>{card.value}</div>
-                <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)" }}>{card.label}</div>
-              </IonCardContent>
-            </IonCard>
-          ))}
-        </div>
+      <IonContent>
+        <div className="rp-admin-shell">
+          {/* Resumen. Las cuatro cifras dejan de ser ion-card —que en este
+              módulo va sobre superficie clara fija— y pasan a los tiles del
+              sistema, así que siguen el tema como Beneficios y el Centro de
+              ayuda. La rejilla es la del kit: se reacomoda sola. */}
+          <div className="rp-tile-grid">
+            {[
+              { label: "Códigos activos", value: totalActive },
+              { label: "Conversiones",    value: totalConversions },
+              { label: "Recompensas pagadas", value: `$${totalRewards.toLocaleString("es-CL")} CLP` },
+              { label: "Total códigos",   value: total },
+            ].map(card => (
+              <div key={card.label} className="rp-tile">
+                <span className="rp-tile__label">{card.label}</span>
+                <span className="rp-tile__value">{card.value}</span>
+              </div>
+            ))}
+          </div>
 
-        {loading && <div style={{ textAlign: "center", padding: "40px" }}><IonSpinner name="crescent" /></div>}
-        {error && <IonText color="danger"><p>{error}</p></IonText>}
+          {loading && (
+            <div className="rp-empty">
+              <IonSpinner name="crescent" />
+              <p className="rp-empty__body" style={{ marginTop: 10 }}>
+                Cargando códigos…
+              </p>
+            </div>
+          )}
 
-        {!loading && codes.map(code => (
-          <IonCard key={code.id} style={{ marginBottom: "10px" }}>
-            <IonCardContent>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <div style={{ fontFamily: "monospace", fontSize: "1rem", fontWeight: "bold" }}>{code.code}</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--ion-color-medium)" }}>
+          {error && (
+            <div className="rp-banner rp-banner--error" role="alert">
+              <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Faltaba el estado vacío: sin códigos la pantalla mostraba cuatro
+              ceros y nada más, sin decir qué hacer a continuación. */}
+          {!loading && !error && codes.length === 0 && (
+            <div className="rp-empty">
+              <div className="rp-empty__icon">
+                <IonIcon icon={giftOutline} aria-hidden="true" />
+              </div>
+              <h2 className="rp-empty__title">Aún no hay códigos</h2>
+              <p className="rp-empty__body">
+                Crea una campaña para empezar a repartir descuentos y medir
+                cuántas invitaciones se convierten en viajes.
+              </p>
+              <IonButton
+                className="rp-cta"
+                style={{ marginTop: 14 }}
+                onClick={() => setShowCampaignModal(true)}
+              >
+                <IonIcon icon={addOutline} slot="start" aria-hidden="true" />
+                Crear campaña
+              </IonButton>
+            </div>
+          )}
+
+          {!loading && codes.map(code => (
+            <article key={code.id} className="rp-card">
+              <div className="rp-card__row">
+                <div className="rp-card__main">
+                  {/* El código va en monoespaciada porque se lee carácter a
+                      carácter para dictarlo o compararlo. */}
+                  <h3 className="rp-card__title" style={{ fontFamily: "monospace" }}>
+                    {code.code}
+                  </h3>
+                  <p className="rp-card__foot" style={{ marginTop: 4 }}>
                     {code.ownerName ?? "Campaña"} · {code.type}
-                  </div>
-                  <div style={{ fontSize: "0.75rem", marginTop: "4px" }}>
-                    Usos: {code.usedCount}{code.maxUses ? `/${code.maxUses}` : ""} · Conv: {code.conversionCount ?? 0}
-                  </div>
+                  </p>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                   <IonBadge color={code.isActive ? "success" : "medium"}>
                     {code.isActive ? "Activo" : "Inactivo"}
                   </IonBadge>
-                  <div style={{ fontSize: "0.75rem" }}>
-                    Desc: {code.discountAmount ?? 0}{code.discountType === "percentage" ? "%" : " CLP"}
-                  </div>
                 </div>
               </div>
-              <IonButton size="small" fill="outline" style={{ marginTop: "8px" }}
+
+              <div className="rp-card__meta">
+                <span>
+                  Usos <strong>{code.usedCount}{code.maxUses ? `/${code.maxUses}` : ""}</strong>
+                </span>
+                <span>
+                  Conversiones <strong>{code.conversionCount ?? 0}</strong>
+                </span>
+                <span>
+                  Descuento{" "}
+                  <strong>
+                    {code.discountAmount ?? 0}
+                    {code.discountType === "percentage" ? "%" : " CLP"}
+                  </strong>
+                </span>
+              </div>
+
+              <IonButton
+                size="small"
+                fill="outline"
+                style={{ marginTop: 12 }}
+                aria-label={`Ver usos del código ${code.code}`}
                 onClick={() => void handleViewUses(code)}
               >
                 Ver usos
               </IonButton>
-            </IonCardContent>
-          </IonCard>
-        ))}
+            </article>
+          ))}
+        </div>
 
         {/* Uses modal */}
-        <IonModal isOpen={showUses} onDidDismiss={() => setShowUses(false)}>
+        <IonModal
+          isOpen={showUses}
+          className="rapago-admin-modal"
+          onDidDismiss={() => setShowUses(false)}
+        >
           <IonHeader>
-            <IonToolbar>
-              <IonTitle style={{ fontSize: "0.95rem" }}>Usos — {selectedCode?.code}</IonTitle>
+            <IonToolbar className="rapago-modal-toolbar">
+              <IonTitle>Usos — {selectedCode?.code}</IonTitle>
               <IonButtons slot="end">
-                <IonButton onClick={() => setShowUses(false)}>Cerrar</IonButton>
+                <IonButton className="rapago-modal-close" onClick={() => setShowUses(false)}>Cerrar</IonButton>
               </IonButtons>
             </IonToolbar>
           </IonHeader>
-          <IonContent className="ion-padding">
-            {loadingUses && <div style={{ textAlign: "center" }}><IonSpinner name="dots" /></div>}
-            {!loadingUses && uses.length === 0 && (
-              <IonText color="medium"><p>No hay usos registrados.</p></IonText>
-            )}
-            {!loadingUses && uses.map(use => (
-              <IonCard key={use.id} style={{ marginBottom: "8px" }}>
-                <IonCardContent style={{ fontSize: "0.82rem" }}>
-                  <div><strong>{use.referredUserName ?? "Usuario desconocido"}</strong></div>
-                  <div style={{ color: "var(--ion-color-medium)" }}>{use.referredUserEmail}</div>
-                  <div>Referido: {new Date(use.referredAt).toLocaleDateString("es-CL")}</div>
-                  {use.convertedAt && (
-                    <div>Convertido: {new Date(use.convertedAt).toLocaleDateString("es-CL")} · ${(use.rewardAmount ?? 0).toLocaleString("es-CL")} CLP</div>
-                  )}
-                  {!use.convertedAt && <div style={{ color: "var(--ion-color-warning)" }}>Pendiente conversión</div>}
-                </IonCardContent>
-              </IonCard>
-            ))}
+          <IonContent className="rapago-modal-content">
+            <div className="rapago-modal-body" data-rapago-theme={theme}>
+              <div className="rp-admin-modal-inner">
+                {loadingUses && (
+                  <div className="rp-empty">
+                    <IonSpinner name="crescent" />
+                    <p className="rp-empty__body" style={{ marginTop: 10 }}>
+                      Cargando usos…
+                    </p>
+                  </div>
+                )}
+
+                {!loadingUses && uses.length === 0 && (
+                  <div className="rp-empty">
+                    <div className="rp-empty__icon">
+                      <IonIcon icon={giftOutline} aria-hidden="true" />
+                    </div>
+                    <h2 className="rp-empty__title">Sin usos registrados</h2>
+                    <p className="rp-empty__body">
+                      Nadie ha canjeado este código todavía.
+                    </p>
+                  </div>
+                )}
+
+                {!loadingUses && uses.map(use => (
+                  <article key={use.id} className="rp-card">
+                    <h3 className="rp-card__title">
+                      {use.referredUserName ?? "Usuario desconocido"}
+                    </h3>
+                    <p className="rp-card__foot" style={{ marginTop: 4 }}>
+                      {use.referredUserEmail}
+                    </p>
+
+                    <div className="rp-card__meta">
+                      <span>
+                        Referido{" "}
+                        <strong>
+                          {new Date(use.referredAt).toLocaleDateString("es-CL")}
+                        </strong>
+                      </span>
+                      {use.convertedAt && (
+                        <span>
+                          Convertido{" "}
+                          <strong>
+                            {new Date(use.convertedAt).toLocaleDateString("es-CL")}
+                          </strong>
+                        </span>
+                      )}
+                    </div>
+
+                    {use.convertedAt ? (
+                      <p className="rp-card__ok">
+                        <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" />{" "}
+                        Recompensa ${(use.rewardAmount ?? 0).toLocaleString("es-CL")} CLP
+                      </p>
+                    ) : (
+                      /* Era `color: var(--ion-color-warning)` sobre la tarjeta
+                         ivory: amarillo sobre crema, ~1,8:1. El token de aviso
+                         tiene contraparte legible en los dos temas. */
+                      <p
+                        className="rp-card__ok"
+                        style={{ color: "var(--rp-warn-fg)" }}
+                      >
+                        Pendiente de conversión
+                      </p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </div>
           </IonContent>
         </IonModal>
 
         {/* Campaign modal */}
-        <IonModal isOpen={showCampaignModal} onDidDismiss={() => { setShowCampaignModal(false); setCampaignSuccess(null); setCampaignError(null); }}>
+        <IonModal
+          isOpen={showCampaignModal}
+          className="rapago-admin-modal"
+          onDidDismiss={() => { setShowCampaignModal(false); setCampaignSuccess(null); setCampaignError(null); }}
+        >
           <IonHeader>
-            <IonToolbar>
-              <IonTitle style={{ fontSize: "0.95rem" }}>Crear campaña</IonTitle>
+            <IonToolbar className="rapago-modal-toolbar">
+              <IonTitle>Crear campaña</IonTitle>
               <IonButtons slot="end">
-                <IonButton onClick={() => setShowCampaignModal(false)}>Cerrar</IonButton>
+                <IonButton className="rapago-modal-close" onClick={() => setShowCampaignModal(false)}>Cerrar</IonButton>
               </IonButtons>
             </IonToolbar>
           </IonHeader>
-          <IonContent className="ion-padding">
+          <IonContent className="rapago-modal-content">
+            <div className="rapago-modal-body" data-rapago-theme={theme}>
+              <div className="rp-admin-modal-inner">
             <IonItem>
               <IonLabel position="stacked">Código</IonLabel>
               <IonInput value={campaignCode} onIonInput={e => setCampaignCode(String(e.detail.value ?? ""))} placeholder="VERANO2024" maxlength={20} />
@@ -247,15 +374,32 @@ export function AdminReferralsPage(): JSX.Element {
               <IonInput type="date" value={campaignExpires} onIonInput={e => setCampaignExpires(String(e.detail.value ?? ""))} />
             </IonItem>
 
-            {campaignError && <IonText color="danger"><p style={{ margin: "8px 0 0" }}>{campaignError}</p></IonText>}
-            {campaignSuccess && <IonText color="success"><p style={{ margin: "8px 0 0" }}>{campaignSuccess}</p></IonText>}
+            {campaignError && (
+              <div className="rp-banner rp-banner--error" role="alert">
+                <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+                <span>{campaignError}</span>
+              </div>
+            )}
 
-            <IonButton expand="block" style={{ marginTop: "16px" }}
+            {/* role="status" y no "alert": es una confirmación, no un fallo, y
+                no debe interrumpir lo que el lector esté anunciando. */}
+            {campaignSuccess && (
+              <div className="rp-banner rp-banner--success" role="status">
+                <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" />
+                <span>{campaignSuccess}</span>
+              </div>
+            )}
+
+            <IonButton
+              expand="block"
+              className="rp-cta"
               onClick={() => void handleCreateCampaign()}
               disabled={campaignLoading}
             >
               {campaignLoading ? <IonSpinner name="dots" /> : "Crear campaña"}
             </IonButton>
+              </div>
+            </div>
           </IonContent>
         </IonModal>
       </IonContent>

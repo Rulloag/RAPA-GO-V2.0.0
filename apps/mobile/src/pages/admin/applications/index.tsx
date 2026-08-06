@@ -27,6 +27,7 @@ import {
   useIonViewWillEnter,
 } from "@ionic/react";
 import {
+  alertCircleOutline,
   carOutline,
   checkmarkCircleOutline,
   closeCircleOutline,
@@ -41,6 +42,11 @@ import {
 } from "ionicons/icons";
 import { useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "../../../features/auth/index.js";
+import { RapagoAppBar } from "../../../components/RapagoAppBar.js";
+import {
+  useRapagoSectionTheme,
+  type RapagoTheme,
+} from "../../../theme/rapagoTheme.js";
 import {
   applicationsService,
   type ApplicationData,
@@ -1735,11 +1741,16 @@ function AdminVehicleCard({ vehicle }: { vehicle: DriverVehicleView }): JSX.Elem
 function AdminApplicationDetailModal({
   item,
   token,
+  theme,
   onClose,
   onUpdated,
 }: {
   item: ApplicationData;
   token: string;
+  /* El IonModal se monta fuera del IonPage y no hereda su data-rapago-theme: la
+     pantalla se lo pasa para que el modal resuelva contra el mismo tema y no
+     contra lo que :root tenga en ese momento. */
+  theme: RapagoTheme;
   onClose: () => void;
   onUpdated: (updated: ApplicationData) => void;
 }): JSX.Element {
@@ -1890,23 +1901,18 @@ function AdminApplicationDetailModal({
   return (
     <>
       <IonHeader>
-        <IonToolbar color="danger">
+        <IonToolbar className="rapago-modal-toolbar">
           <IonTitle>Detalle de postulación</IonTitle>
           <IonButtons slot="end">
-            <IonButton fill="clear" color="light" onClick={onClose}>
+            <IonButton fill="clear" className="rapago-modal-close" onClick={onClose}>
               Cerrar
             </IonButton>
           </IonButtons>
         </IonToolbar>
       </IonHeader>
 
-      <IonContent
-        className="ion-padding"
-        style={{
-          "--background":
-            "linear-gradient(180deg, rgba(15,15,15,.78), rgba(15,15,15,.92)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
-        } as CSSProperties}
-      >
+      <IonContent className="rapago-modal-content">
+        <div className="rapago-modal-body" data-rapago-theme={theme}>
         <IonCard style={detailSectionStyle}>
           <IonCardHeader>
             <IonCardTitle style={{ fontSize: "1.08rem", fontWeight: 950 }}>
@@ -2394,6 +2400,7 @@ function AdminApplicationDetailModal({
           ]}
           onDidDismiss={() => setShowPendingAlert(false)}
         />
+        </div>
       </IonContent>
     </>
   );
@@ -2401,6 +2408,7 @@ function AdminApplicationDetailModal({
 
 export function AdminApplicationsPage(): JSX.Element {
   const { session } = useAuth();
+  const { theme } = useRapagoSectionTheme("admin");
   const [items, setItems] = useState<ApplicationData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -2464,25 +2472,18 @@ export function AdminApplicationsPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="danger">
-          <IonTitle>Postulaciones</IonTitle>
-          <IonButtons slot="end">
-            <IonButton fill="clear" color="light" onClick={() => void load()} disabled={loading}>
-              <IonIcon icon={refreshOutline} slot="start" />
-              Actualizar
-            </IonButton>
-          </IonButtons>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Postulaciones"
+        roleLabel="Administrador"
+        actionIcon={refreshOutline}
+        actionLabel="Actualizar postulaciones"
+        actionLoading={loading}
+        onAction={() => void load()}
+      />
 
-      <IonContent
-        style={{
-          "--background":
-            "linear-gradient(180deg, rgba(15,15,15,.78), rgba(15,15,15,.92)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
-        } as CSSProperties}
-      >
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={(e) => {
@@ -2492,73 +2493,88 @@ export function AdminApplicationsPage(): JSX.Element {
           <IonRefresherContent />
         </IonRefresher>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", padding: "12px" }}>
-          {[
-            { label: "Total", count: total, color: "primary", icon: documentTextOutline },
-            { label: "Pendientes", count: pending, color: "warning", icon: timeOutline },
-            { label: "En revisión", count: inReview, color: "tertiary", icon: hourglassOutline },
-            { label: "Aprobadas", count: approved, color: "success", icon: checkmarkCircleOutline },
-            { label: "Rechazadas", count: rejected, color: "danger", icon: closeCircleOutline },
-          ].map(({ label, count, color, icon }) => (
-            <IonCard key={label} style={{ margin: 0, textAlign: "center", borderRadius: 18 }}>
-              <IonCardContent style={{ padding: "10px 8px" }}>
-                <IonIcon icon={icon} color={color} style={{ fontSize: 20 }} />
-                <div style={{ fontSize: "1.4rem", fontWeight: 950, color: `var(--ion-color-${color})` }}>
-                  {count}
-                </div>
-                <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", fontWeight: 800 }}>
-                  {label}
-                </div>
-              </IonCardContent>
-            </IonCard>
-          ))}
-        </div>
-
-        <IonSegment
-          value={filter}
-          onIonChange={(e) => setFilter(String(e.detail.value ?? "all"))}
-          style={{ padding: "0 12px 8px" }}
-        >
-          <IonSegmentButton value="all">
-            <IonLabel>Todas</IonLabel>
-          </IonSegmentButton>
-          <IonSegmentButton value="pending">
-            <IonLabel>Pend.</IonLabel>
-          </IonSegmentButton>
-          <IonSegmentButton value="under_review">
-            <IonLabel>Revisión</IonLabel>
-          </IonSegmentButton>
-          <IonSegmentButton value="approved">
-            <IonLabel>Aprob.</IonLabel>
-          </IonSegmentButton>
-          <IonSegmentButton value="rejected">
-            <IonLabel>Rech.</IonLabel>
-          </IonSegmentButton>
-        </IonSegment>
-
-        {loading && (
-          <div style={{ display: "flex", justifyContent: "center", marginTop: "40px" }}>
-            <IonSpinner name="crescent" />
+        <div className="rp-admin-shell">
+          {/* Cinco cifras en una rejilla de dos columnas fijas dejaban la
+              quinta sola a media fila. Con los tiles del sistema la rejilla se
+              reparte según el ancho disponible. */}
+          <div className="rp-tile-grid rp-tile-grid--auto">
+            {[
+              { label: "Total", count: total, color: "primary", icon: documentTextOutline },
+              { label: "Pendientes", count: pending, color: "warning", icon: timeOutline },
+              { label: "En revisión", count: inReview, color: "tertiary", icon: hourglassOutline },
+              { label: "Aprobadas", count: approved, color: "success", icon: checkmarkCircleOutline },
+              { label: "Rechazadas", count: rejected, color: "danger", icon: closeCircleOutline },
+            ].map(({ label, count, color, icon }) => (
+              <div key={label} className="rp-tile rp-tile--center">
+                <span className="rp-tile__icon">
+                  <IonIcon icon={icon} color={color} aria-hidden="true" />
+                </span>
+                {/* La cifra pasa a --rp-text: iba en `var(--ion-color-{color})`,
+                    y el amarillo de "warning" sobre la tarjeta crema daba ~1,9:1.
+                    El estado ya lo comunica el icono, que sí puede ser de color
+                    porque no tiene que leerse como texto. */}
+                <span className="rp-tile__value">{count}</span>
+                <span className="rp-tile__label">{label}</span>
+              </div>
+            ))}
           </div>
-        )}
 
-        {error && (
-          <IonText color="danger">
-            <p style={{ padding: "0 16px", fontWeight: 900 }}>{error}</p>
-          </IonText>
-        )}
+          {/* Las etiquetas estaban truncadas a mano ("Pend.", "Aprob.",
+              "Rech.") para que cupieran cinco en una fila. El segmento ahora
+              tiene scroll horizontal propio (admin.css), así que se pueden
+              escribir completas. */}
+          <IonSegment
+            value={filter}
+            onIonChange={(e) => setFilter(String(e.detail.value ?? "all"))}
+          >
+            <IonSegmentButton value="all">
+              <IonLabel>Todas</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="pending">
+              <IonLabel>Pendientes</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="under_review">
+              <IonLabel>En revisión</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="approved">
+              <IonLabel>Aprobadas</IonLabel>
+            </IonSegmentButton>
+            <IonSegmentButton value="rejected">
+              <IonLabel>Rechazadas</IonLabel>
+            </IonSegmentButton>
+          </IonSegment>
 
-        {!loading && filtered.length === 0 && (
-          <IonCard style={{ margin: "12px", borderRadius: 18 }}>
-            <IonCardContent style={{ textAlign: "center", padding: "28px 18px" }}>
-              <IonIcon icon={documentTextOutline} style={{ fontSize: 42, opacity: .45 }} />
-              <div style={{ marginTop: 10, fontWeight: 950 }}>Sin postulaciones</div>
-              <IonNote>No hay postulaciones para este filtro.</IonNote>
-            </IonCardContent>
-          </IonCard>
-        )}
+          {loading && (
+            <div className="rp-empty">
+              <IonSpinner name="crescent" />
+              <p className="rp-empty__body" style={{ marginTop: 10 }}>
+                Cargando postulaciones…
+              </p>
+            </div>
+          )}
 
-        <IonList style={{ padding: "8px 12px 90px", background: "transparent" }}>
+          {error && (
+            <div className="rp-banner rp-banner--error" role="alert">
+              <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {!loading && filtered.length === 0 && (
+            <div className="rp-empty">
+              <div className="rp-empty__icon">
+                <IonIcon icon={documentTextOutline} aria-hidden="true" />
+              </div>
+              <h2 className="rp-empty__title">Sin postulaciones</h2>
+              <p className="rp-empty__body">
+                {filter === "all"
+                  ? "Todavía no ha postulado nadie como conductor o guía."
+                  : "Ninguna postulación coincide con este filtro."}
+              </p>
+            </div>
+          )}
+
+          <IonList style={{ background: "transparent" }}>
           {filtered.map((item) => {
             const docs = buildDocumentViews(item);
             const vehicles = buildVehicleViews(item);
@@ -2600,13 +2616,20 @@ export function AdminApplicationsPage(): JSX.Element {
               </IonItem>
             );
           })}
-        </IonList>
+          </IonList>
+        </div>
 
-        <IonModal ref={modal} isOpen={selected !== null} onDidDismiss={() => setSelected(null)}>
+        <IonModal
+          ref={modal}
+          className="rapago-admin-modal"
+          isOpen={selected !== null}
+          onDidDismiss={() => setSelected(null)}
+        >
           {selected !== null && session?.accessToken && (
             <AdminApplicationDetailModal
               item={selected}
               token={session.accessToken}
+              theme={theme}
               onClose={() => setSelected(null)}
               onUpdated={handleUpdated}
             />

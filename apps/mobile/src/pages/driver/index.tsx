@@ -20639,7 +20639,7 @@ export function DriverProfilePage(): JSX.Element {
                   bloqueado. Para corregirlo debes solicitarlo a soporte.
                 </div>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
+                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                     Teléfono
                   </IonLabel>
@@ -20966,7 +20966,7 @@ export function DriverProfilePage(): JSX.Element {
                     : "Vehículo propio: puedes guardar tu principal y también agregar más vehículos propios si los usas en Rapa Go."}
                 </div>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
+                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                     Marca
                   </IonLabel>
@@ -20983,7 +20983,7 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
+                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                     Modelo
                   </IonLabel>
@@ -21000,7 +21000,7 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
+                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                     Año
                   </IonLabel>
@@ -21018,7 +21018,7 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
+                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                     Patente
                   </IonLabel>
@@ -21037,7 +21037,7 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
+                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                     Color
                   </IonLabel>
@@ -21055,7 +21055,7 @@ export function DriverProfilePage(): JSX.Element {
                 </IonItem>
 
                 {vehicleOwnership === "borrowed" && (
-                  <IonItem lines="none" style={driverInputItemStyle()}>
+                  <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                     <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                       Fecha de expiración del vehículo opcional *
                     </IonLabel>
@@ -21301,7 +21301,7 @@ export function DriverProfilePage(): JSX.Element {
                   Licencia de conducir
                 </div>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
+                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                     Número de licencia
                   </IonLabel>
@@ -21314,7 +21314,7 @@ export function DriverProfilePage(): JSX.Element {
                   />
                 </IonItem>
 
-                <IonItem lines="none" style={driverInputItemStyle()}>
+                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                     Fecha de vencimiento
                   </IonLabel>
@@ -21387,7 +21387,7 @@ export function DriverProfilePage(): JSX.Element {
                 >
                   Biografía
                 </div>
-                <IonItem lines="none" style={driverInputItemStyle()}>
+                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
                   <IonLabel position="stacked" style={driverFieldLabelStyle()}>
                     Sobre ti
                   </IonLabel>

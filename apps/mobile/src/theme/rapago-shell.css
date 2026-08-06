@@ -198,6 +198,8 @@
     rgba(0, 0, 0, 0.45) 0%,
     rgba(0, 0, 0, 0) 100%
   );
+  --rp-appbar-bg: rgba(14, 15, 22, 0.96);
+  --rp-appbar-border: rgba(214, 166, 64, 0.42);
 
   /* Aviso (ámbar) e informativo (azul). Faltaban: las pantallas los resolvían
      con hex fijos de modo día (#fff7db/#5f3f00, #dbeafe/#2563eb) que quedaban
@@ -210,6 +212,23 @@
   --rp-info-fg: #2fa8bf;
   --rp-info-bg: rgba(47, 168, 191, 0.14);
   --rp-info-bd: rgba(47, 168, 191, 0.38);
+
+  /* Tarjeta RapaGo más veloz: promo visible también en modo oscuro, sin
+     convertir toda la pantalla en una superficie clara. */
+  --rp-fast-bg: linear-gradient(145deg, rgba(35, 31, 24, 0.98), rgba(21, 20, 18, 0.98));
+  --rp-fast-border: rgba(241, 200, 100, 0.68);
+  --rp-fast-fg: #f6f2ec;
+  --rp-fast-value: #f8d879;
+  --rp-fast-muted: rgba(246, 242, 236, 0.72);
+  --rp-fast-icon-bg: #141413;
+  --rp-fast-icon-fg: #f8d879;
+  --rp-fast-detail-bg: rgba(255, 255, 255, 0.08);
+  --rp-fast-detail-border: rgba(241, 200, 100, 0.24);
+  --rp-fast-primary-bg: linear-gradient(135deg, #f8d879, #d6a640);
+  --rp-fast-primary-fg: #201607;
+  --rp-fast-secondary-bg: rgba(255, 255, 255, 0.06);
+  --rp-fast-secondary-fg: #f8d879;
+  --rp-fast-secondary-border: rgba(241, 200, 100, 0.48);
 
   /* Barra de navegación inferior. Fondo translúcido: con el backdrop-filter la
      barra flotante se ve como cristal esmerilado sobre el contenido, no como una
@@ -336,6 +355,8 @@
     rgba(255, 253, 249, 0.55) 0%,
     rgba(255, 253, 249, 0) 100%
   );
+  --rp-appbar-bg: rgba(255, 253, 249, 0.96);
+  --rp-appbar-border: rgba(168, 120, 31, 0.42);
 
   /* Contrapartes de día. Ratios sobre la superficie clara: 7,73:1 y 6,49:1. */
   --rp-warn-fg: #6b4b00;
@@ -345,6 +366,21 @@
   --rp-info-fg: #0e5566;
   --rp-info-bg: rgba(18, 105, 126, 0.1);
   --rp-info-bd: rgba(18, 105, 126, 0.34);
+
+  --rp-fast-bg: linear-gradient(145deg, #fffdf6 0%, #fff1b8 58%, #f4cb55 100%);
+  --rp-fast-border: #d49b16;
+  --rp-fast-fg: #1a1a1a;
+  --rp-fast-value: #8a641c;
+  --rp-fast-muted: rgba(17, 17, 17, 0.68);
+  --rp-fast-icon-bg: #111827;
+  --rp-fast-icon-fg: #ffffff;
+  --rp-fast-detail-bg: rgba(255, 255, 255, 0.82);
+  --rp-fast-detail-border: rgba(117, 80, 0, 0.22);
+  --rp-fast-primary-bg: #111827;
+  --rp-fast-primary-fg: #ffffff;
+  --rp-fast-secondary-bg: #fffaf0;
+  --rp-fast-secondary-fg: #6b4b00;
+  --rp-fast-secondary-border: #a8781f;
 
   /* En modo día la barra pasa a superficie clara translúcida: el backdrop-filter
      la convierte en cristal cálido esmerilado. El inactivo es #6b5a3e y no un
@@ -394,7 +430,8 @@
 .rapago-profile-page,
 .rapago-auth-dark,
 .rapago-section-page,
-.rapago-driver-page {
+.rapago-driver-page,
+.rapago-admin-page {
   background: var(--rp-page-bg) !important;
   color: var(--rp-text) !important;
 }
@@ -668,7 +705,8 @@ ion-refresher-content .refresher-refreshing-text {
 .rapago-section-page :focus-visible,
 .rapago-home-page :focus-visible,
 .rapago-profile-page :focus-visible,
-.rapago-driver-page :focus-visible {
+.rapago-driver-page :focus-visible,
+.rapago-admin-page :focus-visible {
   outline: 3px solid var(--rp-border-strong);
   outline-offset: 2px;
   border-radius: 6px;
@@ -680,7 +718,10 @@ ion-refresher-content .refresher-refreshing-text {
 .rapago-section-page ion-chip:focus-visible,
 .rapago-home-page ion-button:focus-visible,
 .rapago-driver-page ion-button:focus-visible,
-.rapago-driver-page ion-chip:focus-visible {
+.rapago-driver-page ion-chip:focus-visible,
+.rapago-admin-page ion-button:focus-visible,
+.rapago-admin-page ion-chip:focus-visible,
+.rapago-admin-page ion-segment-button:focus-visible {
   outline: 3px solid var(--rp-border-strong);
   outline-offset: 3px;
 }

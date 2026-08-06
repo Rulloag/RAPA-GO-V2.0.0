@@ -5,6 +5,7 @@ import {
   IonCardContent,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -22,8 +23,16 @@ import {
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
+import {
+  alertCircleOutline,
+  helpBuoyOutline,
+  refreshOutline,
+} from "ionicons/icons";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../features/auth/index.js";
+import { RapagoAppBar } from "../../../components/RapagoAppBar.js";
+import { ROUTES } from "../../../navigation/routes.js";
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 import {
   supportService,
   type AdminIdentityCorrectionPayload,
@@ -69,6 +78,7 @@ function normalized(value: string | null | undefined): string {
 
 export function AdminSupportPage(): JSX.Element {
   const { session } = useAuth();
+  const { theme } = useRapagoSectionTheme("admin");
   const [items, setItems] = useState<SupportCaseData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -244,13 +254,19 @@ export function AdminSupportPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="dark">
-          <IonTitle>Soporte y reclamos</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding">
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Soporte y reclamos"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={refreshOutline}
+        actionLabel="Actualizar casos"
+        actionLoading={loading}
+        onAction={() => void load()}
+      />
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={(event) =>
@@ -260,7 +276,7 @@ export function AdminSupportPage(): JSX.Element {
           <IonRefresherContent />
         </IonRefresher>
 
-        <div style={{ maxWidth: 1100, margin: "0 auto", paddingBottom: 80 }}>
+        <div className="rp-admin-shell">
           <IonCard>
             <IonCardContent>
               <div
@@ -321,14 +337,37 @@ export function AdminSupportPage(): JSX.Element {
           </IonCard>
 
           {error && (
-            <IonText color="danger">
-              <p>{error}</p>
-            </IonText>
+            <div className="rp-banner rp-banner--error" role="alert">
+              <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+              <span>{error}</span>
+            </div>
           )}
 
           {loading ? (
-            <div style={{ textAlign: "center", padding: 30 }}>
-              <IonSpinner />
+            <div className="rp-empty">
+              <IonSpinner name="crescent" />
+              <p className="rp-empty__body" style={{ marginTop: 10 }}>
+                Cargando casos…
+              </p>
+            </div>
+          ) : items.length === 0 ? (
+            /* Faltaba: con los filtros puestos y sin resultados la lista
+               quedaba vacía sin decir si no había casos o si el filtro no
+               devolvía nada. */
+            <div className="rp-empty">
+              <div className="rp-empty__icon">
+                <IonIcon icon={helpBuoyOutline} aria-hidden="true" />
+              </div>
+              <h2 className="rp-empty__title">
+                {statusFilter || categoryFilter || search
+                  ? "Ningún caso coincide"
+                  : "No hay casos abiertos"}
+              </h2>
+              <p className="rp-empty__body">
+                {statusFilter || categoryFilter || search
+                  ? "Prueba con otro estado, otra categoría o limpia la búsqueda."
+                  : "Cuando alguien abra un reclamo desde el Centro de ayuda, aparecerá aquí."}
+              </p>
             </div>
           ) : (
             <IonList>
@@ -395,31 +434,36 @@ export function AdminSupportPage(): JSX.Element {
 
         <IonModal
           isOpen={detail !== null || detailLoading}
+          className="rapago-admin-modal"
           onDidDismiss={() => setDetail(null)}
         >
           <IonHeader>
-            <IonToolbar color="dark">
+            <IonToolbar className="rapago-modal-toolbar">
               <IonTitle>
                 {detail?.supportCase.trackingCode ?? "Cargando"}
               </IonTitle>
               <IonButton
                 slot="end"
                 fill="clear"
-                color="light"
+                className="rapago-modal-close"
                 onClick={() => setDetail(null)}
               >
                 Cerrar
               </IonButton>
             </IonToolbar>
           </IonHeader>
-          <IonContent className="ion-padding">
+          <IonContent className="rapago-modal-content">
+            <div className="rapago-modal-body" data-rapago-theme={theme}>
             {detailLoading && !detail ? (
-              <div style={{ textAlign: "center", padding: 30 }}>
-                <IonSpinner />
+              <div className="rp-empty">
+                <IonSpinner name="crescent" />
+                <p className="rp-empty__body" style={{ marginTop: 10 }}>
+                  Cargando el caso…
+                </p>
               </div>
             ) : (
               detail && (
-                <div style={{ maxWidth: 760, margin: "0 auto" }}>
+                <div className="rp-admin-modal-inner">
                   <IonCard>
                     <IonCardContent>
                       <h2>{detail.supportCase.subject}</h2>
@@ -603,6 +647,7 @@ export function AdminSupportPage(): JSX.Element {
                       </IonItem>
                       <IonButton
                         expand="block"
+                        className="rp-cta"
                         disabled={saving}
                         onClick={() => void save()}
                       >
@@ -617,7 +662,9 @@ export function AdminSupportPage(): JSX.Element {
                     </IonCardContent>
                   </IonCard>
 
-                  <h3>Historial completo</h3>
+                  {/* El <h3> suelto heredaba el color del tema sobre el fondo
+                      del modal: en modo día quedaba ivory sobre arena. */}
+                  <h2 className="rapago-section-label">Historial completo</h2>
                   {detail.events.map((event) => (
                     <IonCard key={event.id}>
                       <IonCardContent>
@@ -631,14 +678,14 @@ export function AdminSupportPage(): JSX.Element {
                           </p>
                         )}
                         {event.internalNote && (
-                          <p
-                            style={{
-                              background: "#fff3cd",
-                              padding: 8,
-                              borderRadius: 8,
-                            }}
-                          >
-                            <strong>Interno:</strong> {event.internalNote}
+                          /* La nota interna no es un párrafo más: sólo la ve
+                             el equipo, nunca el usuario, y confundirlas al
+                             responder es un incidente. El amarillo suelto
+                             (#fff3cd) no lo decía; el bloque etiquetado sí. */
+                          <p className="rp-card__quote" style={{ marginTop: 8 }}>
+                            <strong>Nota interna · no visible para el usuario</strong>
+                            <br />
+                            {event.internalNote}
                           </p>
                         )}
                       </IonCardContent>
@@ -647,6 +694,7 @@ export function AdminSupportPage(): JSX.Element {
                 </div>
               )
             )}
+            </div>
           </IonContent>
         </IonModal>
       </IonContent>

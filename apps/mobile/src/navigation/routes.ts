@@ -83,6 +83,9 @@ export const ROUTES = {
   ADMIN: {
     BASE: "/admin",
     HOME: "/admin/home",
+    /* Hub de secciones secundarias. La barra inferior sólo tiene sitio para
+       cinco destinos (ver AdminLayout); el resto vive aquí, agrupado. */
+    MORE: "/admin/more",
     USERS: "/admin/users",
     DRIVERS: "/admin/drivers",
     GUIDES: "/admin/guides",

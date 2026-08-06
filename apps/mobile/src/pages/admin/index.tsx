@@ -8,9 +8,7 @@ import {
   IonCardSubtitle,
   IonCardTitle,
   IonChip,
-  IonCol,
   IonContent,
-  IonGrid,
   IonHeader,
   IonIcon,
   IonInfiniteScroll,
@@ -24,7 +22,6 @@ import {
   IonPage,
   IonRefresher,
   IonRefresherContent,
-  IonRow,
   IonSegment,
   IonSegmentButton,
   IonSelect,
@@ -40,7 +37,6 @@ import {
 import { useEffect, useState, useCallback, useRef, type CSSProperties } from "react";
 import {
   alertCircleOutline,
-  bicycleOutline,
   bookOutline,
   carOutline as carIcon,
   warningOutline,
@@ -74,10 +70,12 @@ import {
   keyOutline,
   peopleOutline,
   personOutline,
+  refreshOutline as refreshIcon,
+  addOutline as addIcon,
+  closeOutline as closeIcon,
+  checkmarkCircleOutline as checkmarkCircleIcon,
   settingsOutline,
 } from "ionicons/icons";
-import { HomeHeader } from "../../components/HomeHeader";
-import { ActionCard } from "../../components/ActionCard";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import {
@@ -95,12 +93,14 @@ import {
   offlineService,
   type OfflineBooking,
 } from "../../features/offline/offline.service";
-import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
+import { WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { loadRapaGoGoogleMaps } from "../../components/MapFallback";
 import { AccountDeletionAdminPanel } from "../../components/accountDeletion/AccountDeletionAdminPanel.js";
 import { CashOverpaymentRefundAdminPanel } from "../../components/payments/CashOverpaymentRefundAdminPanel.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../services/api/apiBaseUrl.js";
+import { RapagoAppBar } from "../../components/RapagoAppBar.js";
+import { useRapagoSectionTheme } from "../../theme/rapagoTheme.js";
 
 const ADMIN_DRIVERS_ROUTE = "/admin/drivers";
 const ADMIN_DRIVERS_REFRESH_EVENT = "rapago:admin-refresh-drivers";
@@ -2177,6 +2177,7 @@ function markAdminCashDriverReviewCompleted(review: AdminCashPaymentReview): voi
 }
 
 export function AdminHomePage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const history = useHistory();
   const [loading, setLoading] = useState(true);
@@ -2682,13 +2683,13 @@ export function AdminHomePage(): JSX.Element {
     },
     {
       label: "Viajes",
-      description: "Monitorear operaci?n",
+      description: "Monitorear operación",
       icon: carOutline,
       route: ROUTES.ADMIN.TRIPS,
     },
     {
       label: "Docs",
-      description: "Revisi?n pendiente",
+      description: "Revisión pendiente",
       icon: documentTextOutline,
       route: ROUTES.ADMIN.DOCUMENTS,
     },
@@ -2718,7 +2719,7 @@ export function AdminHomePage(): JSX.Element {
     },
     {
       label: "Efectivo",
-      description: `${cashPaymentReviews.length} revisi?n${cashPaymentReviews.length !== 1 ? "es" : ""}`,
+      description: `${cashPaymentReviews.length} revisión${cashPaymentReviews.length !== 1 ? "es" : ""}`,
       icon: cashOutline,
       route: "__admin_charges__",
     },
@@ -2764,12 +2765,19 @@ export function AdminHomePage(): JSX.Element {
   ];
 
   return (
-    <IonPage>
-      <IonHeader className="admin-header">
-        <IonToolbar className="admin-toolbar">
-          <IonTitle>RAPA GO Admin</IonTitle>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      {/* Variante "root": el saludo ocupa el lugar del título, igual que en el
+          Inicio del pasajero y en el del conductor. Antes esta pantalla decía
+          "RAPA GO Admin" sobre un degradado terracota propio — el nombre de la
+          app escrito donde ya está el logo, y una cabecera que no se parecía a
+          ninguna otra de la aplicación. */}
+      <RapagoAppBar
+        sectionId="admin"
+        variant="root"
+        subtitle="Operación de Rapa Go"
+        roleLabel="Administrador"
+        showNotifications
+      />
 
       <IonContent className="admin-dashboard-content">
         <IonRefresher
@@ -2923,7 +2931,7 @@ export function AdminHomePage(): JSX.Element {
                 initialBreakpoint={0.55}
               >
                 <IonHeader>
-                  <IonToolbar color="dark">
+                  <IonToolbar className="rapago-modal-toolbar">
                     <IonTitle>
                       {selectedKpi === "rides" && "Viajes de hoy"}
                       {selectedKpi === "drivers" && "Conductores"}
@@ -2941,7 +2949,7 @@ export function AdminHomePage(): JSX.Element {
                   </IonToolbar>
                 </IonHeader>
 
-                <IonContent className="ion-padding">
+                <IonContent className="rapago-modal-content ion-padding">
                   {selectedKpi === "rides" && (
                     <>
                       <IonCard style={{ margin: "0 0 12px", borderRadius: 18 }}>
@@ -3256,7 +3264,7 @@ export function AdminHomePage(): JSX.Element {
                 initialBreakpoint={0.95}
               >
                 <IonHeader>
-                  <IonToolbar color="dark">
+                  <IonToolbar className="rapago-modal-toolbar">
                     <IonTitle>Solicitudes borrar cuenta</IonTitle>
                     <div slot="end" style={{ paddingRight: 8 }}>
                       <IonButton
@@ -3270,7 +3278,7 @@ export function AdminHomePage(): JSX.Element {
                   </IonToolbar>
                 </IonHeader>
 
-                <IonContent className="ion-padding">
+                <IonContent className="rapago-modal-content ion-padding">
                   <AccountDeletionAdminPanel />
                 </IonContent>
               </IonModal>
@@ -3282,7 +3290,7 @@ export function AdminHomePage(): JSX.Element {
                 initialBreakpoint={0.95}
               >
                 <IonHeader>
-                  <IonToolbar color="dark">
+                  <IonToolbar className="rapago-modal-toolbar">
                     <IonTitle>Reportes de viaje</IonTitle>
                     <div slot="end" style={{ paddingRight: 8 }}>
                       <IonButton
@@ -3296,7 +3304,7 @@ export function AdminHomePage(): JSX.Element {
                   </IonToolbar>
                 </IonHeader>
 
-                <IonContent className="ion-padding">
+                <IonContent className="rapago-modal-content ion-padding">
                   <IonCard style={{ margin: "0 0 12px" }}>
                     <IonCardHeader>
                       <div className="admin-section-title-row">
@@ -3400,7 +3408,7 @@ export function AdminHomePage(): JSX.Element {
                 initialBreakpoint={0.95}
               >
                 <IonHeader>
-                  <IonToolbar color="dark" className="rapago-no-show-toolbar">
+                  <IonToolbar className="rapago-modal-toolbar rapago-no-show-toolbar">
                     <IonTitle>No Show</IonTitle>
                     <div slot="end" style={{ paddingRight: 8 }}>
                       <IonButton
@@ -3570,7 +3578,7 @@ export function AdminHomePage(): JSX.Element {
                 initialBreakpoint={0.95}
               >
                 <IonHeader>
-                  <IonToolbar color="dark">
+                  <IonToolbar className="rapago-modal-toolbar">
                     <IonTitle>Cobranza y validación</IonTitle>
                     <div slot="end" style={{ paddingRight: 8 }}>
                       <IonButton
@@ -3584,7 +3592,7 @@ export function AdminHomePage(): JSX.Element {
                   </IonToolbar>
                 </IonHeader>
 
-                <IonContent className="ion-padding">
+                <IonContent className="rapago-modal-content ion-padding">
                   <IonCard
                     className="admin-section-card"
                     style={{
@@ -5138,6 +5146,7 @@ function reviewLocalResidentVerificationRequestForAdmin(
 
 
 export function AdminUsersPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
 
   const [users, setUsers] = useState<AdminUserData[]>([]);
@@ -5551,14 +5560,14 @@ export function AdminUsersPage(): JSX.Element {
     residentRequests.filter((request) => request.status === "pending").length;
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="danger">
-          <IonTitle>Usuarios</IonTitle>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Usuarios"
+        roleLabel="Administrador"
+      />
 
-      <IonContent className="ion-padding">
+      <IonContent>
         <IonCard
           className="rapago-accent-card"
           style={{ margin: "0 0 12px", borderRadius: 18 }}
@@ -6573,6 +6582,7 @@ function adminRestStatusStyle(
 }
 
 export function AdminDriversPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const token = session?.accessToken;
 
@@ -6858,26 +6868,22 @@ export function AdminDriversPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="danger">
-          <IonTitle>Conductores</IonTitle>
-          <div slot="end" style={{ paddingRight: "8px" }}>
-            <IonButton
-              fill="clear"
-              color="light"
-              onClick={() => {
-                void loadDrivers();
-                void loadDriverRestOverview();
-              }}
-              disabled={loading || restOverviewLoading}
-            >
-              Actualizar
-            </IonButton>
-          </div>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding">
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Conductores"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={refreshIcon}
+        actionLabel="Actualizar conductores"
+        actionLoading={loading || restOverviewLoading}
+        onAction={() => {
+          void loadDrivers();
+          void loadDriverRestOverview();
+        }}
+      />
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={async (e) => {
@@ -7370,7 +7376,7 @@ export function AdminDriversPage(): JSX.Element {
             </IonToolbar>
           </IonHeader>
 
-          <IonContent className="ion-padding">
+          <IonContent className="rapago-modal-content ion-padding">
             {selectedDriver && (
               <div
                 style={{
@@ -7648,6 +7654,7 @@ export function AdminDriversPage(): JSX.Element {
 }
 
 export function AdminGuidesPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const token = session?.accessToken ?? "";
 
@@ -7723,22 +7730,18 @@ export function AdminGuidesPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="danger">
-          <IonTitle>Guías</IonTitle>
-          <div slot="end" style={{ paddingRight: "8px" }}>
-            <IonButton
-              fill="clear"
-              color="light"
-              onClick={() => void loadGuides()}
-              disabled={loading}
-            >
-              Actualizar
-            </IonButton>
-          </div>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Guías"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={refreshIcon}
+        actionLabel="Actualizar guías"
+        actionLoading={loading}
+        onAction={() => void loadGuides()}
+      />
       <IonContent>
         <IonRefresher
           slot="fixed"
@@ -8157,6 +8160,7 @@ export function AdminGuidesPage(): JSX.Element {
 }
 
 export function AdminRentalsPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const token = session?.accessToken ?? "";
 
@@ -8267,26 +8271,22 @@ export function AdminRentalsPage(): JSX.Element {
   };
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="danger">
-          <IonTitle>Rent a Car</IonTitle>
-          <div slot="end" style={{ paddingRight: "8px" }}>
-            <IonButton
-              fill="clear"
-              color="light"
-              onClick={() => {
-                if (tab === "operators") void loadOperators();
-                if (tab === "vehicles") void loadVehicles();
-                if (tab === "bookings") void loadBookings();
-              }}
-              disabled={loading}
-            >
-              Actualizar
-            </IonButton>
-          </div>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Rent a Car"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={refreshIcon}
+        actionLabel="Actualizar arriendos"
+        actionLoading={loading}
+        onAction={() => {
+          if (tab === "operators") void loadOperators();
+          if (tab === "vehicles") void loadVehicles();
+          if (tab === "bookings") void loadBookings();
+        }}
+      />
       <IonContent>
         <IonRefresher
           slot="fixed"
@@ -11839,6 +11839,7 @@ function downloadAdminTerminalRidesXlsx(
 }
 
 export function AdminTripsPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const history = useHistory();
 
@@ -12193,38 +12194,21 @@ export function AdminTripsPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="danger">
-          <IonTitle>Viajes</IonTitle>
-          <div
-            slot="end"
-            style={{
-              paddingRight: "8px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
-          >
-            {autoRefreshing && (
-              <IonSpinner
-                name="dots"
-                color="light"
-                style={{ width: "18px", height: "18px" }}
-              />
-            )}
-            <IonButton
-              fill="clear"
-              color="light"
-              onClick={() => void loadData(false)}
-              disabled={loading}
-            >
-              Actualizar
-            </IonButton>
-          </div>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding">
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      {/* El spinner de auto-refresco y el botón Actualizar eran dos controles
+          distintos para el mismo estado. La barra los une: el propio botón
+          muestra el spinner mientras hay una recarga en curso, venga de donde
+          venga. */}
+      <RapagoAppBar
+        sectionId="admin"
+        title="Viajes"
+        roleLabel="Administrador"
+        actionIcon={refreshIcon}
+        actionLabel="Actualizar viajes"
+        actionLoading={loading || autoRefreshing}
+        onAction={() => void loadData(false)}
+      />
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={async (e) => {
@@ -12898,6 +12882,7 @@ function fmtDateTime(iso: string): string {
 }
 
 export function AdminOfflineBookingsPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const token = session?.accessToken ?? "";
 
@@ -13019,34 +13004,35 @@ export function AdminOfflineBookingsPage(): JSX.Element {
   );
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="warning">
-          <IonTitle style={{ color: "#000" }}>Viajes Offline</IonTitle>
-          <div
-            slot="end"
-            style={{ paddingRight: "8px", display: "flex", gap: "4px" }}
-          >
-            <IonButton
-              fill="clear"
-              style={{ color: "#000" }}
-              onClick={() => setShowForm((v) => !v)}
-            >
-              {showForm ? "Cerrar" : "+ Nueva"}
-            </IonButton>
-            <IonButton
-              fill="clear"
-              style={{ color: "#000" }}
-              onClick={() => void loadBookings()}
-              disabled={loading}
-            >
-              Actualizar
-            </IonButton>
-          </div>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      {/* La barra admite UNA acción, y aquí había dos. Se queda "nueva
+          reserva", que es la razón por la que se entra a esta pantalla;
+          "Actualizar" ya está disponible tirando hacia abajo (el refresher que
+          hay justo debajo) y además con un botón propio en el cuerpo. */}
+      <RapagoAppBar
+        sectionId="admin"
+        title="Viajes offline"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={showForm ? closeIcon : addIcon}
+        actionLabel={showForm ? "Cerrar formulario" : "Nueva reserva offline"}
+        onAction={() => setShowForm((v) => !v)}
+      />
 
-      <IonContent className="ion-padding">
+      <IonContent>
+        <div className="rp-admin-shell">
+          <IonButton
+            fill="outline"
+            size="small"
+            style={{ alignSelf: "flex-start" }}
+            disabled={loading}
+            onClick={() => void loadBookings()}
+          >
+            <IonIcon icon={refreshIcon} slot="start" aria-hidden="true" />
+            Actualizar
+          </IonButton>
+        </div>
         <IonRefresher
           slot="fixed"
           onIonRefresh={async (e) => {
@@ -13381,21 +13367,27 @@ export function AdminOfflineBookingsPage(): JSX.Element {
 }
 
 export function AdminPaymentsPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="danger">
-          <IonTitle>Pagos y devoluciones</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding">
-        <CashOverpaymentRefundAdminPanel />
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Pagos y devoluciones"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+      />
+      <IonContent>
+        <div className="rp-admin-shell">
+          <CashOverpaymentRefundAdminPanel />
+        </div>
       </IonContent>
     </IonPage>
   );
 }
 
 export function AdminSettingsPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const history = useHistory();
 
   const sections = [
@@ -13434,18 +13426,25 @@ export function AdminSettingsPage(): JSX.Element {
   ] as const;
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="primary">
-          <IonTitle>Configuración</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding">
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Configuración"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+      />
+      <IonContent>
+        <div className="rp-admin-shell">
+        {/* Era `var(--ion-color-medium)`: el gris de fábrica de Ionic, que
+            nunca se adaptó a esta paleta y sobre el fondo oscuro quedaba en
+            ~3,1:1. El token de texto apagado tiene contraparte en los dos
+            temas y cumple AA en ambos. */}
         <p
           style={{
-            fontSize: "0.85rem",
-            color: "var(--ion-color-medium)",
-            marginBottom: "16px",
+            fontSize: "var(--rp-fs-body)",
+            color: "var(--rp-muted)",
+            margin: 0,
           }}
         >
           Ajustes del sistema RAPA GO. Cambios aplicados de forma inmediata.
@@ -13500,12 +13499,13 @@ export function AdminSettingsPage(): JSX.Element {
                 </div>
                 <IonIcon
                   icon={chevronForward}
-                  style={{ color: "var(--ion-color-medium)", fontSize: "18px" }}
+                  style={{ color: "var(--rp-muted-legacy)", fontSize: "18px" }}
                 />
               </div>
             </IonCardContent>
           </IonCard>
         ))}
+        </div>
       </IonContent>
     </IonPage>
   );
@@ -13831,6 +13831,7 @@ function mergeBackendFareRows(
 }
 
 export function AdminFareSettingsPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const token = session?.accessToken;
 
@@ -14049,24 +14050,20 @@ export function AdminFareSettingsPage(): JSX.Element {
   const fixedRows = rows.filter((row) => row.group === "fixed");
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="danger">
-          <IonTitle>Tarifas</IonTitle>
-          <div slot="end" style={{ paddingRight: "8px" }}>
-            <IonButton
-              fill="clear"
-              color="light"
-              onClick={() => void loadFareRows()}
-              disabled={loading}
-            >
-              Actualizar
-            </IonButton>
-          </div>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Tarifas"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={refreshIcon}
+        actionLabel="Actualizar tarifas"
+        actionLoading={loading}
+        onAction={() => void loadFareRows()}
+      />
 
-      <IonContent className="ion-padding">
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={async (e) => {
@@ -14297,7 +14294,7 @@ export function AdminFareSettingsPage(): JSX.Element {
           onDidDismiss={() => setEditingRow(null)}
         >
           <IonHeader>
-            <IonToolbar color="dark">
+            <IonToolbar className="rapago-modal-toolbar">
               <IonTitle>Editar tarifa</IonTitle>
               <div slot="end" style={{ paddingRight: 8 }}>
                 <IonButton
@@ -14311,7 +14308,7 @@ export function AdminFareSettingsPage(): JSX.Element {
             </IonToolbar>
           </IonHeader>
 
-          <IonContent className="ion-padding">
+          <IonContent className="rapago-modal-content ion-padding">
             {editingRow && (
               <IonCard
                 style={{
@@ -14838,6 +14835,7 @@ const DOC_TYPE_LABEL: Record<string, string> = {
 };
 
 export function AdminDocumentsPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
 
   const [docs, setDocs] = useState<AdminDocumentData[]>([]);
@@ -15198,14 +15196,16 @@ export function AdminDocumentsPage(): JSX.Element {
   ).length;
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="danger">
-          <IonTitle>Documentos</IonTitle>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Documentos"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+      />
 
-      <IonContent className="ion-padding">
+      <IonContent>
         <IonCard
           className="rapago-accent-card"
           style={{ margin: "0 0 12px", borderRadius: 18 }}
@@ -15807,7 +15807,7 @@ export function AdminDocumentsPage(): JSX.Element {
           initialBreakpoint={0.96}
         >
           <IonHeader>
-            <IonToolbar color="dark">
+            <IonToolbar className="rapago-modal-toolbar">
               <IonTitle>Revisión conductor</IonTitle>
               <div slot="end" style={{ paddingRight: 8 }}>
                 <IonButton
@@ -15824,7 +15824,7 @@ export function AdminDocumentsPage(): JSX.Element {
             </IonToolbar>
           </IonHeader>
 
-          <IonContent className="ion-padding">
+          <IonContent className="rapago-modal-content ion-padding">
             {selectedDriverApplication && (() => {
               const application = selectedDriverApplication;
               const vehicles = getDriverApplicationVehicles(application);
@@ -16077,11 +16077,11 @@ export function AdminDocumentsPage(): JSX.Element {
           initialBreakpoint={0.58}
         >
           <IonHeader>
-            <IonToolbar color="dark">
+            <IonToolbar className="rapago-modal-toolbar">
               <IonTitle>Reclasificar acreditación</IonTitle>
             </IonToolbar>
           </IonHeader>
-          <IonContent className="ion-padding">
+          <IonContent className="rapago-modal-content ion-padding">
             <IonText>
               <p style={{ marginTop: 0, fontWeight: 800 }}>
                 La acreditación no corresponde. Selecciona la categoría
@@ -16215,6 +16215,7 @@ export function AdminDocumentsPage(): JSX.Element {
 }
 
 export function AdminActivityPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const [items, setItems] = useState<DashActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16251,12 +16252,28 @@ export function AdminActivityPage(): JSX.Element {
     filter === "all" ? items : items.filter((i) => i.type === filter);
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonTitle>Actividad Reciente</IonTitle>
-        </IonToolbar>
-        <IonToolbar>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Actividad reciente"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+      />
+      <IonContent>
+        <IonRefresher
+          slot="fixed"
+          onIonRefresh={(e) => {
+            void load(true).then(() => e.detail.complete());
+          }}
+        >
+          <IonRefresherContent />
+        </IonRefresher>
+
+        <div className="rp-admin-shell">
+          {/* El filtro vivía en un segundo IonToolbar de la cabecera: fuera del
+              scroll, robando 56px permanentes de alto en una pantalla que es
+              una lista larga. Baja al contenido, donde se desplaza con ella. */}
           <IonSegment
             value={filter}
             onIonChange={(e) => setFilter(String(e.detail.value ?? "all"))}
@@ -16271,55 +16288,60 @@ export function AdminActivityPage(): JSX.Element {
               <IonLabel>Reservas</IonLabel>
             </IonSegmentButton>
             <IonSegmentButton value="document">
-              <IonLabel>Docs</IonLabel>
+              <IonLabel>Documentos</IonLabel>
             </IonSegmentButton>
           </IonSegment>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent>
-        <IonRefresher
-          slot="fixed"
-          onIonRefresh={(e) => {
-            void load(true).then(() => e.detail.complete());
-          }}
-        >
-          <IonRefresherContent />
-        </IonRefresher>
-        {loading && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              padding: "32px",
-            }}
-          >
-            <IonSpinner />
-          </div>
-        )}
-        {!loading && (
-          <IonList>
-            {filtered.map((item, i) => (
-              <IonItem key={i}>
-                <IonIcon
-                  icon={item.type === "ride" ? carIcon : bookOutline}
-                  slot="start"
-                  color={item.type === "ride" ? "primary" : "tertiary"}
-                />
-                <IonLabel>
-                  <h3>{item.description}</h3>
-                  <p>
-                    {item.userName} · {timeAgo(item.timestamp)}
-                  </p>
-                </IonLabel>
-                {item.status && (
-                  <IonBadge slot="end" color="medium">
-                    {item.status}
-                  </IonBadge>
-                )}
-              </IonItem>
-            ))}
-          </IonList>
-        )}
+
+          {loading && (
+            <div className="rp-empty">
+              <IonSpinner name="crescent" />
+              <p className="rp-empty__body" style={{ marginTop: 10 }}>
+                Cargando actividad…
+              </p>
+            </div>
+          )}
+
+          {/* Faltaba: al filtrar por un tipo sin registros la lista quedaba
+              vacía sin ninguna explicación. */}
+          {!loading && filtered.length === 0 && (
+            <div className="rp-empty">
+              <div className="rp-empty__icon">
+                <IonIcon icon={documentTextOutline} aria-hidden="true" />
+              </div>
+              <h2 className="rp-empty__title">Sin actividad</h2>
+              <p className="rp-empty__body">
+                {filter === "all"
+                  ? "Todavía no hay movimientos registrados en la plataforma."
+                  : "No hay movimientos de este tipo en el periodo cargado."}
+              </p>
+            </div>
+          )}
+
+          {!loading && filtered.length > 0 && (
+            <IonList>
+              {filtered.map((item, i) => (
+                <IonItem key={i}>
+                  <IonIcon
+                    icon={item.type === "ride" ? carIcon : bookOutline}
+                    slot="start"
+                    color={item.type === "ride" ? "primary" : "tertiary"}
+                  />
+                  <IonLabel>
+                    <h3>{item.description}</h3>
+                    <p>
+                      {item.userName} · {timeAgo(item.timestamp)}
+                    </p>
+                  </IonLabel>
+                  {item.status && (
+                    <IonBadge slot="end" color="medium">
+                      {item.status}
+                    </IonBadge>
+                  )}
+                </IonItem>
+              ))}
+            </IonList>
+          )}
+        </div>
         <IonInfiniteScroll
           onIonInfinite={(e) => {
             void load().then(() =>
@@ -16335,6 +16357,7 @@ export function AdminActivityPage(): JSX.Element {
 }
 
 export function AdminAlertsPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const [alerts, setAlerts] = useState<DashboardData["alerts"]>([]);
   const [loading, setLoading] = useState(true);
@@ -16361,13 +16384,19 @@ export function AdminAlertsPage(): JSX.Element {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonTitle>Alertas</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding">
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Alertas"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={refreshIcon}
+        actionLabel="Actualizar alertas"
+        actionLoading={loading}
+        onAction={() => void load()}
+      />
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={(e) => {
@@ -16376,77 +16405,89 @@ export function AdminAlertsPage(): JSX.Element {
         >
           <IonRefresherContent />
         </IonRefresher>
-        {loading && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              padding: "32px",
-            }}
-          >
-            <IonSpinner />
-          </div>
-        )}
-        {!loading && alerts.length === 0 && (
-          <div style={{ textAlign: "center", padding: "48px 16px" }}>
-            <IonText color="medium">No hay alertas activas</IonText>
-          </div>
-        )}
-        {!loading &&
-          alerts.map((alert, i) => (
-            <IonCard
-              key={i}
-              color={alert.type === "critical" ? "danger" : "warning"}
-            >
-              <IonCardContent>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "8px",
-                  }}
-                >
-                  <IonIcon
-                    icon={
-                      alert.type === "critical"
-                        ? alertCircleOutline
-                        : warningOutline
-                    }
-                    style={{ flexShrink: 0, marginTop: "2px" }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div>{alert.message}</div>
-                    {alert.action && (
-                      <div
-                        style={{
-                          marginTop: "4px",
-                          fontSize: "0.85rem",
-                          opacity: 0.8,
-                        }}
-                      >
-                        {alert.action}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div style={{ marginTop: "8px" }}>
+
+        <div className="rp-admin-shell">
+          {loading && (
+            <div className="rp-empty">
+              <IonSpinner name="crescent" />
+              <p className="rp-empty__body" style={{ marginTop: 10 }}>
+                Comprobando alertas…
+              </p>
+            </div>
+          )}
+
+          {/* "No hay alertas activas" en gris de fábrica era el estado bueno
+              contado como si fuera una carencia. Ahora se lee como lo que es:
+              todo en orden. */}
+          {!loading && alerts.length === 0 && (
+            <div className="rp-empty">
+              <div
+                className="rp-empty__icon"
+                style={{
+                  color: "var(--rp-ok-fg)",
+                  background: "var(--rp-ok-bg)",
+                  borderColor: "var(--rp-ok-bd)",
+                }}
+              >
+                <IonIcon icon={checkmarkCircleIcon} aria-hidden="true" />
+              </div>
+              <h2 className="rp-empty__title">Todo en orden</h2>
+              <p className="rp-empty__body">
+                No hay alertas activas en la operación.
+              </p>
+            </div>
+          )}
+
+          {/* Eran ion-card con `color="danger"` / `color="warning"`: bloques
+              sólidos rojo y amarillo con texto blanco encima —el amarillo daba
+              ~1,9:1— y del mismo peso visual que una tarjeta de contenido. Con
+              los avisos del sistema el color pasa al borde y al texto, que es
+              donde comunica sin gritar, y con contraste comprobado en los dos
+              temas. */}
+          {!loading &&
+            alerts.map((alert, i) => (
+              <div
+                key={i}
+                className={
+                  alert.type === "critical"
+                    ? "rp-banner rp-banner--error"
+                    : "rp-banner rp-banner--warn"
+                }
+                role={alert.type === "critical" ? "alert" : "status"}
+              >
+                <IonIcon
+                  icon={
+                    alert.type === "critical"
+                      ? alertCircleOutline
+                      : warningOutline
+                  }
+                  aria-hidden="true"
+                />
+                <div className="rp-banner__copy">
+                  <span className="rp-banner__title">{alert.message}</span>
+                  {alert.action && (
+                    <span className="rp-banner__message">{alert.action}</span>
+                  )}
                   <IonButton
                     fill="outline"
                     size="small"
+                    style={{ marginTop: 10 }}
+                    aria-label={`Marcar resuelta la alerta: ${alert.message}`}
                     onClick={() => dismiss(i)}
                   >
                     Marcar resuelta
                   </IonButton>
                 </div>
-              </IonCardContent>
-            </IonCard>
-          ))}
+              </div>
+            ))}
+        </div>
       </IonContent>
     </IonPage>
   );
 }
 
 export function AdminEventTicketsPage(): JSX.Element {
+  const { theme } = useRapagoSectionTheme("admin");
   const { session } = useAuth();
   const [code, setCode] = useState("");
   const [validating, setValidating] = useState(false);
@@ -16514,13 +16555,15 @@ export function AdminEventTicketsPage(): JSX.Element {
   };
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonTitle>Validar Entradas</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding">
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Validar entradas"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+      />
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={(e) => {

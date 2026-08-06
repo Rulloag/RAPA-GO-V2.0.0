@@ -36,6 +36,9 @@ import {
   speedometerOutline,
   trashOutline,
 } from "ionicons/icons";
+import { RapagoAppBar } from "../../../components/RapagoAppBar.js";
+import { ROUTES } from "../../../navigation/routes.js";
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 
 type PassengerKey = "resident" | "chilean" | "foreigner";
 type VehicleKey = "standard" | "xl" | "luggage";
@@ -226,25 +229,13 @@ const DEFAULT_CONFIG: FareEngineConfig = {
   updatedAt: new Date().toISOString(),
 };
 
-const pageBackground: React.CSSProperties = {
-  "--background":
-    "linear-gradient(180deg, rgba(15,15,15,.68), rgba(15,15,15,.88)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
-} as React.CSSProperties;
-
-const shellStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 760,
-  margin: "0 auto",
-  padding: "14px 14px 96px",
-};
-
+/* La superficie, el borde, el radio y la sombra de la tarjeta los pone ahora
+   admin.css a partir de los tokens del sistema: aquí sólo queda la separación
+   entre tarjetas. Antes esta constante repetía a mano el crema #F6F2EC, la
+   tinta #111111 y un borde dorado propio, así que esta pantalla tenía su propia
+   idea de qué es una tarjeta —ligeramente distinta de la de todas las demás. */
 const cardStyle: React.CSSProperties = {
-  margin: "0 0 14px",
-  borderRadius: 18,
-  background: "#F6F2EC",
-  color: "#111111",
-  border: "1px solid rgba(210,164,58,.45)",
-  boxShadow: "0 16px 36px rgba(0,0,0,.22)",
+  margin: "0",
 };
 
 const innerCardStyle: React.CSSProperties = {
@@ -674,6 +665,7 @@ function getRuleEditTitle(rule: CompatibilityFareRule): string {
 }
 
 export function AdminFareSettingsPage(): React.ReactElement {
+  const { theme } = useRapagoSectionTheme("admin");
   const [config, setConfig] = useState<FareEngineConfig>(() => readStoredConfig());
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
@@ -1841,19 +1833,19 @@ export function AdminFareSettingsPage(): React.ReactElement {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="warning">
-          <IonTitle style={{ color: "#111", fontWeight: 950 }}>Tarifas</IonTitle>
-          <IonButtons slot="end">
-            <IonButton color="dark" fill="clear" onClick={() => openFixedEditor()}>
-              Agregar destino
-            </IonButton>
-          </IonButtons>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Tarifas"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={add}
+        actionLabel="Agregar destino con tarifa fija"
+        onAction={() => openFixedEditor()}
+      />
 
-      <IonContent style={pageBackground}>
+      <IonContent>
         <IonRefresher
           slot="fixed"
           onIonRefresh={(event) => {
@@ -1863,7 +1855,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
           <IonRefresherContent />
         </IonRefresher>
 
-        <div style={shellStyle}>
+        <div className="rp-admin-shell">
           <IonCard style={cardStyle}>
             <IonCardContent style={{ padding: "16px" }}>
               <div style={{ fontSize: "1.2rem", fontWeight: 950, lineHeight: 1.15 }}>
@@ -2213,22 +2205,30 @@ export function AdminFareSettingsPage(): React.ReactElement {
           )}
         </div>
 
-        <IonModal isOpen={editor !== null} onDidDismiss={closeEditor}>
+        <IonModal
+          isOpen={editor !== null}
+          className="rapago-admin-modal"
+          onDidDismiss={closeEditor}
+        >
           <IonHeader>
-            <IonToolbar color="dark">
+            <IonToolbar className="rapago-modal-toolbar">
               <IonTitle>{editor?.title ?? "Editar tarifa"}</IonTitle>
               <IonButtons slot="end">
-                <IonButton color="light" fill="clear" onClick={closeEditor}>
+                <IonButton className="rapago-modal-close" fill="clear" onClick={closeEditor}>
                   Cerrar
                 </IonButton>
               </IonButtons>
             </IonToolbar>
           </IonHeader>
 
-          <IonContent className="ion-padding">
-            <IonCard style={{ ...cardStyle, boxShadow: "none" }}>
-              <IonCardContent>{renderEditorContent()}</IonCardContent>
-            </IonCard>
+          <IonContent className="rapago-modal-content">
+            <div className="rapago-modal-body" data-rapago-theme={theme}>
+              <div className="rp-admin-modal-inner">
+                <IonCard style={cardStyle}>
+                  <IonCardContent>{renderEditorContent()}</IonCardContent>
+                </IonCard>
+              </div>
+            </div>
           </IonContent>
         </IonModal>
       </IonContent>

@@ -8239,6 +8239,7 @@ function PassengerRideCard({
           {["requested", "scheduled"].includes(effectiveStatus) && (
             isScheduledPending ? (
               <div
+                className="rapago-trip-theme-panel"
                 style={{
                   background: "var(--rp-warn-bg)",
                   borderRadius: 18,
@@ -8248,14 +8249,14 @@ function PassengerRideCard({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                  <IonIcon icon={calendarOutline} aria-hidden="true" style={{ fontSize: "1.25rem", color: "var(--rp-warn-fg)", flexShrink: 0, marginTop: 2 }} />
+                  <IonIcon icon={calendarOutline} aria-hidden="true" className="rp-tone-warn" style={{ fontSize: "1.25rem", color: "var(--rp-warn-fg)", flexShrink: 0, marginTop: 2 }} />
                   <div>
                     <div style={{ fontWeight: 950, fontSize: ".92rem" }}>
                       {isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)
                         ? "Agendamiento de recogida creado"
                         : "Viaje agendado correctamente"}
                     </div>
-                    <div style={{ color: "var(--rp-warn-fg)", fontSize: ".78rem", marginTop: 3, lineHeight: 1.35 }}>
+                    <div className="rp-tone-warn" style={{ color: "var(--rp-warn-fg)", fontSize: ".78rem", marginTop: 3, lineHeight: 1.35 }}>
                       {isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>)
                         ? "Tu recogida de regreso quedó agendada para "
                         : "Has agendado tu viaje para "}<strong>{formatPassengerScheduleDate(scheduleInfo.pickupAt)}</strong>.
@@ -8281,11 +8282,17 @@ function PassengerRideCard({
                   boxShadow: "0 6px 18px rgba(0,0,0,.06)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {/* Solo esta fila (y el aviso de abajo) se marcan como panel de
+                    tema: el card dorado de "Búsqueda prioritaria" más abajo es
+                    hermano dentro de este mismo contenedor y su superficie es
+                    fija a propósito (ver su propio comentario) — envolver TODO
+                    el contenedor le habría forzado el texto a var(--rp-text),
+                    rompiendo su paleta oro/legacy fija. */}
+                <div className="rapago-trip-theme-panel" style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <IonSpinner name="crescent" />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 950, fontSize: ".9rem" }}>Buscando conductor</div>
-                    <div style={{ color: "var(--rp-muted)", fontSize: ".78rem", marginTop: 2, lineHeight: 1.35 }}>
+                    <div className="rp-tone-muted" style={{ color: "var(--rp-muted)", fontSize: ".78rem", marginTop: 2, lineHeight: 1.35 }}>
                       Tu solicitud ya fue enviada a conductores cercanos.
                       <br />Tiempo buscando: <strong>{searchingElapsedLabel}</strong>
                     </div>
@@ -8293,29 +8300,33 @@ function PassengerRideCard({
                 </div>
 
                 {!showFastSearchPrompt && !fastSearchRecord && (
-                  <div
-                    style={{
-                      marginTop: 12,
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      background: "var(--rp-warn-bg)",
-                      border: "1px solid var(--rp-warn-bd)",
-                      color: "var(--rp-warn-fg)",
-                      fontSize: ".76rem",
-                      fontWeight: 900,
-                      lineHeight: 1.4,
-                      boxShadow: "0 4px 12px rgba(95,63,0,.08)",
-                    }}
-                  >
-                    <IonIcon icon={flashOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 2 }} />
-                    Si pasan 2 minutos sin conductor, podrás activar
-                    <strong> RapaGo más veloz</strong> por
-                    <strong> +{formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}</strong>.
+                  <div className="rapago-trip-theme-panel">
+                    <div
+                      className="rp-tone-warn"
+                      style={{
+                        marginTop: 12,
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        background: "var(--rp-warn-bg)",
+                        border: "1px solid var(--rp-warn-bd)",
+                        color: "var(--rp-warn-fg)",
+                        fontSize: ".76rem",
+                        fontWeight: 900,
+                        lineHeight: 1.4,
+                        boxShadow: "0 4px 12px rgba(95,63,0,.08)",
+                      }}
+                    >
+                      <IonIcon icon={flashOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 2 }} />
+                      Si pasan 2 minutos sin conductor, podrás activar
+                      <strong> RapaGo más veloz</strong> por
+                      <strong> +{formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}</strong>.
+                    </div>
                   </div>
                 )}
 
                 {showFastSearchPrompt && (
                   <div
+                    className="rapago-fast-search-panel"
                     role="region"
                     aria-label="Activar RapaGo más veloz"
                     style={{
@@ -8324,16 +8335,9 @@ function PassengerRideCard({
                       overflow: "hidden",
                       borderRadius: 22,
                       padding: "16px",
-                      /* Superficie dorada fija a propósito (misma familia que
-                         --rp-surface-legacy/--rp-hero: es una tarjeta promo,
-                         no cambia con el tema). El bug estaba en el texto:
-                         color: var(--rp-warn-fg) se volvía oro claro en modo
-                         noche y quedaba oro sobre oro. Se pasa a los tokens
-                         *-legacy (siempre oscuros), pensados justo para texto
-                         sobre esta clase de superficie clara fija. */
-                      background: "linear-gradient(145deg,#fffdf6 0%,#fff1b8 58%,#f4cb55 100%)",
-                      border: "2px solid #d49b16",
-                      color: "var(--rp-text-legacy)",
+                      background: "var(--rp-fast-bg)",
+                      border: "2px solid var(--rp-fast-border)",
+                      color: "var(--rp-fast-fg)",
                       boxShadow: "0 14px 30px rgba(92,62,0,.22)",
                     }}
                   >
@@ -8345,6 +8349,7 @@ function PassengerRideCard({
                       }}
                     >
                       <div
+                        className="rapago-fast-search-panel__icon"
                         aria-hidden="true"
                         style={{
                           flex: "0 0 44px",
@@ -8353,8 +8358,8 @@ function PassengerRideCard({
                           display: "grid",
                           placeItems: "center",
                           borderRadius: 14,
-                          background: "#111827",
-                          color: "#ffffff",
+                          background: "var(--rp-fast-icon-bg)",
+                          color: "var(--rp-fast-icon-fg)",
                           fontSize: "1.35rem",
                           boxShadow: "0 7px 16px rgba(17,24,39,.24)",
                         }}
@@ -8364,8 +8369,9 @@ function PassengerRideCard({
 
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div
+                          className="rapago-fast-search-panel__eyebrow"
                           style={{
-                            color: "var(--rp-accent-legacy)",
+                            color: "var(--rp-fast-fg)",
                             fontSize: ".68rem",
                             fontWeight: 950,
                             letterSpacing: ".08em",
@@ -8376,9 +8382,10 @@ function PassengerRideCard({
                         </div>
 
                         <div
+                          className="rapago-fast-search-panel__title"
                           style={{
                             marginTop: 3,
-                            color: "var(--rp-text-legacy)",
+                            color: "var(--rp-fast-fg)",
                             fontWeight: 950,
                             fontSize: "1rem",
                             lineHeight: 1.2,
@@ -8390,21 +8397,22 @@ function PassengerRideCard({
                     </div>
 
                     <div
+                      className="rapago-fast-search-panel__detail"
                       style={{
                         marginTop: 12,
                         padding: "11px 12px",
                         borderRadius: 14,
-                        background: "rgba(255,255,255,.82)",
-                        border: "1px solid rgba(117,80,0,.22)",
-                        color: "var(--rp-text-legacy)",
+                        background: "var(--rp-fast-detail-bg)",
+                        border: "1px solid var(--rp-fast-detail-border)",
+                        color: "var(--rp-fast-fg)",
                         fontSize: ".8rem",
                         lineHeight: 1.45,
                         fontWeight: 800,
                       }}
                     >
-                      Ya llevas <strong>{searchingElapsedLabel}</strong> buscando conductor.
+                      Ya llevas <strong className="rapago-fast-search-panel__value">{searchingElapsedLabel}</strong> buscando conductor.
                       Al activarlo, priorizaremos tu solicitud y se agregarán
-                      <strong> {formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}</strong> al monto final.
+                      <strong className="rapago-fast-search-panel__value"> {formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)}</strong> al monto final.
                     </div>
 
                     <div
@@ -8417,6 +8425,7 @@ function PassengerRideCard({
                     >
                       <button
                         type="button"
+                        className="rapago-fast-search-panel__primary"
                         onClick={() => {
                           if (fastSearchUsesKlap) {
                             setFastSearchActionError(
@@ -8442,8 +8451,8 @@ function PassengerRideCard({
                           border: "none",
                           borderRadius: 14,
                           padding: "11px 14px",
-                          background: "#111827",
-                          color: "#ffffff",
+                          background: "var(--rp-fast-primary-bg)",
+                          color: "var(--rp-fast-primary-fg)",
                           fontSize: ".88rem",
                           fontWeight: 950,
                           lineHeight: 1.2,
@@ -8470,6 +8479,7 @@ function PassengerRideCard({
 
                       <button
                         type="button"
+                        className="rapago-fast-search-panel__secondary"
                         onClick={() => {
                           setFastSearchActionError(null);
                           void applyPassengerFastSearchChoice(ride, false, token);
@@ -8478,11 +8488,11 @@ function PassengerRideCard({
                         style={{
                           width: "100%",
                           minHeight: 43,
-                          border: "2px solid var(--rp-warn-bd)",
+                          border: "2px solid var(--rp-fast-secondary-border)",
                           borderRadius: 14,
                           padding: "9px 14px",
-                          background: "var(--rp-surface)",
-                          color: "var(--rp-warn-fg)",
+                          background: "var(--rp-fast-secondary-bg)",
+                          color: "var(--rp-fast-secondary-fg)",
                           fontSize: ".82rem",
                           fontWeight: 950,
                           lineHeight: 1.2,
@@ -8501,7 +8511,7 @@ function PassengerRideCard({
                           padding: "10px 12px",
                           borderRadius: 12,
                           background: "var(--rp-err-bg)",
-                          border: "1px solid #e11d48",
+                          border: "1px solid var(--rp-err-bd)",
                           color: "var(--rp-err-fg)",
                           fontSize: ".75rem",
                           fontWeight: 900,
@@ -8513,9 +8523,10 @@ function PassengerRideCard({
                     )}
 
                     <div
+                      className="rapago-fast-search-panel__note"
                       style={{
                         marginTop: 10,
-                        color: "var(--rp-accent-legacy)",
+                        color: "var(--rp-fast-muted)",
                         fontSize: ".68rem",
                         fontWeight: 800,
                         lineHeight: 1.35,
@@ -8532,7 +8543,9 @@ function PassengerRideCard({
                 )}
 
                 {fastSearchRecord?.accepted && (
+                  <div className="rapago-trip-theme-panel">
                   <div
+                    className="rp-tone-ok"
                     style={{
                       marginTop: 12,
                       borderRadius: 18,
@@ -8559,6 +8572,7 @@ function PassengerRideCard({
                       Tu solicitud tiene prioridad. Se agregan
                       <strong> {formatClp(fastSearchFeeClp)}</strong> al monto final.
                     </div>
+                  </div>
                   </div>
                 )}
               </div>

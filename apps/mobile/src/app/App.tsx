@@ -23,6 +23,8 @@ import "../theme/sections.css";
 /* Va después de sections.css: misma capa de coherencia, pero con el ámbito de
    las pantallas del conductor. */
 import "../theme/driver.css";
+/* Misma capa de coherencia, con el ámbito del panel de administración. */
+import "../theme/admin.css";
 import "../theme/request-ride.css";
 import "../theme/request.css";
 /* Va al final: la barra superior debe poder pisar los restos de cabecera de

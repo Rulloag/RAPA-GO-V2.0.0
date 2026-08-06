@@ -1,0 +1,1092 @@
+/* ==========================================================================
+   RAPA GO — Capa de coherencia del PANEL DE ADMINISTRACIÓN
+
+   POR QUÉ ESTA CAPA Y NO UN REDISEÑO DEL JSX
+   Es la misma decisión que documenta sections.css para Solicitar viaje y Mis
+   viajes, por el mismo motivo y a mayor escala: admin/index.tsx tiene 16.639
+   líneas y 620 bloques `style=""`, y ahí viven las aprobaciones de conductores,
+   la cobranza y la validación de efectivo. Reescribir esos renders no es una
+   operación que se pueda verificar de forma fiable sin arnés visual.
+
+   En vez de eso, estas reglas conectan los componentes Ionic que el panel ya
+   usa al mismo juego de tokens `--rp-*` que Pasajero y Conductor. Resultado:
+   misma paleta, mismos bordes, mismos radios, misma tipografía y modo día/noche
+   real, sin tocar la lógica de negocio.
+
+   QUÉ CUBRE Y QUÉ NO
+   Cubre todo el cromo: fondo de página, barra superior, cabeceras, listas,
+   campos, botones, segmentos, badges, modales, estados de carga/vacío/error,
+   tablas y el hub de secciones. Es decir, todo lo que rodea al contenido.
+
+   NO cubre el interior de las `ion-card`, que se mantiene sobre superficie
+   clara en ambos temas. El motivo está más abajo, en el bloque "SUPERFICIE
+   LEGACY", y es exactamente el mismo que ya aplica a las tarjetas de viaje del
+   pasajero: la coherencia con Pasajero/Conductor incluye esa excepción.
+
+   Se importa DESPUÉS de global.css. El !important es necesario dos veces:
+   contra las reglas de tipo de global.css (que fija toolbars, cards, inputs y
+   la barra inferior con !important en varios bloques duplicados) y porque el
+   CSS de autor con !important es lo único que gana a un `style=""` inline.
+   ========================================================================== */
+
+/* ==========================================================================
+   1. SUPERFICIE DE PÁGINA
+   ========================================================================== */
+
+/* El fondo lo pinta rapago-shell.css, que ya incluye `.rapago-admin-page` en la
+   regla con el !important que hace falta para ganarle a `.ion-page` de
+   global.css:2125. Aquí sólo se abre el IonContent para dejarlo ver: sin esto
+   global.css:2131 le impone su propio degradado + foto con `fixed`, que además
+   obliga a repintar una capa completa en cada frame de scroll.
+   global.css:1242 hace lo mismo, con OTRA foto, sólo para el dashboard. */
+/* El selector de hijo directo es deliberado: el IonContent de la pantalla es
+   hijo del IonPage, mientras que el de un IonModal cuelga del propio modal.
+   Sin `>`, estas reglas alcanzarían también a los modales y les quitarían el
+   fondo que `.rapago-modal-content` acaba de darles. */
+.rapago-admin-page > ion-content,
+.rapago-admin-page > .admin-dashboard-content {
+  --background: transparent !important;
+}
+
+/* ── COLUMNA DE LECTURA ──────────────────────────────────────────────────── */
+/* Los márgenes y el ancho de columna los gobierna el propio IonContent, no cada
+   pantalla. Es lo que permite que las diecinueve pantallas del panel tengan el
+   mismo encuadre sin depender de que cada una acierte con su envoltorio: antes
+   convivían `className="ion-padding"` (16px planos), `maxWidth: 1100`,
+   `maxWidth: 760` y varias sin nada.
+
+   1040px y no los 460px del pasajero: el panel es la única superficie de la app
+   que se usa a diario en escritorio, y una columna de móvil centrada en un
+   monitor de 27" deja el 70% de la pantalla vacío. Sigue siendo una COLUMNA
+   —no un "full width"— para que la longitud de línea no se dispare.
+
+   Se usan las variables `--padding-*`, que son la API pública de IonContent y
+   se aplican al contenedor de scroll: así el fondo sigue ocupando el ancho
+   completo y sólo se sangra el contenido. */
+.rapago-admin-page > ion-content {
+  --padding-start: var(--rp-pad-x);
+  --padding-end: var(--rp-pad-x);
+  --padding-top: 8px;
+}
+
+/* El sangrado simétrico centra la columna sin envolver nada: por encima de
+   1040px + los dos márgenes, el sobrante se reparte a cada lado.
+   El `max()` con el margen base es una salvaguarda: si el contenedor midiera
+   menos de 1040px pese a la media query, la resta se volvería negativa y el
+   padding quedaría en un valor inválido. */
+@media (min-width: 1104px) {
+  .rapago-admin-page > ion-content {
+    --padding-start: max(var(--rp-pad-x), calc((100% - 1040px) / 2));
+    --padding-end: max(var(--rp-pad-x), calc((100% - 1040px) / 2));
+  }
+}
+
+/* El envoltorio de contenido ya sólo aporta ritmo vertical: ancho y márgenes
+   los pone el IonContent de arriba. Sin esta separación, las pantallas que sí
+   están envueltas tendrían el doble de sangrado que las que no.
+   `.admin-dashboard-shell` es el equivalente del Panel, anterior a esta capa y
+   con su padding fijado en global.css:1253 y :1688. */
+.rapago-admin-page .rp-admin-shell,
+.rapago-admin-page .admin-dashboard-shell {
+  width: 100%;
+  /* global.css:1626 le pone al shell del Panel un `max-width: 980px` propio a
+     partir de 680px de ancho. Con la columna ya centrada por el IonContent, ese
+     tope sólo conseguía que el Panel fuera 60px más estrecho que las otras
+     dieciocho pantallas del módulo. */
+  max-width: none;
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap);
+}
+
+/* ==========================================================================
+   2. CABECERA
+   ========================================================================== */
+
+/* Las once pantallas del panel traían cinco toolbars distintos —danger,
+   warning, primary, dark y el degradado de `.admin-toolbar`— y global.css:2143
+   y :2148 les imponen encima fondo volcánico y un degradado terracota. Todo eso
+   se apaga: la identidad la pone RapagoAppBar, igual que en las otras once
+   pantallas de la app. */
+.rapago-admin-page ion-header,
+.rapago-admin-page .admin-header {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.rapago-admin-page ion-header::after {
+  display: none !important;
+}
+
+/* `color="danger"` y compañía generan `.ion-color-*`, que fija --ion-color-base
+   con !important: hay que anular las dos variables para que el toolbar sea de
+   verdad transparente y deje ver el fondo de la página. */
+.rapago-admin-page ion-toolbar,
+.rapago-admin-page ion-toolbar[color],
+.rapago-admin-page ion-toolbar.ion-color,
+.rapago-admin-page .admin-toolbar {
+  --background: transparent !important;
+  --ion-color-base: transparent !important;
+  --color: var(--rp-text) !important;
+  --border-width: 0 !important;
+  border-bottom: 1px solid var(--rp-divider) !important;
+  --min-height: 56px !important;
+}
+
+.rapago-admin-page ion-toolbar::part(background) {
+  background: transparent !important;
+}
+
+/* global.css:2157 pone `ion-title { font-weight: 950 !important }`. Con todo en
+   el peso máximo no hay jerarquía: el título de pantalla, el de una tarjeta y
+   una etiqueta pesan igual. Baja a 800, como en las demás secciones. */
+.rapago-admin-page ion-title {
+  color: var(--rp-text) !important;
+  font-size: var(--rp-fs-h2) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* global.css:3691 fuerza los botones de cabecera a blanco: sobre la superficie
+   clara del modo día quedaban invisibles. */
+.rapago-admin-page ion-header ion-buttons ion-button,
+.rapago-admin-page ion-toolbar ion-buttons ion-button {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-admin-page ion-header ion-buttons ion-button::part(native) {
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-admin-page ion-back-button {
+  --color: var(--rp-icon-fg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+/* ==========================================================================
+   3. TARJETAS
+
+   SUPERFICIE LEGACY — POR QUÉ LA TARJETA SIGUE SIENDO CLARA DE NOCHE
+   El panel escribe el color del texto dentro del propio `style=""`: 48 casos de
+   `#111`, 22 de `#666`, 13 de `#555`, más los tonos semánticos (`#166534`
+   verde, `#991b1b` rojo, `#92400e` ámbar). Casi todos viven dentro de una
+   `ion-card` y dan por hecho el fondo ivory que global.css:2198 les garantiza.
+
+   Si la tarjeta pasara a superficie oscura en modo noche, esos 180 literales
+   quedarían en negro sobre negro: la cobranza, la validación de efectivo y los
+   detalles de postulación desaparecerían por completo. Y forzar el color del
+   texto desde aquí tampoco sirve: borraría los verdes y rojos que comunican
+   estado de pago y de aprobación, que son información, no decoración.
+
+   Así que la tarjeta se mantiene sobre fondo claro en AMBOS temas, y adopta el
+   borde dorado, el radio, la sombra y la tipografía del sistema. Es exactamente
+   la misma excepción —con el mismo token y el mismo motivo— que ya rige las
+   tarjetas de Solicitar viaje y Mis viajes en el módulo del pasajero, así que
+   el panel no queda distinto de sus hermanos: queda igual.
+
+   Es deuda técnica con nombre: desaparece cuando esos `style=""` pasen a
+   clases y el texto pueda heredar del tema. Hasta entonces, la garantía que sí
+   se cumple en todo el panel es que NO existe ningún estado ilegible.
+   ========================================================================== */
+/* `.rapago-accent-card` queda FUERA de esta regla.
+   Es el bloque destacado del panel ("Validación Rapa Nui", "Documentos Rapa
+   Nui"): un degradado volcánico con tinta ivory, y global.css:2297 fija ese
+   ivory en todos sus descendientes con especificidad (0,2,2). Si la superficie
+   pasa aquí a clara, el texto NO la sigue —esas reglas ganan— y el bloque queda
+   en ivory sobre crema: 1,05:1, invisible. Comprobado en Usuarios en modo día.
+   Conserva su superficie oscura en ambos temas; abajo se le alinean borde,
+   radio y sombra al sistema. */
+.rapago-admin-page ion-card:not(.rapago-accent-card) {
+  background: var(--rp-surface-legacy) !important;
+  color: var(--rp-text-legacy) !important;
+}
+
+.rapago-admin-page ion-card {
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius) !important;
+  box-shadow: var(--rp-shadow) !important;
+  margin-inline: 0 !important;
+}
+
+/* El bloque destacado: superficie oscura constante, borde dorado marcado. */
+.rapago-admin-page ion-card.rapago-accent-card {
+  border-color: var(--rp-border-strong) !important;
+  box-shadow: var(--rp-shadow-accent) !important;
+}
+
+.rapago-admin-page ion-card-title {
+  color: var(--rp-accent-legacy) !important;
+  font-size: var(--rp-fs-h2) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em;
+}
+
+.rapago-admin-page ion-card-subtitle {
+  color: var(--rp-muted-legacy) !important;
+  font-size: var(--rp-fs-label) !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.08em;
+}
+
+.rapago-admin-page ion-card-content {
+  color: var(--rp-text-legacy) !important;
+  font-size: var(--rp-fs-body) !important;
+}
+
+/* Los títulos sueltos dentro de la tarjeta heredan el color legible en vez del
+   del tema, que sobre superficie clara sería ivory sobre blanco. */
+.rapago-admin-page ion-card :is(h1, h2, h3, h4, h5, p, li, dt, dd) {
+  color: inherit;
+}
+
+.rapago-admin-page ion-card ion-note {
+  color: var(--rp-muted-legacy) !important;
+}
+
+/* Campos dentro de tarjeta: la tarjeta es clara, así que el campo va blanco con
+   texto oscuro pase lo que pase el tema. Sin esto, variables.css:49 los deja en
+   blanco sobre blanco. */
+.rapago-admin-page ion-card ion-item {
+  --background: var(--rp-field-bg-legacy) !important;
+  --color: var(--rp-text-legacy) !important;
+  border-color: var(--rp-border-c-legacy) !important;
+}
+
+.rapago-admin-page ion-card ion-item ion-label,
+.rapago-admin-page ion-card ion-item ion-label.label-stacked {
+  color: var(--rp-accent-legacy) !important;
+}
+
+.rapago-admin-page ion-card ion-item ion-label :is(h1, h2, h3, p) {
+  color: var(--rp-text-legacy) !important;
+}
+
+.rapago-admin-page ion-card :is(ion-input, ion-textarea, ion-select) {
+  --color: var(--rp-field-fg-legacy) !important;
+  --placeholder-color: var(--rp-field-ph-legacy) !important;
+  color: var(--rp-field-fg-legacy) !important;
+}
+
+.rapago-admin-page ion-card :is(ion-input, ion-textarea) :is(input, textarea),
+.rapago-admin-page ion-card ion-input::part(native),
+.rapago-admin-page ion-card ion-textarea::part(native) {
+  color: var(--rp-field-fg-legacy) !important;
+  -webkit-text-fill-color: var(--rp-field-fg-legacy) !important;
+}
+
+/* Escape para paneles que SÍ siguen el tema dentro de una tarjeta.
+   Hermano de `.rapago-trip-theme-panel` en sections.css: global.css:3175 fuerza
+   `color: #111111 !important` en TODO descendiente de cualquier ion-card, así
+   que un bloque que declare su propio fondo oscuro necesita salir de esa regla
+   para que su texto vuelva a ser legible. */
+.rapago-admin-theme-panel,
+.rapago-admin-theme-panel * {
+  color: var(--rp-text) !important;
+}
+
+.rapago-admin-theme-panel .rp-tone-muted,
+.rapago-admin-theme-panel .rp-tone-muted * {
+  color: var(--rp-muted) !important;
+}
+
+/* ==========================================================================
+   4. TARJETAS KPI DEL PANEL
+
+   Los cinco tonos de global.css:1396 son degradados fijos (oro, terracota,
+   arena, ivory, ámbar) con la tinta escrita a mano. Se reescriben sobre tokens:
+   así responden al tema y dejan de ser cinco superficies que no existen en
+   ninguna otra pantalla de la app.
+
+   Sólo quedan DOS tonos con significado: el destacado (oro de marca, para lo
+   que mide la operación del día) y el neutro (superficie del tema). Cinco
+   colores para cuatro cifras no era jerarquía, era ruido.
+   ========================================================================== */
+.rapago-admin-page .admin-kpi-grid {
+  margin-top: 0 !important;
+  gap: var(--rp-gap-sm) !important;
+}
+
+.rapago-admin-page .admin-kpi-card {
+  min-height: 0 !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius) !important;
+  box-shadow: var(--rp-shadow) !important;
+  background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.rapago-admin-page .admin-kpi-card ion-card-content {
+  padding: var(--rp-pad) !important;
+}
+
+/* Tono destacado: el oro de marca, constante en ambos temas, con tinta
+   volcánica. Sobre el degradado dorado el ivory daba ~1,9:1; la tinta oscura
+   pasa de 7:1. Es el mismo criterio que `.rp-hero` en sections.css. */
+.rapago-admin-page .admin-kpi-card.gold,
+.rapago-admin-page .admin-kpi-card.warning {
+  background: var(--rp-btn-primary) !important;
+  border-color: var(--rp-hero-bd) !important;
+  box-shadow: var(--rp-shadow-accent) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-admin-page .admin-kpi-card.gold .admin-kpi-value,
+.rapago-admin-page .admin-kpi-card.gold .admin-kpi-label,
+.rapago-admin-page .admin-kpi-card.warning .admin-kpi-value,
+.rapago-admin-page .admin-kpi-card.warning .admin-kpi-label {
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-admin-page .admin-kpi-card.gold .admin-kpi-helper,
+.rapago-admin-page .admin-kpi-card.warning .admin-kpi-helper {
+  color: var(--rp-hero-muted) !important;
+}
+
+.rapago-admin-page .admin-kpi-card.gold .admin-kpi-icon,
+.rapago-admin-page .admin-kpi-card.warning .admin-kpi-icon {
+  background: var(--rp-hero-inset) !important;
+  border: 1px solid var(--rp-hero-inset-bd) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+/* Tono neutro: superficie del tema. `sand`, `ivory` y `terracotta` colapsan
+   aquí — eran tres grises de marca distintos para el mismo papel. */
+.rapago-admin-page .admin-kpi-card.sand,
+.rapago-admin-page .admin-kpi-card.ivory,
+.rapago-admin-page .admin-kpi-card.terracotta {
+  background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+}
+
+.rapago-admin-page .admin-kpi-card:not(.gold):not(.warning) .admin-kpi-value {
+  color: var(--rp-text) !important;
+}
+
+.rapago-admin-page .admin-kpi-card:not(.gold):not(.warning) .admin-kpi-label {
+  color: var(--rp-text) !important;
+}
+
+.rapago-admin-page .admin-kpi-card:not(.gold):not(.warning) .admin-kpi-helper {
+  color: var(--rp-muted) !important;
+}
+
+.rapago-admin-page .admin-kpi-card:not(.gold):not(.warning) .admin-kpi-icon {
+  background: var(--rp-icon-bg) !important;
+  border: 1px solid var(--rp-icon-bd) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+/* La cifra bajaba de 1,85rem a 1,55rem con un salto seco en 380px. Pasa a la
+   escala fluida, que acompaña al ancho sin escalones. */
+.rapago-admin-page .admin-kpi-value {
+  font-size: var(--rp-fs-hero) !important;
+  font-weight: 850 !important;
+  letter-spacing: var(--rp-tracking-display);
+  line-height: 1.1 !important;
+}
+
+.rapago-admin-page .admin-kpi-label {
+  font-size: var(--rp-fs-body) !important;
+  font-weight: 800 !important;
+}
+
+.rapago-admin-page .admin-kpi-helper {
+  font-size: var(--rp-fs-sub) !important;
+  font-weight: 650 !important;
+  line-height: 1.4 !important;
+}
+
+.rapago-admin-page .admin-kpi-icon {
+  width: var(--rp-icon-size) !important;
+  height: var(--rp-icon-size) !important;
+  border-radius: var(--rp-radius-sm) !important;
+}
+
+/* ==========================================================================
+   5. HÉROE, ALERTAS Y ESTADOS DEL PANEL
+   ========================================================================== */
+
+/* global.css:1257 lo pinta con un degradado volcánico fijo: era la única
+   superficie de la app que no cambiaba con el tema. */
+.rapago-admin-page .admin-hero-card {
+  min-height: 0 !important;
+  padding: var(--rp-pad) !important;
+  border-radius: var(--rp-radius) !important;
+  background: var(--rp-surface) !important;
+  border: var(--rp-border-w) solid var(--rp-border-strong) !important;
+  box-shadow: var(--rp-shadow-accent) !important;
+  gap: var(--rp-gap-sm) !important;
+  /* A 360px el título y la píldora de estado competían por la misma fila y la
+     píldora se salía del borde. */
+  flex-wrap: wrap;
+}
+
+.rapago-admin-page .admin-eyebrow {
+  color: var(--rp-accent) !important;
+  font-size: var(--rp-fs-label) !important;
+  font-weight: 800 !important;
+  letter-spacing: var(--rp-tracking-eyebrow) !important;
+}
+
+.rapago-admin-page .admin-hero-title {
+  color: var(--rp-text) !important;
+  font-size: var(--rp-fs-hero) !important;
+  font-weight: 850 !important;
+  letter-spacing: var(--rp-tracking-display) !important;
+  line-height: 1.1 !important;
+}
+
+.rapago-admin-page .admin-hero-date {
+  color: var(--rp-muted) !important;
+  font-size: var(--rp-fs-sub) !important;
+}
+
+.rapago-admin-page .admin-status-pill {
+  background: var(--rp-ok-bg) !important;
+  border: 1px solid var(--rp-ok-bd) !important;
+  color: var(--rp-ok-fg) !important;
+  font-size: var(--rp-fs-micro) !important;
+  font-weight: 800 !important;
+}
+
+.rapago-admin-page .admin-status-dot {
+  background: var(--rp-ok-fg) !important;
+  box-shadow: 0 0 0 4px var(--rp-ok-bg) !important;
+}
+
+/* Carga: era una caja ivory fija con texto volcánico — un parche claro en el
+   centro de una pantalla oscura. */
+.rapago-admin-page .admin-loading-card {
+  margin-top: 0 !important;
+  min-height: 0 !important;
+  padding: clamp(22px, 6vw, 30px) var(--rp-pad) !important;
+  border-radius: var(--rp-radius) !important;
+  background: var(--rp-surface) !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+  box-shadow: var(--rp-shadow) !important;
+  color: var(--rp-muted) !important;
+  font-size: var(--rp-fs-body) !important;
+}
+
+.rapago-admin-page .admin-loading-card ion-spinner {
+  color: var(--rp-icon-fg) !important;
+}
+
+/* Error: terracota sólido con texto ivory. Pasa a la variante semántica del
+   sistema, que tiene contraparte en los dos temas. */
+.rapago-admin-page .admin-error-card,
+.rapago-admin-page ion-card.admin-error-card {
+  margin: 0 !important;
+  border-radius: var(--rp-radius-sm) !important;
+  background: var(--rp-err-bg) !important;
+  border: 1.5px solid var(--rp-err-bd) !important;
+  box-shadow: none !important;
+  color: var(--rp-err-fg) !important;
+}
+
+.rapago-admin-page .admin-error-card ion-card-content {
+  color: var(--rp-err-fg) !important;
+  font-weight: 700 !important;
+}
+
+.rapago-admin-page .admin-alerts {
+  margin-top: 0 !important;
+  gap: var(--rp-gap-sm) !important;
+}
+
+.rapago-admin-page ion-card.admin-alert-card {
+  margin: 0 !important;
+  border-radius: var(--rp-radius-sm) !important;
+  box-shadow: none !important;
+}
+
+.rapago-admin-page ion-card.admin-alert-card.warning {
+  background: var(--rp-warn-bg) !important;
+  border: 1.5px solid var(--rp-warn-bd) !important;
+  color: var(--rp-warn-fg) !important;
+}
+
+.rapago-admin-page ion-card.admin-alert-card.critical {
+  background: var(--rp-err-bg) !important;
+  border: 1.5px solid var(--rp-err-bd) !important;
+  color: var(--rp-err-fg) !important;
+}
+
+/* La regla de global.css:3175 (`ion-card *` → #111111) alcanza también a estas
+   alertas y les borraba el color semántico. */
+.rapago-admin-page ion-card.admin-alert-card :is(ion-card-content, .admin-alert-row, span, ion-icon) {
+  color: inherit !important;
+}
+
+.rapago-admin-page .admin-alert-row {
+  font-size: var(--rp-fs-body) !important;
+  font-weight: 700 !important;
+  line-height: 1.45;
+}
+
+/* ==========================================================================
+   5b. TARJETAS DE SECCIÓN Y ACCESOS RÁPIDOS DEL PANEL
+
+   Viven DENTRO de una ion-card, así que su fondo es la superficie clara de
+   ambos temas y su tinta oscura es correcta. Lo que se corrige aquí es el
+   ritmo (los márgenes sueltos que se pisaban con el `gap` de la columna), la
+   rejilla en pantallas anchas y dos contrastes por debajo del mínimo.
+   ========================================================================== */
+.rapago-admin-page .admin-section-card,
+.rapago-admin-page .admin-quick-card {
+  margin: 0 !important;
+}
+
+.rapago-admin-page .admin-section-card ion-card-title {
+  font-size: var(--rp-fs-h2) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em;
+}
+
+/* Una sola columna hasta 680px y dos a partir de ahí: en un monitor ancho los
+   nueve accesos quedaban en dos columnas altísimas. auto-fit los reparte según
+   el ancho real, hasta cuatro. */
+.rapago-admin-page .admin-quick-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)) !important;
+  gap: var(--rp-gap-sm) !important;
+}
+
+.rapago-admin-page .admin-quick-action-inner {
+  border-radius: var(--rp-radius-sm);
+  border-color: var(--rp-border-c-legacy);
+  transition: border-color 0.18s ease;
+}
+
+.rapago-admin-page .admin-quick-action:hover .admin-quick-action-inner {
+  border-color: var(--rp-accent-legacy);
+}
+
+/* rgba(26,26,26,.42) sobre la tarjeta crema daba 2,9:1, por debajo del 3:1 que
+   WCAG 1.4.11 pide a un elemento de interfaz. Es la flecha que indica que el
+   acceso es pulsable: si no se ve, el bloque parece decorativo. */
+.rapago-admin-page .admin-quick-arrow {
+  color: var(--rp-muted-legacy);
+}
+
+/* El botón entero es el objetivo táctil, así que el foco debe rodearlo a él y
+   no sólo a su caja interior. */
+.rapago-admin-page .admin-quick-action:focus-visible .admin-quick-action-inner {
+  outline: 3px solid var(--rp-accent-legacy);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-admin-page .admin-quick-action-inner {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   6. LISTAS, CAMPOS Y CONTROLES FUERA DE TARJETA
+   ========================================================================== */
+.rapago-admin-page ion-list {
+  background: transparent !important;
+}
+
+.rapago-admin-page ion-list ion-item-divider {
+  --background: transparent !important;
+  --color: var(--rp-accent) !important;
+  font-weight: 800;
+}
+
+.rapago-admin-page ion-item {
+  --background: var(--rp-field-bg) !important;
+  --color: var(--rp-text) !important;
+  --border-color: var(--rp-divider) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  border: 1px solid var(--rp-border-c) !important;
+  border-radius: var(--rp-radius-sm) !important;
+}
+
+/* global.css:2238 fuerza las etiquetas a arena y global.css:2982 a #111111:
+   uno de los dos temas quedaba siempre con la etiqueta ilegible. */
+.rapago-admin-page ion-item ion-label,
+.rapago-admin-page ion-item ion-label.label-stacked {
+  color: var(--rp-label) !important;
+  opacity: 1 !important;
+}
+
+.rapago-admin-page ion-item ion-label :is(h1, h2, h3, p) {
+  color: var(--rp-text) !important;
+}
+
+.rapago-admin-page ion-item ion-note {
+  color: var(--rp-muted) !important;
+}
+
+/* global.css:2250 y variables.css:49 fuerzan el texto de los campos, uno a
+   ivory y el otro a #111111. Sin este bloque uno de los dos temas siempre
+   escribe en invisible. */
+.rapago-admin-page ion-input,
+.rapago-admin-page ion-textarea,
+.rapago-admin-page ion-searchbar {
+  --color: var(--rp-field-fg) !important;
+  --placeholder-color: var(--rp-field-ph) !important;
+  --placeholder-opacity: 1 !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-admin-page ion-input input,
+.rapago-admin-page ion-input::part(native),
+.rapago-admin-page ion-textarea textarea,
+.rapago-admin-page ion-textarea::part(native),
+.rapago-admin-page ion-searchbar input {
+  color: var(--rp-field-fg) !important;
+  -webkit-text-fill-color: var(--rp-field-fg) !important;
+  caret-color: var(--rp-gold) !important;
+}
+
+.rapago-admin-page ion-input input::placeholder,
+.rapago-admin-page ion-textarea textarea::placeholder,
+.rapago-admin-page ion-searchbar input::placeholder {
+  color: var(--rp-field-ph) !important;
+  -webkit-text-fill-color: var(--rp-field-ph) !important;
+  opacity: 1 !important;
+}
+
+.rapago-admin-page ion-searchbar {
+  --background: var(--rp-field-bg) !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  --box-shadow: none !important;
+  --icon-color: var(--rp-icon-fg) !important;
+  --clear-button-color: var(--rp-icon-fg) !important;
+}
+
+.rapago-admin-page ion-select {
+  --placeholder-color: var(--rp-field-ph) !important;
+  color: var(--rp-field-fg) !important;
+}
+
+.rapago-admin-page ion-note {
+  color: var(--rp-muted) !important;
+}
+
+.rapago-admin-page ion-note[slot="error"] {
+  color: var(--rp-err-fg) !important;
+}
+
+/* Texto semántico suelto sobre el fondo de página (fuera de tarjeta).
+   El panel comunica varios errores con `<IonText color="danger">` directamente
+   sobre la página, y el aviso de apoyo con `color="medium"`. Los colores de
+   fábrica de Ionic nunca se adaptaron a esta paleta: el `medium` queda en arena
+   al 78% y el `danger` en un rojo que sobre el fondo arena del modo día da
+   ~3,9:1, por debajo del 4,5:1 que WCAG pide para texto.
+   Los tokens semánticos ya tienen contraparte comprobada en los dos temas.
+   El `:not(ion-card *)` deja fuera el interior de las tarjetas, que va sobre
+   superficie clara y necesita la variante oscura. */
+.rapago-admin-page ion-text[color="medium"]:not(ion-card ion-text),
+.rapago-admin-page ion-text[color="medium"]:not(ion-card ion-text) p {
+  color: var(--rp-muted) !important;
+}
+
+.rapago-admin-page ion-text[color="danger"]:not(ion-card ion-text),
+.rapago-admin-page ion-text[color="danger"]:not(ion-card ion-text) p {
+  color: var(--rp-err-fg) !important;
+  font-weight: 700;
+}
+
+.rapago-admin-page ion-text[color="success"]:not(ion-card ion-text),
+.rapago-admin-page ion-text[color="success"]:not(ion-card ion-text) p {
+  color: var(--rp-ok-fg) !important;
+  font-weight: 700;
+}
+
+.rapago-admin-page ion-text[color="warning"]:not(ion-card ion-text),
+.rapago-admin-page ion-text[color="warning"]:not(ion-card ion-text) p {
+  color: var(--rp-warn-fg) !important;
+  font-weight: 700;
+}
+
+.rapago-admin-page ion-toggle {
+  --track-background-checked: var(--rp-gold) !important;
+  --handle-background-checked: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-admin-page ion-checkbox {
+  --checkbox-background-checked: var(--rp-gold) !important;
+  --border-color-checked: var(--rp-gold) !important;
+  --checkmark-color: var(--rp-btn-primary-fg) !important;
+}
+
+/* ==========================================================================
+   7. BOTONES
+   ========================================================================== */
+.rapago-admin-page ion-button {
+  --border-radius: var(--rp-radius-sm) !important;
+  text-transform: none !important;
+  /* global.css:2164 los deja en 900. Con todo al máximo no hay diferencia entre
+     la acción principal y un "Cerrar". */
+  font-weight: 800 !important;
+  letter-spacing: 0.01em !important;
+}
+
+.rapago-admin-page ion-button:not([fill]):not([color]),
+.rapago-admin-page ion-button[fill="solid"]:not([color]),
+.rapago-admin-page ion-button[color="primary"] {
+  --background: var(--rp-btn-primary) !important;
+  --background-activated: var(--rp-btn-primary-activated) !important;
+  --background-hover: var(--rp-btn-primary-activated) !important;
+  --color: var(--rp-btn-primary-fg) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-admin-page ion-button[fill="outline"]:not([color="danger"]) {
+  --border-color: var(--rp-border-c) !important;
+  --border-width: var(--rp-border-w) !important;
+  --color: var(--rp-icon-fg) !important;
+  --background: transparent !important;
+  --background-activated: var(--rp-icon-bg) !important;
+  --background-hover: var(--rp-icon-bg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-admin-page ion-button[fill="clear"]:not([color="danger"]) {
+  --color: var(--rp-icon-fg) !important;
+  --background-hover: var(--rp-icon-bg) !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-admin-page ion-button[color="danger"] {
+  --border-color: var(--rp-danger-bd) !important;
+  --color: var(--rp-danger-fg) !important;
+  color: var(--rp-danger-fg) !important;
+}
+
+/* Deshabilitado: Ionic lo resuelve con opacity 0.5 sobre el color heredado, que
+   sobre superficie oscura deja el rótulo por debajo de 3:1. Se le da un estado
+   propio, legible, que además se distingue del activo por MÁS que la opacidad. */
+.rapago-admin-page ion-button.button-disabled,
+.rapago-admin-page ion-button[disabled] {
+  opacity: 1 !important;
+  --background: var(--rp-surface-soft) !important;
+  --color: var(--rp-muted-soft) !important;
+  --border-color: var(--rp-divider) !important;
+  color: var(--rp-muted-soft) !important;
+  cursor: not-allowed;
+}
+
+/* Los botones dentro de tarjeta viven sobre superficie clara: el contorno
+   dorado translúcido se pierde ahí. */
+.rapago-admin-page ion-card ion-button[fill="outline"]:not([color="danger"]),
+.rapago-admin-page ion-card ion-button[fill="clear"]:not([color="danger"]) {
+  --color: var(--rp-accent-legacy) !important;
+  --border-color: var(--rp-border-c-legacy) !important;
+  color: var(--rp-accent-legacy) !important;
+}
+
+/* ── ::part(native): sin esto, nada de lo anterior se ve ─────────────────── */
+/* global.css:3699, :3714, :3727 y :3766 pintan el interior del botón —el
+   elemento `native` dentro de su shadow DOM— con `background` y `color`
+   literales y !important, en vez de usar las variables `--background` y
+   `--color` que Ionic expone para eso.
+   Consecuencia: fijar las variables no cambia NADA. Comprobado en el Panel: el
+   botón "Actualizar" del héroe salía en arena claro con texto gris pizarra —el
+   estado deshabilitado de global.css— pese a tener `--background: transparent`
+   y `--color: #f8d879` correctamente aplicados.
+   Estas reglas repiten el estado sobre el mismo `::part(native)`, que es el
+   único sitio donde se puede ganar esa pelea. */
+.rapago-admin-page ion-button[fill="outline"]:not([color="danger"])::part(native) {
+  background: transparent !important;
+  color: var(--rp-icon-fg) !important;
+  border: var(--rp-border-w) solid var(--rp-border-c) !important;
+}
+
+.rapago-admin-page ion-button[fill="clear"]:not([color="danger"])::part(native) {
+  background: transparent !important;
+  color: var(--rp-icon-fg) !important;
+}
+
+/* Peligro en contorno: global lo deja en una pastilla rosa clara fija, que sobre
+   la superficie volcánica se lee como un botón primario. El color pasa al borde
+   y al texto, como el resto de la paleta semántica. */
+.rapago-admin-page ion-button[color="danger"][fill="outline"]::part(native) {
+  background: transparent !important;
+  color: var(--rp-danger-fg) !important;
+  border: var(--rp-border-w) solid var(--rp-danger-bd) !important;
+}
+
+.rapago-admin-page ion-button.button-disabled::part(native),
+.rapago-admin-page ion-button[disabled]:not([disabled="false"])::part(native) {
+  background: var(--rp-surface-soft) !important;
+  color: var(--rp-muted-soft) !important;
+  border-color: var(--rp-divider) !important;
+  filter: none !important;
+}
+
+/* Dentro de tarjeta la superficie es clara en ambos temas, así que el contorno
+   y el rótulo tienen que volver a la tinta oscura. */
+.rapago-admin-page ion-card ion-button[fill="outline"]:not([color="danger"])::part(native),
+.rapago-admin-page ion-card ion-button[fill="clear"]:not([color="danger"])::part(native) {
+  color: var(--rp-accent-legacy) !important;
+  border-color: var(--rp-border-c-legacy) !important;
+}
+
+.rapago-admin-page ion-card ion-button.button-disabled::part(native),
+.rapago-admin-page ion-card ion-button[disabled]:not([disabled="false"])::part(native) {
+  background: rgba(26, 26, 26, 0.06) !important;
+  color: var(--rp-muted-legacy) !important;
+  border-color: var(--rp-border-c-legacy) !important;
+}
+
+/* ==========================================================================
+   8. SEGMENTOS, CHIPS Y BADGES
+   ========================================================================== */
+.rapago-admin-page ion-segment {
+  --background: var(--rp-seg-track) !important;
+  border: 1px solid var(--rp-icon-bd) !important;
+  border-radius: 14px !important;
+  /* Los filtros de Actividad y Documentos se salían de pantalla en móvil. */
+  overflow-x: auto !important;
+  scrollbar-width: none;
+}
+
+.rapago-admin-page ion-segment::-webkit-scrollbar {
+  display: none;
+}
+
+.rapago-admin-page ion-segment-button {
+  --color: var(--rp-muted) !important;
+  --color-checked: var(--rp-btn-primary-fg) !important;
+  --background-checked: var(--rp-btn-primary) !important;
+  --indicator-color: transparent !important;
+  --border-radius: 11px !important;
+  min-width: max-content !important;
+  text-transform: none !important;
+  font-weight: 800 !important;
+}
+
+.rapago-admin-page ion-chip {
+  --background: var(--rp-surface-soft) !important;
+  --color: var(--rp-text) !important;
+  border: 1px solid var(--rp-icon-bd) !important;
+  /* 32px de fábrica queda bajo el mínimo táctil de 44pt/48dp. */
+  height: 44px !important;
+  font-weight: 750 !important;
+}
+
+/* Los badges conservan el color semántico de Ionic —comunican estado de viaje,
+   pago o aprobación, no identidad de marca— pero adoptan la forma de píldora
+   del sistema. */
+.rapago-admin-page ion-badge {
+  border-radius: 999px !important;
+  padding: 5px 10px !important;
+  font-weight: 800 !important;
+  font-size: var(--rp-fs-micro) !important;
+  text-transform: none !important;
+  /* Un badge es un dato atómico —"0 residencias pendientes"—, no un texto que
+     se pueda recortar: o se lee entero o no significa nada. En las filas flex
+     del panel se encogía por debajo de su contenido y quedaba como "0 pe" con
+     la palabra cortada (visto en Documentos a 360px). Con `flex-shrink: 0` el
+     que cede es el título de al lado, que sí puede pasar a dos líneas. */
+  flex-shrink: 0 !important;
+  max-width: 100%;
+}
+
+.rapago-admin-page ion-spinner {
+  color: var(--rp-icon-fg) !important;
+}
+
+.rapago-admin-page ion-refresher ion-refresher-content {
+  --color: var(--rp-icon-fg) !important;
+}
+
+.rapago-admin-page ion-progress-bar {
+  --background: var(--rp-surface-soft) !important;
+  --progress-background: var(--rp-gold) !important;
+}
+
+/* ==========================================================================
+   9. DESBORDAMIENTO HORIZONTAL
+
+   Regla de contención: NINGÚN descendiente puede empujar la página a lo ancho.
+   El panel es la parte de la app con más contenido de ancho fijo (folios, RUT,
+   correos largos, ids de viaje), y basta con uno sin punto de corte para que
+   toda la pantalla gane scroll horizontal y los botones queden fuera de vista.
+
+   `overflow-wrap: anywhere` sólo actúa cuando la palabra NO cabe, así que no
+   parte texto normal: es una red de seguridad, no una regla de maquetación.
+
+   No se cubren aquí las tablas HTML porque el módulo no tiene ninguna
+   alcanzable: las dos que existen viven en la copia inactiva de la pantalla de
+   Tarifas dentro de admin/index.tsx (ver el informe de auditoría).
+   ========================================================================== */
+.rapago-admin-page,
+.rapago-admin-page ion-content {
+  overflow-x: hidden;
+}
+
+.rapago-admin-page :is(h1, h2, h3, h4, p, span, strong, em, td, th, ion-label) {
+  overflow-wrap: anywhere;
+}
+
+/* Las rejillas declaradas con `1fr` no encogen por debajo del contenido: su
+   mínimo automático es `auto`, no cero. Es la causa habitual de que una fila
+   con un correo largo desborde la tarjeta entera. */
+.rapago-admin-page .rp-tile-grid > *,
+.rapago-admin-page .admin-kpi-grid > *,
+.rapago-admin-page .admin-quick-grid > * {
+  min-width: 0;
+}
+
+/* ==========================================================================
+   10. MODALES
+
+   Ionic monta el IonModal FUERA del IonPage, así que no hereda ni el scope
+   `.rapago-admin-page` ni el atributo de tema de la página. Las pantallas
+   envuelven el contenido en `.rapago-modal-body` con su propio
+   data-rapago-theme (misma solución que las secciones del pasajero); aquí sólo
+   se añade lo que el panel usa y las secciones no.
+   ========================================================================== */
+ion-modal.rapago-admin-modal {
+  --background: var(--rp-page-bg);
+  --border-radius: var(--rp-radius);
+}
+
+/* En escritorio el modal de fábrica ocupa toda la ventana: un formulario de
+   seis campos estirado a 1920px de ancho. */
+@media (min-width: 768px) {
+  ion-modal.rapago-admin-modal {
+    --width: min(92vw, 720px);
+    --height: min(88vh, 900px);
+  }
+}
+
+.rapago-modal-body .rp-admin-modal-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap);
+}
+
+/* Rejilla de resumen del panel.
+   `.rp-tile-grid` del kit es de dos columnas fijas, pensado para los dos tiles
+   de Beneficios. El panel resume en bloques de cuatro y de cinco: con dos
+   columnas fijas, el quinto quedaba solo ocupando media fila, y en escritorio
+   los cinco se estiraban a 200px de alto cada uno. auto-fit los reparte según
+   el ancho REAL disponible, así que van de 1 a 5 columnas sin media queries. */
+.rapago-admin-page .rp-tile-grid--auto {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr));
+}
+
+.rapago-admin-page .rp-tile--center {
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+/* ==========================================================================
+   11. HUB DE SECCIONES ("Más")
+
+   Sustituye a las siete pestañas que no caben en la barra inferior. No usa
+   ion-card a propósito: así queda fuera de la excepción de superficie clara y
+   es enteramente theme-aware, igual que Beneficios y el Centro de ayuda.
+   ========================================================================== */
+/* La separación entre grupos la da el `gap` de .rp-admin-shell: un margin aquí
+   se sumaría a ella. */
+.rp-hub__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap-sm);
+}
+
+.rp-hub__grid {
+  display: grid;
+  /* Mobile first: una columna. A partir de 380px de ancho DISPONIBLE (no de
+     viewport) entran dos, y en escritorio tres. auto-fit + minmax hace que el
+     salto dependa del contenedor, así que la rejilla también funciona dentro
+     del modal o de una columna estrecha. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--rp-gap-sm);
+}
+
+.rp-hub__item {
+  display: flex;
+  align-items: center;
+  gap: var(--rp-gap-sm);
+  width: 100%;
+  min-height: 72px;
+  padding: var(--rp-pad-x);
+  text-align: left;
+  font: inherit;
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface);
+  border: var(--rp-border-w) solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  color: var(--rp-text);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.rp-hub__item:hover {
+  border-color: var(--rp-border-strong);
+}
+
+.rp-hub__item:active {
+  transform: scale(0.985);
+  border-color: var(--rp-border-strong);
+}
+
+.rp-hub__icon {
+  flex-shrink: 0;
+  width: var(--rp-icon-size);
+  height: var(--rp-icon-size);
+  display: grid;
+  place-items: center;
+  border-radius: var(--rp-radius-sm);
+  font-size: 20px;
+  color: var(--rp-icon-fg);
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+}
+
+.rp-hub__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.rp-hub__title {
+  display: block;
+  font-size: var(--rp-fs-body);
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--rp-text);
+}
+
+.rp-hub__sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--rp-fs-sub);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--rp-muted);
+}
+
+.rp-hub__arrow {
+  flex-shrink: 0;
+  font-size: 18px;
+  color: var(--rp-muted-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-hub__item,
+  .rapago-admin-page .admin-kpi-card {
+    transition: none;
+  }
+
+  .rp-hub__item:active {
+    transform: none;
+  }
+}

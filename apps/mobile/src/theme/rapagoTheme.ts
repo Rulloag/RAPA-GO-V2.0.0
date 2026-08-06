@@ -154,6 +154,12 @@ export type RapagoSection =
   | "driver-trips"
   | "driver-earnings"
   | "driver-profile"
+  /* Un único id para las 19 pantallas del panel, y no uno por pantalla como en
+     pasajero y conductor. Aquellos ids son vestigio del modelo anterior —una
+     preferencia por pantalla— que ya se abandonó: hoy todo lo que hacen es
+     resolver a un ámbito. Repetir el patrón aquí serían diecinueve literales
+     que solo se usan para escribir "admin" diecinueve veces. */
+  | "admin"
   | "auth";
 
 /**
@@ -171,8 +177,13 @@ export type RapagoSection =
  * de uso distintas (el conductor trabaja de noche mucho más a menudo) y sus
  * pantallas viven en árboles de rutas separados, así que cada rol recuerda su
  * preferencia sin pisar la del otro.
+ *
+ * `admin` sigue el mismo criterio: es una sesión de trabajo de escritorio o
+ * tablet, larga y en interior, distinta de los dos usos anteriores. Además un
+ * mismo dispositivo puede alternar entre la cuenta de operación y la de
+ * administración, y no tiene por qué arrastrar la preferencia de una a la otra.
  */
-export type RapagoThemeScope = "passenger" | "driver" | "auth";
+export type RapagoThemeScope = "passenger" | "driver" | "admin" | "auth";
 
 const SECTION_SCOPE: Record<RapagoSection, RapagoThemeScope> = {
   home: "passenger",
@@ -186,6 +197,7 @@ const SECTION_SCOPE: Record<RapagoSection, RapagoThemeScope> = {
   "driver-trips": "driver",
   "driver-earnings": "driver",
   "driver-profile": "driver",
+  admin: "admin",
   auth: "auth",
 };
 
@@ -203,6 +215,10 @@ const LEGACY_SECTIONS_BY_SCOPE: Record<RapagoThemeScope, RapagoSection[]> = {
     "driver-earnings",
     "driver-profile",
   ],
+  /* Vacío a propósito: el panel nunca tuvo interruptor de tema, así que no hay
+     ninguna clave antigua de la que migrar. Su primera preferencia se deriva de
+     la hora local, igual que la de un dispositivo nuevo. */
+  admin: [],
   auth: ["auth"],
 };
 

@@ -3,11 +3,19 @@ import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent,
   IonList, IonItem, IonLabel, IonNote, IonBadge, IonButton,
   IonModal, IonInput, IonTextarea, IonSelect, IonSelectOption,
-  IonSpinner, IonText, IonButtons, IonToggle,
+  IonSpinner, IonIcon, IonButtons, IonToggle,
 } from "@ionic/react";
+import {
+  addOutline,
+  alertCircleOutline,
+  documentTextOutline,
+} from "ionicons/icons";
 import { apiClient } from "../../../services/api/index.js";
 import { useAuth } from "../../../features/auth/index.js";
 import type { LegalDocumentData } from "../../../features/legal/legal.service.js";
+import { RapagoAppBar } from "../../../components/RapagoAppBar.js";
+import { ROUTES } from "../../../navigation/routes.js";
+import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 
 const DOC_TYPES = [
   { value: "terms_and_conditions",  label: "Términos y Condiciones" },
@@ -23,6 +31,7 @@ const DOC_TYPES = [
 
 export function AdminLegalDocumentsPage(): React.ReactElement {
   const { session } = useAuth();
+  const { theme } = useRapagoSectionTheme("admin");
   const token = session?.accessToken ?? null;
   const [docs, setDocs] = useState<LegalDocumentData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,52 +80,102 @@ export function AdminLegalDocumentsPage(): React.ReactElement {
   }
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar color="primary">
-          <IonTitle>Documentos Legales</IonTitle>
-          <IonButtons slot="end">
-            <IonButton onClick={() => setShowModal(true)}>Nueva versión</IonButton>
-          </IonButtons>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="rapago-admin-page" data-rapago-theme={theme}>
+      <RapagoAppBar
+        sectionId="admin"
+        title="Documentos legales"
+        roleLabel="Administrador"
+        backHref={ROUTES.ADMIN.MORE}
+        backLabel="Volver a Más secciones"
+        actionIcon={addOutline}
+        actionLabel="Crear nueva versión de documento"
+        onAction={() => setShowModal(true)}
+      />
 
       <IonContent>
-        {loading ? (
-          <div style={{ textAlign: "center", paddingTop: "2rem" }}><IonSpinner /></div>
-        ) : (
-          <IonList>
-            {docs.map(doc => (
-              <IonItem key={doc.id}>
-                <IonLabel>
-                  <h2>{doc.title}</h2>
-                  <p>{doc.type} — v{doc.version} — {doc.effectiveDate}</p>
-                  <IonNote>{new Date(doc.updatedAt ?? doc.createdAt).toLocaleDateString("es-CL")}</IonNote>
-                </IonLabel>
-                <IonBadge color={doc.isActive ? "success" : "medium"} slot="end">
-                  {doc.isActive ? "Activo" : "Inactivo"}
-                </IonBadge>
-                <IonToggle
-                  checked={doc.isActive}
-                  onIonChange={() => { void handleToggleActive(doc); }}
-                  slot="end"
-                />
-              </IonItem>
-            ))}
-          </IonList>
-        )}
+        <div className="rp-admin-shell">
+          {loading ? (
+            /* Antes era un spinner suelto sin texto: en una lista que puede
+               tardar, un aspa girando no dice si está cargando o si falló. */
+            <div className="rp-empty">
+              <IonSpinner name="crescent" />
+              <p className="rp-empty__body" style={{ marginTop: 10 }}>
+                Cargando documentos…
+              </p>
+            </div>
+          ) : docs.length === 0 ? (
+            /* No había estado vacío: sin documentos la pantalla quedaba en
+               blanco y no ofrecía la única acción posible. */
+            <div className="rp-empty">
+              <div className="rp-empty__icon">
+                <IonIcon icon={documentTextOutline} aria-hidden="true" />
+              </div>
+              <h2 className="rp-empty__title">Sin documentos publicados</h2>
+              <p className="rp-empty__body">
+                Publica la primera versión de los términos, la política de
+                privacidad o cualquier otro documento legal.
+              </p>
+              <IonButton
+                className="rp-cta"
+                style={{ marginTop: 14 }}
+                onClick={() => setShowModal(true)}
+              >
+                <IonIcon icon={addOutline} slot="start" aria-hidden="true" />
+                Nueva versión
+              </IonButton>
+            </div>
+          ) : (
+            <IonList>
+              {docs.map(doc => (
+                <IonItem key={doc.id}>
+                  <IonLabel>
+                    <h2>{doc.title}</h2>
+                    <p>{doc.type} — v{doc.version} — {doc.effectiveDate}</p>
+                    <IonNote>{new Date(doc.updatedAt ?? doc.createdAt).toLocaleDateString("es-CL")}</IonNote>
+                  </IonLabel>
+                  <IonBadge color={doc.isActive ? "success" : "medium"} slot="end">
+                    {doc.isActive ? "Activo" : "Inactivo"}
+                  </IonBadge>
+                  {/* El interruptor no decía qué documento activaba: en una
+                      lista de nueve, el lector de pantalla anunciaba nueve
+                      "conmutador" idénticos. */}
+                  <IonToggle
+                    checked={doc.isActive}
+                    aria-label={`${doc.isActive ? "Desactivar" : "Activar"} ${doc.title} versión ${doc.version}`}
+                    onIonChange={() => { void handleToggleActive(doc); }}
+                    slot="end"
+                  />
+                </IonItem>
+              ))}
+            </IonList>
+          )}
+        </div>
 
-        <IonModal isOpen={showModal} onDidDismiss={() => setShowModal(false)}>
+        <IonModal
+          isOpen={showModal}
+          className="rapago-admin-modal"
+          onDidDismiss={() => setShowModal(false)}
+        >
           <IonHeader>
-            <IonToolbar>
+            <IonToolbar className="rapago-modal-toolbar">
               <IonTitle>Nueva versión de documento</IonTitle>
               <IonButtons slot="end">
-                <IonButton onClick={() => setShowModal(false)}>Cerrar</IonButton>
+                <IonButton className="rapago-modal-close" onClick={() => setShowModal(false)}>Cerrar</IonButton>
               </IonButtons>
             </IonToolbar>
           </IonHeader>
-          <IonContent className="ion-padding">
-            {error && <IonText color="danger"><p>{error}</p></IonText>}
+          {/* El IonModal se monta FUERA del IonPage, así que no hereda el
+              atributo de tema de la pantalla: hay que repetirlo aquí o sus
+              campos resuelven contra :root y quedan a dos luces. */}
+          <IonContent className="rapago-modal-content">
+            <div className="rapago-modal-body" data-rapago-theme={theme}>
+              <div className="rp-admin-modal-inner">
+            {error && (
+              <div className="rp-banner rp-banner--error" role="alert">
+                <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+                <span>{error}</span>
+              </div>
+            )}
 
             <IonItem>
               <IonLabel position="stacked">Tipo de documento</IonLabel>
@@ -171,12 +230,14 @@ export function AdminLegalDocumentsPage(): React.ReactElement {
 
             <IonButton
               expand="block"
-              style={{ margin: "1rem 0" }}
+              className="rp-cta"
               disabled={saving || !formType || !formVersion || !formTitle || !formContent || !formEffectiveDate}
               onClick={() => { void handleSave(); }}
             >
               {saving ? <IonSpinner name="crescent" /> : "Guardar documento"}
             </IonButton>
+              </div>
+            </div>
           </IonContent>
         </IonModal>
       </IonContent>

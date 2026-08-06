@@ -234,8 +234,6 @@ export function SupportCenterPage(): JSX.Element {
     >
       <RapagoSectionHeader
         title="Centro de ayuda"
-        onBack={handleGoHome}
-        backLabel="Volver al inicio"
       />
       <IonContent>
         <IonRefresher slot="fixed" onIonRefresh={(event) => void load().finally(() => event.detail.complete())}><IonRefresherContent /></IonRefresher>

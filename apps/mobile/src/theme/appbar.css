@@ -6,10 +6,8 @@
 
    Dos decisiones que gobiernan todo lo demás:
 
-   1. FONDO TRANSPARENTE, nunca el atributo `color` de Ionic. Ese atributo vive
-      en la paleta de Ionic y no responde a `data-rapago-theme`, que es
-      exactamente el problema que documentan RapagoSectionHeader.tsx y
-      driver.css: cada cabecera quedaba a su aire y ninguna seguía el tema.
+   1. SUPERFICIE ESTABLE, nunca texto blanco flotando sobre la fotografía. La
+      barra sigue el tema y mantiene contraste constante mientras se desplaza.
 
    2. SIN SOMBRA PROYECTADA, nunca. El fondo de página (--rp-page-bg) es una
       FOTOGRAFÍA. Una sombra sobre una foto se lee como mancha sucia, no como
@@ -23,11 +21,12 @@
   top: 0;
   z-index: 20;
   width: 100%;
-  /* El inset YA incluye el alto de la barra de estado. Sumarle un padding
+   /* El inset YA incluye el alto de la barra de estado. Sumarle un padding
      decorativo fijo (como hacía home.css con +10px) deja un vacío arbitrario
      de 57px en un iPhone con notch y de 10px en un Android sin él. */
   padding-top: env(safe-area-inset-top, 0px);
-  background: transparent;
+   background: var(--rp-appbar-bg, var(--rp-surface));
+   border-bottom: 1px solid var(--rp-appbar-border, var(--rp-border-c));
 }
 
 /* Velo. Sin él, el texto flota sobre la fotografía de fondo sin contraste
@@ -40,7 +39,7 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: var(--rp-appbar-scrim);
+   display: none;
 }
 
 .rp-appbar__row {
@@ -51,22 +50,19 @@
      se va a una esquina y el título flota solo en 700px de vacío. */
   width: min(100%, 460px);
   margin-inline: auto;
-  min-height: 56px;
+   min-height: 64px;
   padding-inline: var(--rp-pad-x, 16px) 8px;
 }
 
 /* ---- Zona A / marca ---- */
 
-/* Sprite del moái. El archivo es un lockup de 1254×1254 con las letras
-   incluidas; a 32px esas letras son ilegibles. Se recorta (105,145,540,540) —
-   dentro del squircle impreso, así que las esquinas las pone el CSS y no
-   quedan dobles. Los factores salen de 1254/540 y de -105/540, -145/540. */
+/* Lockup completo: el mismo logo que se muestra en Welcome y Login. */
 .rp-appbar__mark {
   position: relative;
   flex: 0 0 auto;
   width: var(--rp-mark, 32px);
   height: var(--rp-mark, 32px);
-  border-radius: 30%;
+  border-radius: 28%;
   overflow: hidden;
   background: #fff;
   /* box-shadow y no border: así el halo no entra en el cálculo de caja y el
@@ -75,11 +71,10 @@
 }
 
 .rp-appbar__mark img {
-  position: absolute;
-  width: calc(var(--rp-mark, 32px) * 2.3222);
-  left: calc(var(--rp-mark, 32px) * -0.19444);
-  top: calc(var(--rp-mark, 32px) * -0.26852);
-  max-width: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* ---- Zona B / identidad de pantalla ---- */
@@ -110,7 +105,7 @@
 .rp-appbar__identity h1 {
   margin: 0;
   min-width: 0;
-  font-size: var(--rp-fs-h2, 0.95rem);
+   font-size: clamp(1rem, 4.2vw, 1.18rem);
   /* 800 y no 950: con el stack de fuentes del sistema todo lo que pasa de 700
      renderiza igual, así que subir más aplana la jerarquía en vez de crearla.
      Es el criterio ya establecido en sections.css. */
@@ -461,6 +456,16 @@
 @media (max-width: 360px) {
   .rp-appbar__subtitle {
     display: none;
+  }
+
+  .rp-appbar__row {
+    gap: 6px;
+    padding-inline: 10px 6px;
+  }
+
+  .rp-appbar__mark {
+    width: 40px;
+    height: 40px;
   }
 }
 
