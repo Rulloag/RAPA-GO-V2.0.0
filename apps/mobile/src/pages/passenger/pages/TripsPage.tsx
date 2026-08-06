@@ -586,6 +586,60 @@ function readPassengerRatedRideIds(rides: RideRequestData[], user: unknown): Set
   return ids;
 }
 
+
+const RAPAGO_PASSENGER_RATING_DISMISSED_KEY =
+  "rapago_passenger_rating_dismissed_v1";
+const RAPAGO_PASSENGER_AUTO_RATING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function readPassengerDismissedRatingRideIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(RAPAGO_PASSENGER_RATING_DISMISSED_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.map((value) => String(value ?? "").trim()).filter(Boolean)
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function writePassengerDismissedRatingRideIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(
+      RAPAGO_PASSENGER_RATING_DISMISSED_KEY,
+      JSON.stringify(Array.from(ids).slice(-300)),
+    );
+  } catch {
+    // Omitir la calificación no debe bloquear el viaje.
+  }
+}
+
+function rememberPassengerDismissedRatingRide(rideId: string): void {
+  const cleanRideId = String(rideId ?? "").trim();
+  if (!cleanRideId) return;
+
+  const ids = readPassengerDismissedRatingRideIds();
+  ids.add(cleanRideId);
+  writePassengerDismissedRatingRideIds(ids);
+}
+
+function getPassengerRideCompletedTimestampMs(
+  ride: RideRequestData & Record<string, unknown>,
+): number | null {
+  const explicit = [
+    ride.completedAt,
+    ride.closedAt,
+    ride.closedByDriverAt,
+    ride.updatedAt,
+  ]
+    .map((value) => Date.parse(String(value ?? "")))
+    .find((value) => Number.isFinite(value));
+
+  return explicit != null ? explicit : null;
+}
+
 function readPassengerNotifications(): PassengerNotificationPayload[] {
   try {
     const raw = localStorage.getItem(RAPAGO_PASSENGER_NOTIFICATIONS_KEY);
@@ -5230,6 +5284,61 @@ function passengerVehicleIslandType(vehicle: { brand: string; model: string }): 
   return "sedan";
 }
 
+
+function passengerVehicleTypeDisplayName(
+  type: PassengerIslandVehicleType,
+): string {
+  if (type === "pickup") return "Camioneta";
+  if (type === "suv") return "SUV";
+  if (type === "van") return "Van";
+  if (type === "compact") return "Auto compacto";
+  return "Automóvil";
+}
+
+function passengerVehicleDisplayColor(
+  colorValue: unknown,
+  type: PassengerIslandVehicleType,
+): string {
+  const color = passengerNormalizeVehicleColorName(colorValue);
+  if (!color) return "";
+
+  const feminine = type === "pickup" || type === "van";
+  const aliases: Record<string, [string, string]> = {
+    plata: ["plateado", "plateada"],
+    plateado: ["plateado", "plateada"],
+    plateada: ["plateado", "plateada"],
+    gris: ["gris", "gris"],
+    blanco: ["blanco", "blanca"],
+    blanca: ["blanco", "blanca"],
+    negro: ["negro", "negra"],
+    negra: ["negro", "negra"],
+    rojo: ["rojo", "roja"],
+    roja: ["rojo", "roja"],
+    azul: ["azul", "azul"],
+    verde: ["verde", "verde"],
+    amarillo: ["amarillo", "amarilla"],
+    amarilla: ["amarillo", "amarilla"],
+    naranjo: ["naranjo", "naranjada"],
+    naranja: ["naranjo", "naranjada"],
+    beige: ["beige", "beige"],
+  };
+
+  const pair = aliases[color] ?? [color, color];
+  return feminine ? pair[1] : pair[0];
+}
+
+function getPassengerVehicleHumanDescription(vehicle: {
+  brand: string;
+  model: string;
+  color: string;
+}): string {
+  const type = passengerVehicleIslandType(vehicle);
+  const typeLabel = passengerVehicleTypeDisplayName(type);
+  const colorLabel = passengerVehicleDisplayColor(vehicle.color, type);
+
+  return [typeLabel, colorLabel].filter(Boolean).join(" ").trim();
+}
+
 function passengerEscapeSvgText(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -5371,7 +5480,9 @@ function PassengerDriverAndVehicleDetails({
   const initial = driverName.trim().charAt(0).toUpperCase() || "C";
   const modelLine = [vehicle.brand, vehicle.model].filter(Boolean).join(" ").trim() || "Vehículo asignado";
   const plateText = vehicle.plate ? vehicle.plate.toUpperCase() : "SIN PATENTE";
-  const colorLine = vehicle.color ? `Color: ${vehicle.color}` : "Color no informado";
+  const vehicleDescription =
+    getPassengerVehicleHumanDescription(vehicle) || "Vehículo asignado";
+  const colorLine = vehicle.color ? `Color registrado: ${vehicle.color}` : "Color no informado";
   const statusText = getPassengerUberStatusText(effectiveStatus);
 
   return (
@@ -5496,7 +5607,18 @@ function PassengerDriverAndVehicleDetails({
           <div className="rp-tone-ok" style={{ fontWeight: 950, fontSize: ".86rem", color: "var(--rp-ok-fg)", letterSpacing: ".02em" }}>
             {driverName}
           </div>
-          <div className="rp-tone-muted" style={{ marginTop: 4, fontWeight: 850, fontSize: ".74rem", color: "var(--rp-muted)", lineHeight: 1.25 }}>
+          <div
+            style={{
+              marginTop: 4,
+              fontWeight: 950,
+              fontSize: ".88rem",
+              color: "var(--rp-text)",
+              lineHeight: 1.2,
+            }}
+          >
+            {vehicleDescription}
+          </div>
+          <div className="rp-tone-muted" style={{ marginTop: 3, fontWeight: 850, fontSize: ".72rem", color: "var(--rp-muted)", lineHeight: 1.25 }}>
             {modelLine}
             <br />{colorLine}
           </div>
@@ -5522,8 +5644,8 @@ function PassengerDriverAndVehicleDetails({
             style={{
               marginLeft: "auto",
               marginTop: 6,
-              width: 88,
-              height: 48,
+              width: 108,
+              height: 64,
               borderRadius: 14,
               background: hasRealVehicleImage ? "#f3f4f6" : "linear-gradient(135deg,#f8fafc,#e2e8f0)",
               overflow: "hidden",
@@ -5542,10 +5664,43 @@ function PassengerDriverAndVehicleDetails({
               style={{ width: "100%", height: "100%", objectFit: hasRealVehicleImage ? "cover" : "contain" }}
             />
           </div>
+          <div
+            className="rp-tone-muted"
+            style={{
+              marginTop: 4,
+              fontSize: ".62rem",
+              color: "var(--rp-muted)",
+              fontWeight: 850,
+              textAlign: "right",
+            }}
+          >
+            {hasRealVehicleImage ? "Foto del vehículo" : "Ilustración referencial"}
+          </div>
         </div>
       </div>
 
     </div>
+  );
+}
+
+const PASSENGER_RAPA_NUI_LIVE_BOUNDS = {
+  north: -27.01,
+  south: -27.25,
+  west: -109.54,
+  east: -109.17,
+} as const;
+
+function isPassengerRapaNuiLivePoint(
+  lat: number,
+  lng: number,
+): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat <= PASSENGER_RAPA_NUI_LIVE_BOUNDS.north &&
+    lat >= PASSENGER_RAPA_NUI_LIVE_BOUNDS.south &&
+    lng >= PASSENGER_RAPA_NUI_LIVE_BOUNDS.west &&
+    lng <= PASSENGER_RAPA_NUI_LIVE_BOUNDS.east
   );
 }
 
@@ -5559,7 +5714,17 @@ async function fetchRideLiveDriverPoint(
   const lat = Number(point.lat);
   const lng = Number(point.lng);
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const accuracy =
+    point.accuracyMeters != null && Number.isFinite(Number(point.accuracyMeters))
+      ? Number(point.accuracyMeters)
+      : null;
+
+  if (
+    !isPassengerRapaNuiLivePoint(lat, lng) ||
+    (accuracy != null && accuracy > 250)
+  ) {
+    return null;
+  }
 
   return {
     lat,
@@ -5573,16 +5738,17 @@ async function fetchRideLiveDriverPoint(
       Number.isFinite(Number(point.speedMetersPerSecond))
         ? Number(point.speedMetersPerSecond)
         : null,
-    accuracy:
-      point.accuracyMeters != null && Number.isFinite(Number(point.accuracyMeters))
-        ? Number(point.accuracyMeters)
-        : null,
+    accuracy,
     updatedAt: point.capturedAt || point.receivedAt || null,
   };
 }
 
 function isValidDriverPoint(point: DriverLivePoint | null): point is DriverLivePoint {
-  return Boolean(point && Number.isFinite(point.lat) && Number.isFinite(point.lng));
+  return Boolean(
+    point &&
+      isPassengerRapaNuiLivePoint(Number(point.lat), Number(point.lng)) &&
+      (point.accuracy == null || Number(point.accuracy) <= 250),
+  );
 }
 
 
@@ -5993,8 +6159,9 @@ function PassengerLiveRouteMap({
 
   const [mapReady, setMapReady] = useState(false);
   const [liveDriverPoint, setLiveDriverPoint] = useState<DriverLivePoint | null>(null);
-  const [, setLiveDriverError] = useState<string | null>(null);
-  const [, setLastLiveUpdate] = useState<Date | null>(null);
+  const [liveDriverError, setLiveDriverError] = useState<string | null>(null);
+  const [lastLiveUpdate, setLastLiveUpdate] = useState<Date | null>(null);
+  const [followDriver, setFollowDriver] = useState(true);
   const [routeInfo, setRouteInfo] = useState<{ distanceText: string; durationText: string; meters: number | null } | null>(null);
 
   const nav = extractPassengerRideNav(ride.notes);
@@ -6071,6 +6238,11 @@ function PassengerLiveRouteMap({
     ? getPassengerDistanceMeters(driverPoint, liveTargetPoint)
     : null;
   const distanceLabel = formatPassengerDistanceMeters(directDriverMeters);
+  const lastLiveUpdateAgeSeconds = lastLiveUpdate
+    ? Math.max(0, Math.floor((Date.now() - lastLiveUpdate.getTime()) / 1000))
+    : null;
+  const liveSignalIsStale =
+    lastLiveUpdateAgeSeconds != null && lastLiveUpdateAgeSeconds > 15;
 
   useEffect(() => {
     let cancelled = false;
@@ -6491,6 +6663,10 @@ function PassengerLiveRouteMap({
           },
         });
 
+        map.addListener("dragstart", () => {
+          setFollowDriver(false);
+        });
+
         setMapReady(true);
       })
       .catch(() => {
@@ -6609,6 +6785,7 @@ function PassengerLiveRouteMap({
   ): void {
     const map = mapRef.current;
     if (!map) return;
+    if (!force && !followDriver) return;
 
     const now = Date.now();
     if (!force && now - lastPassengerMapFollowAtRef.current < 900) return;
@@ -6683,6 +6860,7 @@ function PassengerLiveRouteMap({
     driverPoint?.lat,
     driverPoint?.lng,
     liveDriverPoint?.heading,
+    followDriver,
   ]);
 
   useEffect(() => {
@@ -6786,6 +6964,37 @@ function PassengerLiveRouteMap({
         style={{ width: "100%", height: "100%" }}
       />
 
+      {driverPoint && !followDriver && (
+        <button
+          type="button"
+          onClick={() => {
+            setFollowDriver(true);
+            followPassengerDriverCamera(driverPoint, true);
+          }}
+          aria-label="Volver a centrar el vehículo"
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            zIndex: 70,
+            border: "1px solid rgba(200,155,60,.72)",
+            borderRadius: 999,
+            minHeight: 42,
+            padding: "0 13px",
+            background: "rgba(255,255,255,.96)",
+            color: "#111827",
+            fontWeight: 950,
+            boxShadow: "0 10px 28px rgba(2,6,23,.32)",
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+          }}
+        >
+          <IonIcon icon={locationOutline} aria-hidden="true" />
+          Centrar vehículo
+        </button>
+      )}
+
       {/* Panel inferior: el pasajero ve la flecha del conductor y el avance con GPS real. */}
       {driverPoint && ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus) && (
         <div
@@ -6881,6 +7090,10 @@ function PassengerLiveRouteMap({
                     ? " hasta tu destino."
                     : " hasta el punto de recogida."
                   : ""}
+                {lastLiveUpdateAgeSeconds != null
+                  ? ` · Actualizado hace ${lastLiveUpdateAgeSeconds} s`
+                  : ""}
+                {liveDriverError ? ` · ${liveDriverError}` : ""}
               </div>
             </div>
 
@@ -6889,17 +7102,19 @@ function PassengerLiveRouteMap({
                 alignSelf: "flex-start",
                 padding: "4px 7px",
                 borderRadius: 999,
-                background: "#dcfce7",
-                color: "#166534",
-                WebkitTextFillColor: "#166534",
-                border: "1px solid #86efac",
+                background: liveSignalIsStale ? "#fef3c7" : "#dcfce7",
+                color: liveSignalIsStale ? "#92400e" : "#166534",
+                WebkitTextFillColor: liveSignalIsStale ? "#92400e" : "#166534",
+                border: liveSignalIsStale
+                  ? "1px solid #f59e0b"
+                  : "1px solid #86efac",
                 fontSize: ".62rem",
                 lineHeight: 1,
                 fontWeight: 950,
                 whiteSpace: "nowrap",
               }}
             >
-              GPS EN VIVO
+              {liveSignalIsStale ? "SEÑAL ANTIGUA" : "GPS EN VIVO"}
             </div>
           </div>
         </div>
@@ -8964,6 +9179,28 @@ export default function TripsPage(): JSX.Element {
   const [canResumeKlapPayment, setCanResumeKlapPayment] = useState(false);
   const [cancellingPendingKlap, setCancellingPendingKlap] = useState(false);
   const loadRidesInFlightRef = useRef(false);
+  const autoRatingPromptedRideIdsRef = useRef<Set<string>>(new Set());
+
+  const openPassengerRating = useCallback((rideId: string): void => {
+    setRatingRideId(rideId);
+    setRatingStars(5);
+    setRatingComment("");
+    setRatingExtras([]);
+    setRatingPrivateComment(false);
+    setRatingError(null);
+  }, []);
+
+  const dismissPassengerRatingForNow = useCallback((): void => {
+    if (ratingRideId) {
+      rememberPassengerDismissedRatingRide(ratingRideId);
+    }
+
+    setRatingRideId(null);
+    setRatingExtras([]);
+    setRatingComment("");
+    setRatingPrivateComment(false);
+    setRatingError(null);
+  }, [ratingRideId]);
 
   const loadRides = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent === true;
@@ -9054,6 +9291,53 @@ export default function TripsPage(): JSX.Element {
       window.removeEventListener("storage", refreshPassengerNotice);
     };
   }, []);
+
+  useEffect(() => {
+    if (loading || submittingRating || ratingRideId) return;
+
+    const dismissed = readPassengerDismissedRatingRideIds();
+    const now = Date.now();
+
+    const candidate = [...allRides]
+      .filter((ride) => {
+        if (getEffectivePassengerRideStatus(ride) !== "completed") return false;
+        if (ratedIds.has(ride.id) || dismissed.has(ride.id)) return false;
+        if (autoRatingPromptedRideIdsRef.current.has(ride.id)) return false;
+
+        const completedAt = getPassengerRideCompletedTimestampMs(
+          ride as RideRequestData & Record<string, unknown>,
+        );
+
+        return (
+          completedAt != null &&
+          now - completedAt >= 0 &&
+          now - completedAt <= RAPAGO_PASSENGER_AUTO_RATING_MAX_AGE_MS
+        );
+      })
+      .sort((a, b) => {
+        const aTime =
+          getPassengerRideCompletedTimestampMs(
+            a as RideRequestData & Record<string, unknown>,
+          ) ?? 0;
+        const bTime =
+          getPassengerRideCompletedTimestampMs(
+            b as RideRequestData & Record<string, unknown>,
+          ) ?? 0;
+        return bTime - aTime;
+      })[0];
+
+    if (!candidate) return;
+
+    autoRatingPromptedRideIdsRef.current.add(candidate.id);
+    openPassengerRating(candidate.id);
+  }, [
+    allRides,
+    loading,
+    openPassengerRating,
+    ratedIds,
+    ratingRideId,
+    submittingRating,
+  ]);
 
   const cancelUnstartedKlapRequest = useCallback(async (): Promise<void> => {
     const pending = readPendingCardPayment();
@@ -10316,13 +10600,7 @@ export default function TripsPage(): JSX.Element {
                 onArrivedWell={handlePassengerArrivedWell}
                 onReportProblem={handlePassengerReportProblem}
                 onEmergency={handlePassengerEmergency}
-                onRate={(rideId) => {
-                  setRatingRideId(rideId);
-                  setRatingStars(5);
-                  setRatingComment("");
-                  setRatingExtras([]);
-                  setRatingError(null);
-                }}
+                onRate={openPassengerRating}
               />
             ))}
           </div>
@@ -10345,7 +10623,9 @@ export default function TripsPage(): JSX.Element {
         <IonModal
           isOpen={ratingRideId !== null}
           onDidDismiss={() => {
-            if (!submittingRating) setRatingRideId(null);
+            if (!submittingRating && ratingRideId) {
+              dismissPassengerRatingForNow();
+            }
           }}
           className="rapago-rating-modal"
           keepContentsMounted={false}
@@ -10496,17 +10776,11 @@ export default function TripsPage(): JSX.Element {
                       expand="block"
                       fill="outline"
                       color="medium"
-                      onClick={() => {
-                        setRatingRideId(null);
-                        setRatingExtras([]);
-                        setRatingComment("");
-                        setRatingPrivateComment(false);
-                        setRatingError(null);
-                      }}
+                      onClick={dismissPassengerRatingForNow}
                       disabled={submittingRating}
                       style={{ "--border-radius": "16px", fontWeight: 950 } as CSSProperties}
                     >
-                      Ahora no
+                      Omitir por ahora
                     </IonButton>
 
                     <IonButton

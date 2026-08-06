@@ -7983,6 +7983,16 @@ export function DriverHomePage(): JSX.Element {
   const [restBlocked, setRestBlocked] = useState(false);
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [driverAlertsEnabled, setDriverAlertsEnabled] = useState(() =>
+    readDriverAlertsEnabled(),
+  );
+  const [driverNotificationPermission, setDriverNotificationPermission] =
+    useState<NotificationPermission | "unsupported">(() => {
+      if (!("Notification" in window)) return "unsupported";
+      return Notification.permission;
+    });
+  const [driverAlertActivationMessage, setDriverAlertActivationMessage] =
+    useState<string | null>(null);
 
   useEffect(() => {
     setDriverAvailability(readDriverAvailability(driverAvailabilityUser));
@@ -8108,6 +8118,54 @@ export function DriverHomePage(): JSX.Element {
     isDriverAvailable,
   ]);
 
+  async function handleEnableDriverRideAlerts(): Promise<void> {
+    setDriverAlertActivationMessage(null);
+
+    try {
+      localStorage.setItem(DRIVER_ALERTS_ENABLED_STORAGE_KEY, "true");
+    } catch {
+      // El sonido sigue funcionando durante la sesión.
+    }
+
+    primeDriverAlertAudio();
+    speakRideRequestAlert("Avisos de nuevos traslados activados.");
+
+    let permission: NotificationPermission | "unsupported" = "unsupported";
+
+    try {
+      if ("Notification" in window) {
+        permission = Notification.permission;
+
+        if (permission === "default") {
+          permission = await Notification.requestPermission();
+        }
+      }
+    } catch {
+      permission = "unsupported";
+    }
+
+    setDriverAlertsEnabled(true);
+    setDriverNotificationPermission(permission);
+
+    if (permission === "granted") {
+      setDriverAlertActivationMessage(
+        "Avisos activos: sonido, voz, vibración y notificación del sistema.",
+      );
+      return;
+    }
+
+    if (permission === "denied") {
+      setDriverAlertActivationMessage(
+        "Sonido, voz y vibración activos dentro de RAPA GO. El navegador bloqueó la notificación del sistema.",
+      );
+      return;
+    }
+
+    setDriverAlertActivationMessage(
+      "Sonido, voz y vibración activos mientras RAPA GO esté abierto.",
+    );
+  }
+
   async function handleAvailabilityChange(
     value: DriverAvailability,
   ): Promise<void> {
@@ -8156,6 +8214,13 @@ export function DriverHomePage(): JSX.Element {
 
       if (confirmed === "available") {
         enableDriverRideAlerts();
+        setDriverAlertsEnabled(true);
+        setDriverNotificationPermission(
+          "Notification" in window ? Notification.permission : "unsupported",
+        );
+        setDriverAlertActivationMessage(
+          "Disponible y listo para recibir avisos de nuevos traslados.",
+        );
       }
     } catch (caught) {
       setDriverAvailability("unavailable");
@@ -8290,6 +8355,120 @@ export function DriverHomePage(): JSX.Element {
               {availabilityError}
             </div>
           )}
+
+          <section
+            aria-label="Avisos de nuevos traslados"
+            style={{
+              margin: "0 0 14px",
+              padding: "14px",
+              borderRadius: 20,
+              background: driverAlertsEnabled
+                ? "linear-gradient(135deg,rgba(220,252,231,.98),rgba(254,249,195,.98))"
+                : "linear-gradient(135deg,rgba(255,247,214,.98),rgba(254,226,226,.96))",
+              border: driverAlertsEnabled
+                ? "1.5px solid rgba(34,197,94,.42)"
+                : "1.5px solid rgba(210,164,58,.48)",
+              boxShadow: "0 12px 28px rgba(17,24,39,.10)",
+              color: "#111827",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 16,
+                  background: driverAlertsEnabled ? "#16a34a" : "#d2a43a",
+                  color: "#ffffff",
+                  display: "grid",
+                  placeItems: "center",
+                  flex: "0 0 auto",
+                  boxShadow: "0 9px 20px rgba(0,0,0,.16)",
+                }}
+              >
+                <IonIcon icon={notificationsOutline} style={{ fontSize: 26 }} />
+              </div>
+
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 950, fontSize: ".94rem" }}>
+                  Avisos de nuevos traslados
+                </div>
+                <div
+                  style={{
+                    marginTop: 3,
+                    color: "#475569",
+                    fontSize: ".76rem",
+                    lineHeight: 1.35,
+                    fontWeight: 800,
+                  }}
+                >
+                  {driverAlertsEnabled
+                    ? driverNotificationPermission === "granted"
+                      ? "Activos con sonido, voz, vibración y notificación."
+                      : "Activos dentro de RAPA GO. Mantén la aplicación abierta."
+                    : "Actívalos una vez para escuchar inmediatamente cada nueva solicitud."}
+                </div>
+              </div>
+
+              <span
+                style={{
+                  padding: "5px 8px",
+                  borderRadius: 999,
+                  background: driverAlertsEnabled ? "#dcfce7" : "#fef3c7",
+                  color: driverAlertsEnabled ? "#166534" : "#92400e",
+                  border: driverAlertsEnabled
+                    ? "1px solid #86efac"
+                    : "1px solid #fcd34d",
+                  fontSize: ".64rem",
+                  fontWeight: 950,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {driverAlertsEnabled ? "ACTIVOS" : "PENDIENTE"}
+              </span>
+            </div>
+
+            <IonButton
+              expand="block"
+              color={driverAlertsEnabled ? "success" : "warning"}
+              onClick={() => void handleEnableDriverRideAlerts()}
+              style={{
+                marginTop: 12,
+                "--border-radius": "15px",
+                "--color": driverAlertsEnabled ? "#ffffff" : "#111111",
+                height: "46px",
+                fontWeight: 950,
+              } as CSSProperties}
+            >
+              <IonIcon
+                icon={driverAlertsEnabled ? volumeHighOutline : notificationsOutline}
+                slot="start"
+              />
+              {driverAlertsEnabled ? "Probar sonido y avisos" : "Activar avisos"}
+            </IonButton>
+
+            {driverAlertActivationMessage && (
+              <div
+                role="status"
+                style={{
+                  marginTop: 9,
+                  fontSize: ".74rem",
+                  lineHeight: 1.35,
+                  fontWeight: 850,
+                  color: "#334155",
+                }}
+              >
+                {driverAlertActivationMessage}
+              </div>
+            )}
+          </section>
 
           <DriverRestScheduleCard
             onBlockedChange={(blocked) => {
@@ -12216,6 +12395,14 @@ function speakRideRequestAlert(
 
 const DRIVER_ALERTS_ENABLED_STORAGE_KEY = "rapago_driver_alerts_enabled_v1";
 
+function readDriverAlertsEnabled(): boolean {
+  try {
+    return localStorage.getItem(DRIVER_ALERTS_ENABLED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 let preparedAlertAudioContext: AudioContext | null = null;
 
 function getAlertAudioContext(): AudioContext | null {
@@ -12981,7 +13168,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
       }
 
       stopRideAlert(true);
-      history.push(ROUTES.DRIVER.REQUESTS);
+      history.replace(ROUTES.DRIVER.TRIPS);
     };
 
     try {
@@ -13530,6 +13717,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
 function AssignedRidesPage(): JSX.Element {
   const { session } = useAuth();
   const { theme } = useRapagoSectionTheme("driver-requests");
+  const history = useHistory();
   const location = useLocation();
   const driverAvailabilityUser = session?.user as
     DriverAvailabilityUser | undefined;
@@ -14684,17 +14872,17 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       setRideAlert(null);
       setError(null);
 
-      // Permanecemos en Solicitudes, pero ahora la pantalla cambia inmediatamente
-      // a Viaje activo y monta el mapa interno.
-      if (window.location.pathname !== ROUTES.DRIVER.REQUESTS) {
-        window.history.replaceState(null, "", ROUTES.DRIVER.REQUESTS);
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      }
+      // Solicitudes solo recibe y acepta ofertas. Después de aceptar,
+      // el conductor opera el servicio completo desde Mis Viajes.
+      history.replace(ROUTES.DRIVER.TRIPS);
 
-      // Forzamos recarga para traer notes/coordenadas completas y renderizar ruta.
       window.setTimeout(() => {
-        void loadRides();
-      }, 300);
+        window.dispatchEvent(
+          new CustomEvent("rapago:driver-rides-updated", {
+            detail: { ride: activeAccepted },
+          }),
+        );
+      }, 120);
     } catch (err) {
       const fallbackAvailable = getAvailableRideById(rideId, availableRides);
 
@@ -14757,10 +14945,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         setRideAlert(null);
         setError(null);
 
-        if (window.location.pathname !== ROUTES.DRIVER.REQUESTS) {
-          window.history.replaceState(null, "", ROUTES.DRIVER.REQUESTS);
-          window.dispatchEvent(new PopStateEvent("popstate"));
-        }
+        history.replace(ROUTES.DRIVER.TRIPS);
+        window.dispatchEvent(
+          new CustomEvent("rapago:driver-rides-updated", {
+            detail: { ride: activeAcceptedLocal },
+          }),
+        );
         return;
       }
 

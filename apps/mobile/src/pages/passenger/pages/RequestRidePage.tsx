@@ -1765,6 +1765,268 @@ const TOURIST_DESTINATION_SUGGESTIONS = [
   },
 ];
 
+type RapaNuiLocalAutocompletePlace = {
+  id: string;
+  name: string;
+  subtitle: string;
+  address: string;
+  lat: number;
+  lng: number;
+  aliases: readonly string[];
+  placeTypes: readonly string[];
+};
+
+const RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX = "rapago-local:";
+
+const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace[] = [
+  {
+    id: "hospital-hanga-roa",
+    name: "Hospital de Hanga Roa",
+    subtitle: "Salud y urgencias",
+    address: "Hospital Hanga Roa, Rapa Nui, Chile",
+    lat: -27.1502,
+    lng: -109.4216,
+    aliases: ["hospital", "hosp", "urgencia", "urgencias", "salud", "hanga roa hospital"],
+    placeTypes: ["hospital", "health", "point_of_interest", "establishment"],
+  },
+  {
+    id: "aeropuerto-mataveri",
+    name: "Aeropuerto Internacional Mataveri",
+    subtitle: "Terminal de pasajeros",
+    address: "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.16395,
+    lng: -109.42465,
+    aliases: ["aero", "aeropuerto", "airport", "mataveri", "terminal"],
+    placeTypes: ["airport", "point_of_interest", "establishment"],
+  },
+  {
+    id: "ahu-tahai",
+    name: "Ahu Tahai",
+    subtitle: "Cultura y atardecer",
+    address: "Ahu Tahai, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.1398,
+    lng: -109.4298,
+    aliases: ["tah", "tahai", "ahu tahai", "atardecer"],
+    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+  },
+  {
+    id: "playa-pea",
+    name: "Playa Pea",
+    subtitle: "Playa y zona céntrica",
+    address: "Playa Pea, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.1482,
+    lng: -109.4336,
+    aliases: ["pea", "playa pea", "playa", "centro"],
+    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+  },
+  {
+    id: "playa-poko-poko",
+    name: "Playa Poko Poko",
+    subtitle: "Costa y paseo familiar",
+    address: "Playa Poko Poko, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.149,
+    lng: -109.4319,
+    aliases: ["poko", "poko poko", "playa poko", "playa poko poko"],
+    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+  },
+  {
+    id: "mercado-artesanal",
+    name: "Mercado Artesanal Rapa Nui",
+    subtitle: "Artesanía local",
+    address: "Mercado Artesanal, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.1508,
+    lng: -109.4289,
+    aliases: ["mercado", "artesania", "artesanía", "mercado artesanal", "souvenir"],
+    placeTypes: ["market", "store", "point_of_interest", "establishment"],
+  },
+  {
+    id: "feria-hare-umanga",
+    name: "Feria Artesanal Hare Umanga",
+    subtitle: "Feria y recuerdos",
+    address: "Feria Artesanal Hare Umanga, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.1503,
+    lng: -109.4277,
+    aliases: ["feria", "hare", "hare umanga", "feria artesanal"],
+    placeTypes: ["market", "store", "point_of_interest", "establishment"],
+  },
+  {
+    id: "caleta-hanga-roa",
+    name: "Caleta Hanga Roa",
+    subtitle: "Puerto y restaurantes",
+    address: "Caleta Hanga Roa, Rapa Nui, Chile",
+    lat: -27.1478,
+    lng: -109.4356,
+    aliases: ["caleta", "puerto", "caleta hanga roa", "restaurantes"],
+    placeTypes: ["point_of_interest", "establishment"],
+  },
+  {
+    id: "comisaria-rapa-nui",
+    name: "Comisaría Rapa Nui",
+    subtitle: "Carabineros y seguridad",
+    address: "Comisaría Rapa Nui, Hanga Roa, Chile",
+    lat: -27.1497,
+    lng: -109.4268,
+    aliases: ["comisaria", "comisaría", "carabineros", "policia", "policía", "seguridad"],
+    placeTypes: ["police", "point_of_interest", "establishment"],
+  },
+  {
+    id: "iglesia-santa-cruz",
+    name: "Iglesia de la Santa Cruz Rapa Nui",
+    subtitle: "Iglesia principal",
+    address: "Iglesia de la Santa Cruz, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.1506,
+    lng: -109.4271,
+    aliases: ["iglesia", "santa cruz", "iglesia santa cruz", "misa"],
+    placeTypes: ["church", "place_of_worship", "point_of_interest", "establishment"],
+  },
+  {
+    id: "jardin-taukiani",
+    name: "Jardín Botánico TauKiani",
+    subtitle: "Naturaleza y visita",
+    address: "Jardín Botánico TauKiani, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.1482,
+    lng: -109.4069,
+    aliases: ["jardin", "jardín", "botanico", "botánico", "taukiani", "jardin botanico"],
+    placeTypes: ["park", "tourist_attraction", "point_of_interest", "establishment"],
+  },
+  {
+    id: "anakena",
+    name: "Anakena",
+    subtitle: "Playa y experiencia",
+    address: "Playa Anakena, Rapa Nui, Chile",
+    lat: -27.0732,
+    lng: -109.3233,
+    aliases: ["anakena", "playa anakena"],
+    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+  },
+  {
+    id: "terevaka",
+    name: "Terevaka",
+    subtitle: "Cerro y excursión",
+    address: "Maunga Terevaka, Rapa Nui, Chile",
+    lat: -27.0917,
+    lng: -109.382,
+    aliases: ["terevaka", "tere vaka", "cerro", "maunga terevaka"],
+    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+  },
+] as const;
+
+function normalizeRapaNuiAutocompleteText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getRapaNuiLocalAutocompletePlace(
+  placeId: string,
+): RapaNuiLocalAutocompletePlace | null {
+  if (!placeId.startsWith(RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX)) return null;
+
+  const id = placeId.slice(RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX.length);
+  return (
+    RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.find((place) => place.id === id) ??
+    null
+  );
+}
+
+function getRapaNuiLocalAutocompletePredictions(
+  input: string,
+): GoogleSuggestion[] {
+  const query = normalizeRapaNuiAutocompleteText(input);
+  if (query.length < 2) return [];
+
+  const queryWords = query.split(" ").filter(Boolean);
+
+  return RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.map((place) => {
+    const values = [
+      place.name,
+      place.subtitle,
+      place.address,
+      ...place.aliases,
+    ].map(normalizeRapaNuiAutocompleteText);
+
+    let score = -1;
+
+    for (const value of values) {
+      if (!value) continue;
+      if (value === query) score = Math.max(score, 1200);
+      if (value.startsWith(query)) score = Math.max(score, 1000);
+
+      const words = value.split(" ").filter(Boolean);
+      if (words.some((word) => word.startsWith(query))) {
+        score = Math.max(score, 900);
+      }
+
+      if (value.includes(query)) score = Math.max(score, 720);
+
+      if (
+        queryWords.length > 1 &&
+        queryWords.every((word) => value.includes(word))
+      ) {
+        score = Math.max(score, 820);
+      }
+    }
+
+    return { place, score };
+  })
+    .filter((item) => item.score >= 0)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.place.name.localeCompare(b.place.name, "es"),
+    )
+    .slice(0, 5)
+    .map(({ place }) => ({
+      placeId: `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${place.id}`,
+      description: `${place.name}, ${place.address}`,
+      mainText: place.name,
+      secondaryText: `${place.subtitle} · Sugerencia RAPA GO`,
+    }));
+}
+
+function mergeRapaNuiAutocompletePredictions(
+  localSuggestions: GoogleSuggestion[],
+  googleSuggestions: GoogleSuggestion[],
+): GoogleSuggestion[] {
+  const seen = new Set<string>();
+  const merged: GoogleSuggestion[] = [];
+
+  for (const suggestion of [...localSuggestions, ...googleSuggestions]) {
+    const key = normalizeRapaNuiAutocompleteText(
+      `${suggestion.mainText} ${suggestion.secondaryText}`,
+    );
+
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(suggestion);
+
+    if (merged.length >= 8) break;
+  }
+
+  return merged;
+}
+
+function localRapaNuiPlaceToPickerResult(
+  place: RapaNuiLocalAutocompletePlace,
+): PickerResult {
+  return {
+    text: place.name,
+    address: place.address,
+    lat: place.lat,
+    lng: place.lng,
+    placeId: `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${place.id}`,
+    placeTypes: [...place.placeTypes],
+    originalLat: null,
+    originalLng: null,
+    walkMeters: 0,
+    isAccessiblePickup: false,
+  };
+}
+
+
 function inputItemStyle(extra?: CSSProperties): CSSProperties {
   return {
     "--background": "var(--rp-field-bg)",
@@ -3900,52 +4162,74 @@ async function filterGoogleSuggestionsToRapaNui(
 }
 
 async function getGooglePredictions(input: string): Promise<GoogleSuggestion[]> {
-  if (input.trim().length < 3) return [];
+  const cleanInput = input.trim();
+  const localSuggestions = getRapaNuiLocalAutocompletePredictions(cleanInput);
 
-  await loadRapaGoGoogleMaps();
+  if (normalizeRapaNuiAutocompleteText(cleanInput).length < 2) {
+    return [];
+  }
 
-  const service = new google.maps.places.AutocompleteService();
+  try {
+    await loadRapaGoGoogleMaps();
 
-  const rawSuggestions = await new Promise<GoogleSuggestion[]>((resolve) => {
-    service.getPlacePredictions(
-      {
-        input: `${input.trim()} Rapa Nui`,
-        componentRestrictions: {
-          country: "cl",
+    const service = new google.maps.places.AutocompleteService();
+
+    const rawSuggestions = await new Promise<GoogleSuggestion[]>((resolve) => {
+      service.getPlacePredictions(
+        {
+          input: `${cleanInput} Rapa Nui`,
+          componentRestrictions: {
+            country: "cl",
+          },
+          bounds: getRapaNuiMapBounds(),
+          location: new google.maps.LatLng(
+            RAPA_NUI_CENTER.lat,
+            RAPA_NUI_CENTER.lng,
+          ),
+          radius: 22000,
+          types: ["establishment", "geocode"],
         },
-        bounds: getRapaNuiMapBounds(),
-        location: new google.maps.LatLng(
-          RAPA_NUI_CENTER.lat,
-          RAPA_NUI_CENTER.lng,
-        ),
-        radius: 22000,
-        types: ["establishment", "geocode"],
-      },
-      (predictions, status) => {
-        if (
-          status !== google.maps.places.PlacesServiceStatus.OK ||
-          !predictions
-        ) {
-          resolve([]);
-          return;
-        }
+        (predictions, status) => {
+          if (
+            status !== google.maps.places.PlacesServiceStatus.OK ||
+            !predictions
+          ) {
+            resolve([]);
+            return;
+          }
 
-        resolve(
-          predictions.slice(0, 6).map((prediction) => ({
-            placeId: prediction.place_id,
-            description: prediction.description,
-            mainText: prediction.structured_formatting.main_text,
-            secondaryText: prediction.structured_formatting.secondary_text,
-          })),
-        );
-      },
+          resolve(
+            predictions.slice(0, 8).map((prediction) => ({
+              placeId: prediction.place_id,
+              description: prediction.description,
+              mainText: prediction.structured_formatting.main_text,
+              secondaryText:
+                prediction.structured_formatting.secondary_text ??
+                "Rapa Nui, Chile",
+            })),
+          );
+        },
+      );
+    });
+
+    const googleSuggestions =
+      await filterGoogleSuggestionsToRapaNui(rawSuggestions);
+
+    return mergeRapaNuiAutocompletePredictions(
+      localSuggestions,
+      googleSuggestions,
     );
-  });
-
-  return filterGoogleSuggestionsToRapaNui(rawSuggestions);
+  } catch {
+    return localSuggestions;
+  }
 }
 
 async function getPlaceDetailsExact(placeId: string): Promise<PickerResult | null> {
+  const localPlace = getRapaNuiLocalAutocompletePlace(placeId);
+  if (localPlace) {
+    return localRapaNuiPlaceToPickerResult(localPlace);
+  }
+
   await loadRapaGoGoogleMaps();
 
   const container = document.createElement("div");
@@ -4054,6 +4338,33 @@ function createPreferredReferenceFromExactPlace(
 }
 
 async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
+  const localPlace = getRapaNuiLocalAutocompletePlace(placeId);
+
+  if (localPlace) {
+    await loadRapaGoGoogleMaps();
+    const localPoint = localRapaNuiPlaceToPickerResult(localPlace);
+
+    try {
+      const snapped = await reverseGeocode({
+        lat: localPoint.lat,
+        lng: localPoint.lng,
+        placeId: localPoint.placeId ?? placeId,
+      });
+
+      return {
+        ...snapped,
+        text: snapped.isAccessiblePickup
+          ? `Recogida en ${localPlace.name}`
+          : localPlace.name,
+        address: localPlace.address,
+        placeId: localPoint.placeId,
+        placeTypes: [...localPlace.placeTypes],
+      };
+    } catch {
+      return localPoint;
+    }
+  }
+
   await loadRapaGoGoogleMaps();
 
   const container = document.createElement("div");
@@ -6058,7 +6369,7 @@ function MapPointPicker({
     const value = searchText.trim();
     const sequence = ++pickerSearchSequenceRef.current;
 
-    if (!isOpen || value.length < 3) {
+    if (!isOpen || normalizeRapaNuiAutocompleteText(value).length < 2) {
       setPickerSuggestions([]);
       setSearchingPicker(false);
       if (value.length === 0) setScopeMessage(null);
@@ -6085,7 +6396,7 @@ function MapPointPicker({
             setSearchingPicker(false);
           }
         });
-    }, 320);
+    }, 240);
 
     return () => window.clearTimeout(timeout);
   }, [isOpen, searchText]);
@@ -6415,7 +6726,7 @@ function MapPointPicker({
                   />
                   <IonInput
                     value={searchText}
-                    placeholder="Buscar solo dentro de Rapa Nui"
+                    placeholder="Escribe 2 letras: hosp, aero, tah..."
                     onIonFocus={closeSheetForSearch}
                     onIonInput={(event) => {
                       const value = String(event.detail.value ?? "");
@@ -7233,6 +7544,10 @@ export default function RequestRidePage(): JSX.Element {
     setBackendPendingPassengerCharges,
   ] = useState<PassengerPendingChargeForRequest[]>([]);
   const [rideMode, setRideMode] = useState<RideMode>("now");
+  const [showInitialRideModePrompt, setShowInitialRideModePrompt] =
+    useState(true);
+  const [showInitialOriginPrompt, setShowInitialOriginPrompt] =
+    useState(false);
   const [tripFareMode, setTripFareMode] = useState<TripFareMode>("one_way");
   const [selectedRoundTripPromotionId, setSelectedRoundTripPromotionId] = useState<string | null>(null);
   const [pendingRoundTripPromotion, setPendingRoundTripPromotion] = useState<RoundTripPromotion | null>(null);
@@ -7502,7 +7817,7 @@ export default function RequestRidePage(): JSX.Element {
   useEffect(() => {
     const value = originInput.trim();
 
-    if (isAirportScheduledRide || value.length < 3 || originPoint?.text === value) {
+    if (isAirportScheduledRide || normalizeRapaNuiAutocompleteText(value).length < 2 || originPoint?.text === value) {
       setOriginSuggestions([]);
       setSearchingOrigin(false);
       return;
@@ -7520,7 +7835,7 @@ export default function RequestRidePage(): JSX.Element {
         .finally(() => {
           if (seq === originSearchSeq.current) setSearchingOrigin(false);
         });
-    }, 300);
+    }, 220);
 
     return () => window.clearTimeout(timeout);
   }, [isAirportScheduledRide, originInput, originPoint?.text]);
@@ -7528,7 +7843,7 @@ export default function RequestRidePage(): JSX.Element {
   useEffect(() => {
     const value = destInput.trim();
 
-    if (value.length < 3 || destinationPoint?.text === value) {
+    if (normalizeRapaNuiAutocompleteText(value).length < 2 || destinationPoint?.text === value) {
       setDestSuggestions([]);
       setSearchingDest(false);
       return;
@@ -7546,7 +7861,7 @@ export default function RequestRidePage(): JSX.Element {
         .finally(() => {
           if (seq === destSearchSeq.current) setSearchingDest(false);
         });
-    }, 300);
+    }, 220);
 
     return () => window.clearTimeout(timeout);
   }, [destInput, destinationPoint?.text]);
@@ -7735,9 +8050,49 @@ export default function RequestRidePage(): JSX.Element {
     }
   }
 
+  function selectRideModeNow(options?: { askOrigin?: boolean }): void {
+    setRideMode("now");
+    setSelectedRoundTripPromotionId(null);
+    setTripFareMode("one_way");
+    setScheduledAt("");
+    setReturnScheduledAt("");
+    setAirportWelcomeOption("none");
+    setPaymentMethod(null);
+    setShowPaymentBox(false);
+    setOriginPoint(null);
+    setDestinationPoint(null);
+    setOriginInput("");
+    setDestInput("");
+    setOriginSuggestions([]);
+    setDestSuggestions([]);
+    setSubmitError(null);
+
+    if (options?.askOrigin) {
+      window.setTimeout(() => setShowInitialOriginPrompt(true), 120);
+    }
+  }
+
+  function selectRideModeScheduled(): void {
+    setRideMode("scheduled");
+    setSelectedRoundTripPromotionId(null);
+    setTripFareMode("one_way");
+    setScheduledAt("");
+    setReturnScheduledAt("");
+    setPaymentMethod("card");
+    setShowPaymentBox(false);
+    setAirportWelcomeOption("none");
+    setFlightNumber("");
+    applyRapaNuiAirportOrigin();
+    setDestinationPoint(null);
+    setDestInput("");
+    setDestSuggestions([]);
+    setSubmitError(null);
+    setShowInitialOriginPrompt(false);
+  }
+
   function handleUseCurrentLocation(): void {
     if (!navigator.geolocation) {
-      setSubmitError("Tu navegador no permite obtener ubicación.");
+      setSubmitError("Tu navegador no permite obtener ubicación. Puedes escribir el origen o elegirlo manualmente en el mapa.");
       return;
     }
 
@@ -7778,7 +8133,7 @@ export default function RequestRidePage(): JSX.Element {
       () => {
         setLocating(false);
         setSubmitError(
-          "No se pudo obtener tu ubicación. Activa el GPS y vuelve a intentar.",
+          "No se pudo obtener tu ubicación. Puedes activar el GPS, escribir una dirección o elegir otro punto en el mapa.",
         );
       },
       {
@@ -8961,6 +9316,105 @@ return (
 
       <IonContent fullscreen style={{ "--background": "transparent" } as CSSProperties}>
         <div className="rp-request-scroll">
+          <div
+            style={{
+              margin: "14px 16px 12px",
+              padding: "14px",
+              borderRadius: 22,
+              background: "var(--rp-surface)",
+              border: "1.5px solid rgba(210,164,58,.38)",
+              boxShadow: "var(--rp-shadow)",
+            }}
+          >
+            <div style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 3 }}>
+              Primero elige cuándo quieres viajar
+            </div>
+            <div style={{ color: "var(--rp-muted)", fontSize: ".78rem", fontWeight: 800, marginBottom: 12 }}>
+              Después podrás seleccionar el origen y el destino.
+            </div>
+            <div style={sectionLabelStyle()}>Cuándo viajas</div>
+
+            <div
+              role="tablist"
+              aria-label="Cuándo viajas"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: "8px",
+                marginBottom: "18px",
+              }}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rideMode === "now"}
+                onClick={() => {
+                  setShowInitialRideModePrompt(false);
+                  selectRideModeNow({ askOrigin: true });
+                }}
+                style={{
+                  minHeight: "48px",
+                  padding: "12px",
+                  borderRadius: "14px",
+                  background:
+                    rideMode === "now"
+                      ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
+                      : "linear-gradient(180deg,#FFFDF7 0%,#F2E5C9 100%)",
+                  color: "#111111",
+                  border:
+                    rideMode === "now"
+                      ? "2px solid #B98517"
+                      : "1.5px solid rgba(138,100,28,.42)",
+                  boxShadow:
+                    rideMode === "now"
+                      ? "0 10px 22px rgba(210,164,58,.28)"
+                      : "0 6px 14px rgba(17,24,39,.08)",
+                  fontWeight: 950,
+                  letterSpacing: ".03em",
+                  textShadow: "none",
+                  opacity: 1,
+                }}
+              >
+                AHORA
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rideMode === "scheduled"}
+                onClick={() => {
+                  setShowInitialRideModePrompt(false);
+                  selectRideModeScheduled();
+                }}
+                style={{
+                  minHeight: "48px",
+                  padding: "12px",
+                  borderRadius: "14px",
+                  background:
+                    rideMode === "scheduled"
+                      ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
+                      : "linear-gradient(180deg,#FFFDF7 0%,#F2E5C9 100%)",
+                  color: "#111111",
+                  border:
+                    rideMode === "scheduled"
+                      ? "2px solid #B98517"
+                      : "1.5px solid rgba(138,100,28,.42)",
+                  boxShadow:
+                    rideMode === "scheduled"
+                      ? "0 10px 22px rgba(210,164,58,.28)"
+                      : "0 6px 14px rgba(17,24,39,.08)",
+                  fontWeight: 950,
+                  letterSpacing: ".03em",
+                  textShadow: "none",
+                  opacity: 1,
+                }}
+              >
+                RESERVAR
+              </button>
+            </div>
+
+          </div>
+
           <MapFallback
             origin={mapOrigin}
             destination={mapDestination}
@@ -8984,12 +9438,7 @@ return (
               <IonIcon icon={locationOutline} slot="start" color="medium" />
               <IonInput
                 value={originInput}
-                placeholder="¿Dónde te recogemos?"
-                onIonFocus={() => {
-                  if (!canChooseOrigin) return;
-                  if (suppressPickerOpenRef.current) return;
-                  setPickerTarget("origin");
-                }}
+                placeholder="Escribe 2 letras: hosp, aero, tah..."
                 onIonInput={(event) => {
                   if (!canChooseOrigin) {
                     applyRapaNuiAirportOrigin();
@@ -9089,12 +9538,7 @@ return (
               <IonIcon icon={flagOutline} slot="start" color="medium" />
               <IonInput
                 value={destInput}
-                placeholder="¿A dónde vas?"
-                onIonFocus={() => {
-                  if (selectedRoundTripPromotion) return;
-                  if (suppressPickerOpenRef.current) return;
-                  setPickerTarget("destination");
-                }}
+                placeholder="Escribe 2 letras: hosp, playa, mercado..."
                 onIonInput={(event) => {
                   if (selectedRoundTripPromotion) return;
                   setDestInput(String(event.detail.value ?? ""));
@@ -9143,111 +9587,6 @@ return (
                   : "Elegir destino en el mapa"}
             </IonButton>
 
-            <div style={sectionLabelStyle()}>Cuándo viajas</div>
-
-            <div
-              role="tablist"
-              aria-label="Cuándo viajas"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: "8px",
-                marginBottom: "18px",
-              }}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={rideMode === "now"}
-                onClick={() => {
-                  setRideMode("now");
-                  setSelectedRoundTripPromotionId(null);
-                  setTripFareMode("one_way");
-                  setScheduledAt("");
-                  setReturnScheduledAt("");
-                  setAirportWelcomeOption("none");
-                  setPaymentMethod(null);
-                  setShowPaymentBox(false);
-                  setOriginPoint(null);
-                  setDestinationPoint(null);
-                  setOriginInput("");
-                  setDestInput("");
-                  setOriginSuggestions([]);
-                  setDestSuggestions([]);
-                  setSubmitError(null);
-                }}
-                style={{
-                  minHeight: "48px",
-                  padding: "12px",
-                  borderRadius: "14px",
-                  background:
-                    rideMode === "now"
-                      ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
-                      : "linear-gradient(180deg,#FFFDF7 0%,#F2E5C9 100%)",
-                  color: "#111111",
-                  border:
-                    rideMode === "now"
-                      ? "2px solid #B98517"
-                      : "1.5px solid rgba(138,100,28,.42)",
-                  boxShadow:
-                    rideMode === "now"
-                      ? "0 10px 22px rgba(210,164,58,.28)"
-                      : "0 6px 14px rgba(17,24,39,.08)",
-                  fontWeight: 950,
-                  letterSpacing: ".03em",
-                  textShadow: "none",
-                  opacity: 1,
-                }}
-              >
-                AHORA
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={rideMode === "scheduled"}
-                onClick={() => {
-                  setRideMode("scheduled");
-                  setSelectedRoundTripPromotionId(null);
-                  setTripFareMode("one_way");
-                  setScheduledAt("");
-                  setReturnScheduledAt("");
-                  setPaymentMethod("card");
-                  setShowPaymentBox(false);
-                  setAirportWelcomeOption("none");
-                  setFlightNumber("");
-                  applyRapaNuiAirportOrigin();
-                  setDestinationPoint(null);
-                  setDestInput("");
-                  setDestSuggestions([]);
-                  setSubmitError(null);
-                }}
-                style={{
-                  minHeight: "48px",
-                  padding: "12px",
-                  borderRadius: "14px",
-                  background:
-                    rideMode === "scheduled"
-                      ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
-                      : "linear-gradient(180deg,#FFFDF7 0%,#F2E5C9 100%)",
-                  color: "#111111",
-                  border:
-                    rideMode === "scheduled"
-                      ? "2px solid #B98517"
-                      : "1.5px solid rgba(138,100,28,.42)",
-                  boxShadow:
-                    rideMode === "scheduled"
-                      ? "0 10px 22px rgba(210,164,58,.28)"
-                      : "0 6px 14px rgba(17,24,39,.08)",
-                  fontWeight: 950,
-                  letterSpacing: ".03em",
-                  textShadow: "none",
-                  opacity: 1,
-                }}
-              >
-                RESERVAR
-              </button>
-            </div>
 
             {rideMode === "now" && (
               <>
@@ -10612,6 +10951,51 @@ return (
             </IonButton>
           </div>
         </div>
+
+        <IonAlert
+          isOpen={showInitialRideModePrompt}
+          backdropDismiss={false}
+          header="¿Cuándo quieres viajar?"
+          message="Elige primero si necesitas un traslado ahora o una reserva para después."
+          buttons={[
+            {
+              text: "Viajar ahora",
+              handler: () => {
+                setShowInitialRideModePrompt(false);
+                selectRideModeNow({ askOrigin: true });
+              },
+            },
+            {
+              text: "Reservar para después",
+              handler: () => {
+                setShowInitialRideModePrompt(false);
+                selectRideModeScheduled();
+              },
+            },
+          ]}
+        />
+
+        <IonAlert
+          isOpen={showInitialOriginPrompt}
+          backdropDismiss={false}
+          header="¿Desde dónde te recogemos?"
+          message="Puedes usar tu ubicación actual o solicitar el servicio desde otro lugar."
+          buttons={[
+            {
+              text: "Elegir otro lugar",
+              role: "cancel",
+              handler: () => setShowInitialOriginPrompt(false),
+            },
+            {
+              text: "Usar mi ubicación",
+              handler: () => {
+                setShowInitialOriginPrompt(false);
+                handleUseCurrentLocation();
+              },
+            },
+          ]}
+          onDidDismiss={() => setShowInitialOriginPrompt(false)}
+        />
 
         <IonAlert
           isOpen={pendingRoundTripPromotion !== null}
