@@ -2212,7 +2212,8 @@
 .rapago-ride-alert-overlay {
   position: fixed !important;
   inset: 0 !important;
-  z-index: 100000 !important;
+  z-index: 2147482000 !important;
+  isolation: isolate !important;
   pointer-events: auto !important;
 }
 

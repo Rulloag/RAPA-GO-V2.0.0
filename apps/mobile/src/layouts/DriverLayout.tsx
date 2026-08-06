@@ -40,7 +40,6 @@ export function DriverLayout(): JSX.Element {
   return (
     <>
       <DriverLocationRuntime />
-      <DriverGlobalRideAlert />
       <RoleLayout tabs={TABS}>
         <Redirect exact from={ROUTES.DRIVER.BASE} to={ROUTES.DRIVER.HOME} />
         <Route exact path={ROUTES.DRIVER.HOME} component={DriverHomePage} />
@@ -60,6 +59,7 @@ export function DriverLayout(): JSX.Element {
           )}
         />
       </RoleLayout>
+      <DriverGlobalRideAlert />
     </>
   );
 }

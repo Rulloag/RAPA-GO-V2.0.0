@@ -9,6 +9,11 @@ import locationRuntimeSource from "../../features/location/DriverLocationRuntime
 describe("flujo global y mapa grande del conductor", () => {
   it("mantiene una alerta global sin boton X y exige aceptar o rechazar", () => {
     expect(layoutSource.match(/<DriverGlobalRideAlert \/>/g) ?? []).toHaveLength(1);
+    expect(driverSource.match(/className="rapago-ride-alert-overlay"/g) ?? []).toHaveLength(2);
+    expect(driverSource.match(/zIndex: 2147482000/g) ?? []).toHaveLength(2);
+    expect(layoutSource.indexOf("</RoleLayout>")).toBeLessThan(
+      layoutSource.indexOf("<DriverGlobalRideAlert />"),
+    );
     expect(driverSource).toContain("Este aviso permanece hasta que aceptes, rechaces o la solicitud expire.");
     expect(driverSource).not.toContain('aria-label="Cerrar alerta de viaje"');
     expect(driverSource).not.toContain('aria-label="Cerrar solicitud"');

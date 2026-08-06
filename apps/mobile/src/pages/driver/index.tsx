@@ -13221,10 +13221,11 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
 
     return (
       <div
+        className="rapago-ride-alert-overlay"
         style={{
           position: "fixed",
           inset: 0,
-          zIndex: "var(--rp-z-above-tabbar)",
+          zIndex: 2147482000,
           background: "rgba(0,0,0,.58)",
           display: "flex",
           alignItems: "flex-end",
@@ -13438,10 +13439,11 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
 
   return (
     <div
+      className="rapago-ride-alert-overlay"
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: "var(--rp-z-above-tabbar)",
+        zIndex: 2147482000,
         background: "rgba(0,0,0,.58)",
         display: "flex",
         alignItems: "flex-end",
