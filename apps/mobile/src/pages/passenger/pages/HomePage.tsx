@@ -337,7 +337,7 @@ export default function HomePage(): JSX.Element {
                   <IonIcon icon={walletOutline} />
                 </span>
                 <span>
-                  <span className="rapago-home-quick-title">Wallet</span>
+                  <span className="rapago-home-quick-title">Billetera</span>
                   <span className="rapago-home-quick-sub">Saldo y beneficios</span>
                 </span>
               </button>
