@@ -37,7 +37,7 @@
   // Qué falta en cada etapa de la inscripción de conductor. El botón de avance
   // ya no va deshabilitado, así que al tocarlo incompleto explica el motivo.
   const STEP_HINTS = [
-    "Los datos de identidad se cargan desde tu cuenta. Completa únicamente la fecha de nacimiento.",
+    "Los datos de identidad se cargan desde tu cuenta. Completa la fecha de nacimiento, el número de licencia y su fecha de vencimiento.",
     "Indica si perteneces o no a la etnia Rapa Nui.",
     "Adjunta los cinco documentos: carnet (ambos lados), licencia (ambos lados) y foto de perfil.",
     "Confirma que cuentas con vehículo propio y completa marca, modelo, año, patente, color y foto de cada vehículo.",
@@ -236,8 +236,37 @@ function isRutValid(value: string): boolean {
   return digits.length >= 8 && digits.length <= 9;
 }
 
+function normalizeLicenseNumber(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, 40);
+}
 
-  function makeApplicationStyles() {
+function isLicenseNumberValid(value: string): boolean {
+  return normalizeLicenseNumber(value).length >= 3;
+}
+
+function isLicenseExpiryValid(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
+  const [year, month, day] = value.split("-").map(Number);
+  const expiry = new Date(year, month - 1, day, 23, 59, 59, 999);
+
+  if (
+    Number.isNaN(expiry.getTime()) ||
+    expiry.getFullYear() !== year ||
+    expiry.getMonth() !== month - 1 ||
+    expiry.getDate() !== day
+  ) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return expiry >= today;
+}
+
+
+function makeApplicationStyles() {
     const cardStyle: CSSProperties = {
       margin: "0 0 14px",
       borderRadius: "22px",
@@ -1318,6 +1347,8 @@ function isRutValid(value: string): boolean {
     phone: string;
     rut: string;
     birthDate?: string;
+    licenseNumber: string;
+    licenseExpiry: string;
     vehicles: DriverApplicationVehiclePayload[];
     profilePhotoDataUrl?: string | null;
     profilePhotoName?: string | null;
@@ -1337,6 +1368,8 @@ function isRutValid(value: string): boolean {
       phone: input.phone,
       rut: input.rut,
       birthDate: input.birthDate ?? "",
+      licenseNumber: input.licenseNumber,
+      licenseExpiry: input.licenseExpiry,
       profilePhotoDataUrl: input.profilePhotoDataUrl ?? "",
       profilePhotoUrl: input.profilePhotoDataUrl ?? "",
       profileImageDataUrl: input.profilePhotoDataUrl ?? "",
@@ -1461,8 +1494,10 @@ function isRutValid(value: string): boolean {
     const [lastName,  setLastName]  = useState("");
     const [email,     setEmail]     = useState("");
     const [phone,     setPhone]     = useState("");
-    const [rut,       setRut]       = useState("");
-    const [birthDate, setBirthDate] = useState("");
+    const [rut,           setRut]           = useState("");
+    const [birthDate,     setBirthDate]     = useState("");
+    const [licenseNumber, setLicenseNumber] = useState("");
+    const [licenseExpiry, setLicenseExpiry] = useState("");
     const [identityLoading, setIdentityLoading] = useState(true);
     const [identityError, setIdentityError] = useState<string | null>(null);
 
@@ -1717,7 +1752,9 @@ function isRutValid(value: string): boolean {
       isEmailValid(email) &&
       isPhoneValid(phone) &&
       isRutValid(rut) &&
-      /^\d{4}-\d{2}-\d{2}$/.test(birthDate);
+      /^\d{4}-\d{2}-\d{2}$/.test(birthDate) &&
+      isLicenseNumberValid(licenseNumber) &&
+      isLicenseExpiryValid(licenseExpiry);
     const rapaNuiReady = belongsToRapaNuiEthnicity !== "";
     const documentsReady =
       identityFrontFile != null &&
@@ -1799,6 +1836,24 @@ function isRutValid(value: string): boolean {
           return;
         }
 
+        if (!isLicenseNumberValid(licenseNumber)) {
+          setError("Debes ingresar el número de tu licencia de conducir.");
+          setDriverStep(1);
+          return;
+        }
+
+        if (!licenseExpiry) {
+          setError("Debes ingresar la fecha de vencimiento de tu licencia de conducir.");
+          setDriverStep(1);
+          return;
+        }
+
+        if (!isLicenseExpiryValid(licenseExpiry)) {
+          setError("La licencia está vencida o la fecha de vencimiento no es válida.");
+          setDriverStep(1);
+          return;
+        }
+
         setError("Los datos de identidad registrados no están completos o no son válidos. Solicita ayuda a soporte.");
         return;
       }
@@ -1821,6 +1876,7 @@ function isRutValid(value: string): boolean {
         const cleanEmail = email.trim().toLowerCase();
         const cleanPhoneValue = cleanPhone(phone);
         const cleanRutValue = formatRut(rut);
+        const cleanLicenseNumber = normalizeLicenseNumber(licenseNumber);
 
         persistApplicationAutofill({
           firstName: cleanFirstName,
@@ -1850,6 +1906,8 @@ function isRutValid(value: string): boolean {
           phone: cleanPhoneValue,
           rut: cleanRutValue,
           birthDate,
+          licenseNumber: cleanLicenseNumber,
+          licenseExpiry,
           vehicles: vehiclePayloads,
           profilePhotoDataUrl: applicationFileUrl(profilePhotoDoc),
           profilePhotoName: profilePhotoDoc.fileName ?? null,
@@ -1865,6 +1923,8 @@ function isRutValid(value: string): boolean {
           phone: cleanPhoneValue,
           rut: normalizeRut(rut),
           ...(birthDate ? { birthDate } : {}),
+          licenseNumber: cleanLicenseNumber,
+          licenseExpiry,
           createdAt: nowIso,
           updatedAt: nowIso,
 
@@ -2207,7 +2267,7 @@ function isRutValid(value: string): boolean {
             <IonCardHeader>
               <IonCardTitle style={styles.cardTitleStyle}>Datos de tu cuenta</IonCardTitle>
               <IonNote style={styles.noteStyle}>
-                Nombre, apellido, correo, teléfono y RUT están bloqueados y se cargan desde tu cuenta. Solo puedes ingresar la fecha de nacimiento. Para corregir otro dato debes solicitarlo a soporte.
+                Nombre, apellido, correo, teléfono y RUT están bloqueados y se cargan desde tu cuenta. Debes ingresar la fecha de nacimiento, el número de licencia y su fecha de vencimiento. Después de aprobarse la postulación, la licencia quedará bloqueada y solo podrá corregirse mediante soporte.
               </IonNote>
             </IonCardHeader>
 
@@ -2269,7 +2329,7 @@ function isRutValid(value: string): boolean {
                 />
               </IonItem>
 
-              <IonItem lines="none" style={styles.itemStyle}>
+              <IonItem lines="full" style={styles.itemStyle}>
                 <IonLabel position="stacked" style={styles.labelStyle}>Fecha de nacimiento *</IonLabel>
                 <IonInput
                   style={styles.inputStyle}
@@ -2278,6 +2338,34 @@ function isRutValid(value: string): boolean {
                   onIonInput={(e) => setBirthDate(String(e.detail.value ?? ""))}
                 />
               </IonItem>
+
+              <IonItem lines="full" style={styles.itemStyle}>
+                <IonLabel position="stacked" style={styles.labelStyle}>Número de licencia de conducir *</IonLabel>
+                <IonInput
+                  style={styles.inputStyle}
+                  value={licenseNumber}
+                  maxlength={40}
+                  placeholder="Ingresa el número de tu licencia"
+                  onIonInput={(e) =>
+                    setLicenseNumber(String(e.detail.value ?? "").slice(0, 40))
+                  }
+                />
+              </IonItem>
+
+              <IonItem lines="none" style={styles.itemStyle}>
+                <IonLabel position="stacked" style={styles.labelStyle}>Fecha de vencimiento de la licencia *</IonLabel>
+                <IonInput
+                  style={styles.inputStyle}
+                  type="date"
+                  value={licenseExpiry}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onIonInput={(e) => setLicenseExpiry(String(e.detail.value ?? ""))}
+                />
+              </IonItem>
+
+              <IonNote style={{ ...styles.noteStyle, display: "block", marginTop: 10 }}>
+                El administrador verificará estos datos con las fotografías del frente y reverso de la licencia.
+              </IonNote>
 
               {identityLoading && (
                 <IonNote style={{ ...styles.noteStyle, display: "block", marginTop: 10 }}>
