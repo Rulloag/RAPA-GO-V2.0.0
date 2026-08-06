@@ -5517,6 +5517,7 @@ function MapPointPicker({
   title,
   mode,
   initialPoint,
+  autoFocusSearch = false,
   onCancel,
   onConfirm,
 }: {
@@ -5524,6 +5525,7 @@ function MapPointPicker({
   title: string;
   mode: PickerTarget;
   initialPoint?: Coords | null;
+  autoFocusSearch?: boolean;
   onCancel: () => void;
   onConfirm: (point: PickerResult) => void;
 }): JSX.Element {
@@ -5543,6 +5545,7 @@ function MapPointPicker({
   const walkingDotsRef = useRef<google.maps.Polyline | null>(null);
   const walkingDotsShadowRef = useRef<google.maps.Polyline | null>(null);
   const mapResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const searchInputRef = useRef<HTMLIonInputElement | null>(null);
 
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<PickerResult | null>(null);
@@ -6652,7 +6655,15 @@ function MapPointPicker({
     <IonModal
       isOpen={isOpen}
       className="request-map-modal"
-      onDidPresent={() => setModalReady(true)}
+      onDidPresent={() => {
+        setModalReady(true);
+
+        if (autoFocusSearch) {
+          window.setTimeout(() => {
+            void searchInputRef.current?.setFocus();
+          }, 280);
+        }
+      }}
       onDidDismiss={() => {
         setModalReady(false);
         sheetAdjustedByUserRef.current = false;
@@ -6725,8 +6736,13 @@ function MapPointPicker({
                     style={{ color: "var(--rp-icon-fg)" }}
                   />
                   <IonInput
+                    ref={searchInputRef}
                     value={searchText}
-                    placeholder="Escribe 2 letras: hosp, aero, tah..."
+                    placeholder={
+                      mode === "origin"
+                        ? "Busca origen: hospital, aeropuerto, hotel..."
+                        : "Busca destino: hospital, playa, mercado..."
+                    }
                     onIonFocus={closeSheetForSearch}
                     onIonInput={(event) => {
                       const value = String(event.detail.value ?? "");
@@ -7530,6 +7546,7 @@ export default function RequestRidePage(): JSX.Element {
   const suppressPickerOpenRef = useRef(false);
 
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
+  const [pickerAutoFocusSearch, setPickerAutoFocusSearch] = useState(false);
 
   const [notesInput, setNotesInput] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
@@ -8127,7 +8144,8 @@ export default function RequestRidePage(): JSX.Element {
 
         setOriginInput("Mi ubicación actual");
         setOriginSuggestions([]);
-            setPickerTarget("origin");
+        setPickerAutoFocusSearch(false);
+        setPickerTarget("origin");
         setLocating(false);
       },
       () => {
@@ -9434,30 +9452,67 @@ return (
           >
             <div style={sectionLabelStyle()}>Origen</div>
 
-            <IonItem lines="none" style={inputItemStyle()}>
-              <IonIcon icon={locationOutline} slot="start" color="medium" />
-              <IonInput
-                value={originInput}
-                placeholder="Escribe 2 letras: hosp, aero, tah..."
-                onIonInput={(event) => {
-                  if (!canChooseOrigin) {
-                    applyRapaNuiAirportOrigin();
-                    return;
-                  }
-
-                  setOriginInput(String(event.detail.value ?? ""));
-                  setOriginPoint(null);
-                }}
-                readonly={!canChooseOrigin}
-                clearInput={canChooseOrigin}
+            <button
+              type="button"
+              aria-label={
+                canChooseOrigin
+                  ? "Abrir búsqueda y mapa para elegir el origen"
+                  : "Origen fijo en Aeropuerto Internacional Mataveri"
+              }
+              disabled={!canChooseOrigin}
+              onClick={() => {
+                if (!canChooseOrigin || suppressPickerOpenRef.current) return;
+                setPickerAutoFocusSearch(true);
+                setPickerTarget("origin");
+              }}
+              style={{
+                width: "100%",
+                minHeight: "58px",
+                marginBottom: "12px",
+                padding: "0 14px",
+                display: "grid",
+                gridTemplateColumns: "30px minmax(0,1fr) 30px",
+                alignItems: "center",
+                gap: "8px",
+                borderRadius: "var(--rp-radius-sm)",
+                border: "var(--rp-border-w) solid var(--rp-border-c)",
+                background: "var(--rp-field-bg)",
+                color: "var(--rp-field-fg)",
+                boxShadow: "var(--rp-shadow)",
+                cursor: canChooseOrigin ? "pointer" : "default",
+                opacity: canChooseOrigin ? 1 : 0.82,
+                textAlign: "left",
+              }}
+            >
+              <IonIcon
+                icon={locationOutline}
+                aria-hidden="true"
+                style={{ fontSize: "1.25rem", color: "var(--rp-accent)" }}
               />
-              {searchingOrigin && <IonSpinner name="dots" slot="end" />}
-            </IonItem>
 
-            <SuggestionList
-              suggestions={originSuggestions}
-              onPick={(suggestion) => void pickOrigin(suggestion)}
-            />
+              <span
+                style={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontSize: ".92rem",
+                  fontWeight: 850,
+                }}
+              >
+                {originInput.trim() || "\u00A0"}
+              </span>
+
+              {searchingOrigin ? (
+                <IonSpinner name="dots" />
+              ) : (
+                <IonIcon
+                  icon={searchOutline}
+                  aria-hidden="true"
+                  style={{ fontSize: "1.1rem", color: "var(--rp-accent)" }}
+                />
+              )}
+            </button>
 
             {originPoint?.walkMeters != null && originPoint.walkMeters > 8 && (
               <div
@@ -9481,111 +9536,211 @@ return (
               <IonIcon icon={airplaneOutline} style={{ fontSize: "1rem", flexShrink: 0 }} /> Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el destino.
               </div>
             ) : (
-              <>
-                <IonButton
-                  fill="clear"
-                  size="small"
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+                  gap: "10px",
+                  margin: "0 0 22px",
+                }}
+              >
+                <button
+                  type="button"
                   onClick={() => {
                     if (suppressPickerOpenRef.current) return;
+                    setPickerAutoFocusSearch(false);
                     setPickerTarget("origin");
                   }}
-                  style={
-                    {
-                      margin: "-4px 0 10px",
-                      /* `--color` no llegaba a pintar: sections.css lo fija con
-                         !important para todos los clear de sección. El color de
-                         estos enlaces se declara con `--rp-clear-fg`, la
-                         propiedad que lee request-ride.css. */
-                      "--rp-clear-fg": "var(--rp-accent)",
-                      fontWeight: 900,
-                      letterSpacing: ".02em",
-                    } as CSSProperties
-                  }
+                  style={{
+                    minHeight: "66px",
+                    padding: "10px 8px",
+                    borderRadius: "16px",
+                    border: "1.5px solid var(--rp-border-c)",
+                    background: "var(--rp-surface)",
+                    color: "var(--rp-field-fg)",
+                    boxShadow: "var(--rp-shadow)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "5px",
+                    fontWeight: 900,
+                  }}
                 >
-                  <IonIcon icon={navigateOutline} slot="start" />
-                  Elegir punto en el mapa
-                </IonButton>
+                  <IonIcon
+                    icon={navigateOutline}
+                    aria-hidden="true"
+                    style={{ fontSize: "1.25rem", color: "var(--rp-accent)" }}
+                  />
+                  <span style={{ fontSize: ".78rem", lineHeight: 1.15 }}>
+                    Elegir en mapa
+                  </span>
+                  <small style={{ fontSize: ".62rem", opacity: 0.72 }}>
+                    Buscar o mover punto
+                  </small>
+                </button>
 
-                <IonButton
-                  fill="clear"
-                  size="small"
+                <button
+                  type="button"
                   onClick={handleUseCurrentLocation}
                   disabled={locating}
-                  style={
-                    {
-                      margin: "-4px 0 22px",
-                      "--rp-clear-fg": "var(--rp-accent)",
-                      fontWeight: 900,
-                      letterSpacing: ".02em",
-                    } as CSSProperties
-                  }
+                  style={{
+                    minHeight: "66px",
+                    padding: "10px 8px",
+                    borderRadius: "16px",
+                    border: "1.5px solid #B98517",
+                    background:
+                      "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)",
+                    color: "#111111",
+                    boxShadow: "0 10px 20px rgba(210,164,58,.25)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "5px",
+                    fontWeight: 950,
+                    opacity: locating ? 0.72 : 1,
+                  }}
                 >
                   {locating ? (
                     <IonSpinner name="dots" />
                   ) : (
                     <>
-                      <IonIcon icon={locateOutline} slot="start" />
-                      Usar mi ubicación actual
+                      <IonIcon
+                        icon={locateOutline}
+                        aria-hidden="true"
+                        style={{ fontSize: "1.25rem" }}
+                      />
+                      <span style={{ fontSize: ".78rem", lineHeight: 1.15 }}>
+                        Mi ubicación
+                      </span>
+                      <small style={{ fontSize: ".62rem", opacity: 0.72 }}>
+                        Detectar con GPS
+                      </small>
                     </>
                   )}
-                </IonButton>
-              </>
+                </button>
+              </div>
             )}
 
             <div style={sectionLabelStyle()}>Destino</div>
 
-            <IonItem lines="none" style={inputItemStyle({ marginBottom: "14px" })}>
-              <IonIcon icon={flagOutline} slot="start" color="medium" />
-              <IonInput
-                value={destInput}
-                placeholder="Escribe 2 letras: hosp, playa, mercado..."
-                onIonInput={(event) => {
-                  if (selectedRoundTripPromotion) return;
-                  setDestInput(String(event.detail.value ?? ""));
-                  setDestinationPoint(null);
-                }}
-                readonly={Boolean(selectedRoundTripPromotion)}
-                clearInput={!selectedRoundTripPromotion}
-              />
-              {searchingDest && <IonSpinner name="dots" slot="end" />}
-            </IonItem>
-
-            <SuggestionList
-              suggestions={destSuggestions}
-              onPick={(suggestion) => void pickDestination(suggestion)}
-            />
-
-            <IonButton
-              fill="clear"
-              size="small"
+            <button
+              type="button"
+              aria-label={
+                selectedRoundTripPromotion
+                  ? `Destino fijo: ${selectedRoundTripPromotion.destinationName}`
+                  : "Abrir búsqueda y mapa para elegir el destino"
+              }
+              disabled={Boolean(selectedRoundTripPromotion)}
               onClick={() => {
-                if (selectedRoundTripPromotion) return;
-                if (suppressPickerOpenRef.current) return;
+                if (selectedRoundTripPromotion || suppressPickerOpenRef.current) return;
+                setPickerAutoFocusSearch(true);
+                setPickerTarget("destination");
+              }}
+              style={{
+                width: "100%",
+                minHeight: "58px",
+                marginBottom: "12px",
+                padding: "0 14px",
+                display: "grid",
+                gridTemplateColumns: "30px minmax(0,1fr) 30px",
+                alignItems: "center",
+                gap: "8px",
+                borderRadius: "var(--rp-radius-sm)",
+                border: "var(--rp-border-w) solid var(--rp-border-c)",
+                background: "var(--rp-field-bg)",
+                color: "var(--rp-field-fg)",
+                boxShadow: "var(--rp-shadow)",
+                cursor: selectedRoundTripPromotion ? "default" : "pointer",
+                opacity: selectedRoundTripPromotion ? 0.82 : 1,
+                textAlign: "left",
+              }}
+            >
+              <IonIcon
+                icon={flagOutline}
+                aria-hidden="true"
+                style={{ fontSize: "1.2rem", color: "var(--rp-danger-fg)" }}
+              />
+
+              <span
+                style={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontSize: ".92rem",
+                  fontWeight: 850,
+                }}
+              >
+                {destInput.trim() || "\u00A0"}
+              </span>
+
+              {searchingDest ? (
+                <IonSpinner name="dots" />
+              ) : (
+                <IonIcon
+                  icon={searchOutline}
+                  aria-hidden="true"
+                  style={{ fontSize: "1.1rem", color: "var(--rp-danger-fg)" }}
+                />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedRoundTripPromotion || suppressPickerOpenRef.current) return;
+                setPickerAutoFocusSearch(false);
                 setPickerTarget("destination");
               }}
               disabled={Boolean(selectedRoundTripPromotion)}
-              style={
-                {
-                  margin: "-4px 0 22px",
-                  /* Era #EF4444: el único literal de los cuatro enlaces del
-                     mapa. Va sobre el fondo de página, que sí cambia con el
-                     tema, y no tenía contraparte de noche (3,01:1 en día,
-                     3,49:1 en noche). El token de peligro conserva el rojo que
-                     lo emparenta con el pin de destino y sube a 4,88:1 de día y
-                     5,6:1 de noche. */
-                  "--rp-clear-fg": "var(--rp-danger-fg)",
-                  fontWeight: 900,
-                  letterSpacing: ".02em",
-                } as CSSProperties
-              }
+              style={{
+                width: "100%",
+                minHeight: "66px",
+                margin: "0 0 22px",
+                padding: "10px 14px",
+                borderRadius: "16px",
+                border: "1.5px solid var(--rp-border-c)",
+                background: "var(--rp-surface)",
+                color: "var(--rp-field-fg)",
+                boxShadow: "var(--rp-shadow)",
+                display: "grid",
+                gridTemplateColumns: "34px minmax(0,1fr)",
+                alignItems: "center",
+                gap: "10px",
+                textAlign: "left",
+                fontWeight: 900,
+                opacity: selectedRoundTripPromotion ? 0.72 : 1,
+              }}
             >
-              <IonIcon icon={flagOutline} slot="start" />
-              {selectedRoundTripPromotion
-                ? `Destino fijo: ${selectedRoundTripPromotion.destinationName}`
-                : rideMode === "scheduled"
-                  ? "Elegir destino desde el aeropuerto"
-                  : "Elegir destino en el mapa"}
-            </IonButton>
+              <IonIcon
+                icon={flagOutline}
+                aria-hidden="true"
+                style={{ fontSize: "1.3rem", color: "var(--rp-danger-fg)" }}
+              />
+              <span>
+                <strong style={{ display: "block", fontSize: ".82rem" }}>
+                  {selectedRoundTripPromotion
+                    ? `Destino fijo: ${selectedRoundTripPromotion.destinationName}`
+                    : rideMode === "scheduled"
+                      ? "Elegir destino desde el aeropuerto"
+                      : "Elegir destino"}
+                </strong>
+                {!selectedRoundTripPromotion && (
+                  <small
+                    style={{
+                      display: "block",
+                      marginTop: "3px",
+                      fontSize: ".65rem",
+                      opacity: 0.7,
+                    }}
+                  >
+                    Buscar un lugar o marcarlo directamente en el mapa
+                  </small>
+                )}
+              </span>
+            </button>
 
 
             {rideMode === "now" && (
@@ -10984,7 +11139,11 @@ return (
             {
               text: "Elegir otro lugar",
               role: "cancel",
-              handler: () => setShowInitialOriginPrompt(false),
+              handler: () => {
+                setShowInitialOriginPrompt(false);
+                setPickerAutoFocusSearch(true);
+                setPickerTarget("origin");
+              },
             },
             {
               text: "Usar mi ubicación",
@@ -11029,7 +11188,11 @@ return (
             title={pickerTarget === "origin" ? "Confirmar recogida" : "Confirmar destino"}
             mode={pickerTarget}
             initialPoint={pickerInitialPoint}
-            onCancel={() => setPickerTarget(null)}
+            autoFocusSearch={pickerAutoFocusSearch}
+            onCancel={() => {
+              setPickerAutoFocusSearch(false);
+              setPickerTarget(null);
+            }}
             onConfirm={(point) => {
               suppressPickerOpenRef.current = true;
 
@@ -11039,6 +11202,7 @@ return (
                 applyDestination(point);
               }
 
+              setPickerAutoFocusSearch(false);
               setPickerTarget(null);
 
               window.setTimeout(() => {

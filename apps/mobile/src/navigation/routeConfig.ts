@@ -28,8 +28,9 @@ export const ROUTE_METADATA: RouteMetadata[] = [
 
   // Driver
   { path: "/driver/home", label: "Inicio Conductor", role: "driver", plannedFeatures: ["Estado en línea/fuera de línea", "Solicitudes cercanas", "Estadísticas del día"] },
-  { path: "/driver/requests", label: "Solicitudes", role: "driver", plannedFeatures: ["Lista de solicitudes activas", "Aceptar/rechazar viajes", "Navegación integrada"] },
-  { path: "/driver/trips", label: "Mis Viajes", role: "driver", plannedFeatures: ["Historial de viajes completados", "Incidencias", "Calificaciones recibidas"] },
+  { path: "/driver/requests", label: "Solicitudes", role: "driver", plannedFeatures: ["Lista de solicitudes pendientes", "Aceptar/rechazar viajes"] },
+  { path: "/driver/active-ride", label: "Viaje activo", role: "driver", plannedFeatures: ["Mapa grande", "Navegación por etapas", "Controles del servicio"] },
+  { path: "/driver/trips", label: "Mis Viajes", role: "driver", plannedFeatures: ["Historial de viajes completados", "Cancelados", "Calificaciones recibidas"] },
   { path: "/driver/earnings", label: "Ganancias", role: "driver", plannedFeatures: ["Resumen diario/semanal/mensual", "Liquidaciones", "Historial de pagos"] },
   { path: "/driver/profile", label: "Perfil", role: "driver", plannedFeatures: ["Datos del vehículo", "Documentos habilitantes", "Configuración"] },
 
