@@ -8,19 +8,29 @@ const validAppleRequest = {
   nonce: "b".repeat(64),
 };
 
-describe("profile phone schemas", () => {
-  it("accepts and normalizes a phone-only profile update", () => {
-    const parsed = updateProfileSchema.parse({
-      phone: "+56 9 1234 5678",
-    });
-
-    expect(parsed.phone).toBe("+56912345678");
+describe("profile identity lock schemas", () => {
+  it("rejects direct phone changes from the self-service profile", () => {
+    expect(() =>
+      updateProfileSchema.parse({
+        phone: "+56 9 1234 5678",
+      }),
+    ).toThrow();
   });
 
-  it("rejects an invalid profile phone", () => {
+  it("rejects direct name changes from the self-service profile", () => {
     expect(() =>
-      updateProfileSchema.parse({ phone: "123" }),
+      updateProfileSchema.parse({
+        name: "Nombre alterado",
+      }),
     ).toThrow();
+  });
+
+  it("allows removing an avatar without changing identity", () => {
+    const parsed = updateProfileSchema.parse({
+      avatarUrl: null,
+    });
+
+    expect(parsed.avatarUrl).toBeNull();
   });
 
   it("accepts a valid phone during Apple account setup", () => {

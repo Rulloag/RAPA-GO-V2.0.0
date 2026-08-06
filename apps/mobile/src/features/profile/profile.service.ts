@@ -8,14 +8,14 @@ export interface ProfileData {
   status:     string;
   avatarUrl:  string | null;
   phone:      string | null;
+  rut:        string | null;
+  birthDate:  string | null;
   isVerified: boolean;
   createdAt:  string;
 }
 
 export interface UpdateProfilePayload {
-  name?: string;
   avatarUrl?: string | null;
-  phone?: string;
 }
 
 type ProfileEnvelope = { ok: true; data: ProfileData; statusCode: number };

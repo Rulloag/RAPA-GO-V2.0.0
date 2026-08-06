@@ -80,14 +80,11 @@ export interface DriverRestComplianceData {
 }
 
 export interface UpsertDriverProfilePayload {
-  phone?:           string;
   vehicleBrand?:    string;
   vehicleModel?:    string;
   vehicleYear?:     number;
   vehiclePlate?:    string;
   vehicleColor?:    string;
-  licenseNumber?:   string;
-  licenseExpiry?:   string;
   profilePhotoUrl?: string;
   vehiclePhotoUrl?: string;
   bio?:             string;

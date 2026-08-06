@@ -13,6 +13,8 @@ const {
   listEvents,
   addRequesterMessage,
   updateByAdmin,
+  findRequesterIdentity,
+  updateRequesterIdentityByAdmin,
   findActiveAdminIds,
   createNotification,
 } = vi.hoisted(() => ({
@@ -28,6 +30,8 @@ const {
   listEvents: vi.fn(),
   addRequesterMessage: vi.fn(),
   updateByAdmin: vi.fn(),
+  findRequesterIdentity: vi.fn().mockResolvedValue(null),
+  updateRequesterIdentityByAdmin: vi.fn(),
   findActiveAdminIds: vi.fn().mockResolvedValue([]),
   createNotification: vi.fn().mockResolvedValue({}),
 }));
@@ -56,6 +60,8 @@ vi.mock("../support.repository.js", () => ({
     listEvents,
     addRequesterMessage,
     updateByAdmin,
+    findRequesterIdentity,
+    updateRequesterIdentityByAdmin,
     findActiveAdminIds,
   })),
 }));
@@ -248,6 +254,59 @@ describe("SupportService", () => {
     expect(result.ok).toBe(true);
     expect(updateByAdmin).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: ADMIN_ID, supportCaseId: CASE_ID }));
     expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({ userId: PASSENGER_ID, type: "support_case_updated" }));
+  });
+
+  it("permite al admin corregir identidad solo desde un caso autorizado", async () => {
+    authenticateAs(admin);
+    const identityCase = {
+      ...caseWithRequester,
+      category: "identity_correction",
+      requesterUserId: DRIVER_ID,
+      requesterRole: "driver",
+    };
+    const correctedIdentity = {
+      userId: DRIVER_ID,
+      role: "driver",
+      name: "Conductor Corregido",
+      email: "conductor@test.cl",
+      phone: "56912345678",
+      rut: "12345678-5",
+      birthDate: "1999-01-31",
+      licenseNumber: "LIC-123",
+      licenseExpiry: "2030-12-31",
+    };
+
+    findByIdWithRequester
+      .mockResolvedValueOnce(identityCase)
+      .mockResolvedValueOnce(identityCase);
+    updateRequesterIdentityByAdmin.mockResolvedValue(correctedIdentity);
+    updateByAdmin.mockResolvedValue({
+      ...supportCase,
+      category: "identity_correction",
+      requesterUserId: DRIVER_ID,
+      requesterRole: "driver",
+    });
+    findRequesterIdentity.mockResolvedValue(correctedIdentity);
+
+    const result = await service.updateForAdmin("token", CASE_ID, {
+      identityCorrection: {
+        name: "Conductor Corregido",
+        licenseNumber: "LIC-123",
+      },
+      assignToMe: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(updateRequesterIdentityByAdmin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        supportCaseId: CASE_ID,
+        actorUserId: ADMIN_ID,
+        correction: expect.objectContaining({
+          name: "Conductor Corregido",
+          licenseNumber: "LIC-123",
+        }),
+      }),
+    );
   });
 
   it("bloquea una sesión revocada", async () => {

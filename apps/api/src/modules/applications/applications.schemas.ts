@@ -59,6 +59,10 @@ export const applicationVehicleSchema = z.object({
 export const createDriverApplicationSchema = z.object({
   type: z.literal("driver"),
   ...personalFields,
+  birthDate: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Ingresa una fecha de nacimiento válida."),
   vehicleBrand: z.string().trim().optional(),
   vehicleModel: z.string().trim().optional(),
   vehicleYear: z.number().int().optional(),

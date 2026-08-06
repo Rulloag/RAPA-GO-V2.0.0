@@ -21,7 +21,7 @@ import {
 } from "@ionic/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { alertCircleOutline, checkmarkCircleOutline, logoWhatsapp } from "ionicons/icons";
-import { useHistory } from "react-router-dom";
+import { useHistory, useLocation } from "react-router-dom";
 import { useAuth } from "../../features/auth/index.js";
 import { ridesService, type DriverRideData, type RideRequestData } from "../../features/rides/rides.service.js";
 import {
@@ -41,6 +41,7 @@ const CATEGORY_LABEL: Record<SupportCategory, string> = {
   lost_item: "Objeto perdido",
   safety: "Seguridad o emergencia",
   payment: "Pago o devolución",
+  identity_correction: "Corrección de datos personales",
   other: "Otro",
 };
 const STATUS_LABEL: Record<string, string> = {
@@ -79,6 +80,7 @@ function formatDate(value: string | null | undefined): string {
 
 export function SupportCenterPage(): JSX.Element {
   const history = useHistory();
+  const location = useLocation();
   const { session, user } = useAuth();
   // Solo se lee: el interruptor único vive en el encabezado de Inicio.
   const { theme } = useRapagoSectionTheme("support");
@@ -142,6 +144,19 @@ export function SupportCenterPage(): JSX.Element {
   }, [session?.accessToken, user?.role]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const requestedCategory = new URLSearchParams(location.search).get("category");
+    if (requestedCategory !== "identity_correction") return;
+
+    setCategory("identity_correction");
+    setSubject((current) => current || "Solicitud de corrección de datos personales");
+    setDescription((current) =>
+      current ||
+      "Indica qué dato necesitas corregir y el motivo. Administración verificará la solicitud antes de aplicar cualquier cambio.",
+    );
+  }, [location.search]);
+
 
   async function createCase(): Promise<void> {
     if (!session?.accessToken) return;
@@ -230,8 +245,8 @@ export function SupportCenterPage(): JSX.Element {
             <p className="rp-hero__kicker">Centro de ayuda</p>
             <h1 className="rp-hero__title">Soporte RAPA GO</h1>
             <p className="rp-hero__note">
-              Crea un reclamo, reporta un objeto perdido o revisa el
-              seguimiento administrativo con un folio único.
+              Crea un reclamo, solicita una corrección de identidad, reporta
+              un objeto perdido o revisa el seguimiento administrativo con un folio único.
             </p>
             <IonButton
               className="rp-cta"
@@ -280,7 +295,11 @@ export function SupportCenterPage(): JSX.Element {
                 <IonSelectOption value="">Sin viaje relacionado</IonSelectOption>
                 {selectableRides.map((ride) => <IonSelectOption key={ride.id} value={ride.id}>{ride.originText} → {ride.destinationText} · {ride.status}</IonSelectOption>)}
               </IonSelect>
-              <IonNote slot="helper">Objetos perdidos: solo viajes completados.</IonNote>
+              <IonNote slot="helper">
+                {category === "identity_correction"
+                  ? "Las correcciones de identidad no necesitan asociarse a un viaje."
+                  : "Objetos perdidos: solo viajes completados."}
+              </IonNote>
             </IonItem>
             <IonItem style={{ marginTop: 10 }}>
               <IonLabel position="stacked">Asunto</IonLabel>
