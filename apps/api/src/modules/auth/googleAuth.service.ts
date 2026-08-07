@@ -45,6 +45,7 @@ type GoogleRequestMetadata = {
 };
 
 type PassengerSetup = {
+  displayName: string;
   phone: string;
   rut: string;
   requestedFareType: GooglePassengerFareType;
@@ -54,6 +55,17 @@ type PassengerSetup = {
 
 function toUserRole(raw: string): UserRole {
   return raw as UserRole;
+}
+
+function normalizeDisplayName(value: string | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 100);
+}
+
+function isValidDisplayName(value: string): boolean {
+  return value.length >= 2 && value.length <= 100;
 }
 
 function normalizePhone(value: string | undefined): string {
@@ -259,7 +271,7 @@ export class GoogleAuthService {
 
     const created = await this.identitiesRepository.createUserWithIdentity({
       email: identity.email,
-      name: identity.name,
+      name: prepared.setup.displayName,
       role: "passenger",
       status: "active",
       isVerified: true,
@@ -346,17 +358,18 @@ export class GoogleAuthService {
     | { ok: true; setup: PassengerSetup }
     | { ok: false; result: Extract<GoogleAuthResult, { ok: false }> }
   > {
+    const displayName = normalizeDisplayName(payload.displayName);
     const phone = normalizePhone(payload.phone);
     const requestedFareType = normalizeFareType(payload.passengerFareType);
 
-    if (!isValidPhone(phone) || !requestedFareType) {
+    if (!isValidDisplayName(displayName) || !isValidPhone(phone) || !requestedFareType) {
       return {
         ok: false,
         result: {
           ok: false,
           code: "AUTH_GOOGLE_SETUP_REQUIRED",
           message:
-            "Completa tu celular, categoría de pasajero y documentos legales para crear la cuenta con Google.",
+            "Completa tu nombre, celular, categoría de pasajero y documentos legales para crear la cuenta con Google.",
           statusCode: 409,
           displayEmail,
         },
@@ -470,6 +483,7 @@ export class GoogleAuthService {
     return {
       ok: true,
       setup: {
+        displayName,
         phone,
         rut: rut || passport,
         requestedFareType,

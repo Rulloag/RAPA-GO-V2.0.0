@@ -1,5 +1,7 @@
 export type RideReceiptType =
   | "completed_ride"
+  | "cancelled_ride"
+  | "no_show_closure"
   | "late_cancellation"
   | "no_show";
 

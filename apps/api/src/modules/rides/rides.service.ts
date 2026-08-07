@@ -22,6 +22,7 @@ import type {
   RidePolicyChargeResponse,
   PolicyChargesResult,
   AdminPolicyChargesResult,
+  RideRouteHistoryResult,
 } from "./rides.types.js";
 import type { RideRequest } from "../../db/schema/index.js";
 import type { RidePolicyCharge } from "../../db/schema/ridePolicyCharges.schema.js";
@@ -885,6 +886,61 @@ export class RidesService {
     return { ok: true, rides: responses };
   }
 
+  async getRideRouteHistory(
+    accessToken: string,
+    rideId: string,
+  ): Promise<RideRouteHistoryResult> {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    const ride = await ridesRepo.findById(rideId);
+    if (!ride) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Ride request not found.",
+        statusCode: 404,
+      };
+    }
+
+    const canRead =
+      auth.role === "admin" ||
+      ride.passengerUserId === auth.userId ||
+      ride.driverUserId === auth.userId;
+
+    if (!canRead) {
+      return {
+        ok: false,
+        code: "AUTH_FORBIDDEN",
+        message: "You cannot access the recorded route for this ride.",
+        statusCode: 403,
+      };
+    }
+
+    const routeFrom =
+      ride.status === "completed"
+        ? ride.startedAt ?? ride.acceptedAt ?? ride.requestedAt
+        : ride.acceptedAt ?? ride.requestedAt;
+    const routeTo =
+      ride.completedAt ?? ride.cancelledAt ?? ride.updatedAt ?? new Date();
+    const points = await ridesRepo.listRouteHistory(
+      rideId,
+      routeFrom,
+      routeTo,
+    );
+
+    return {
+      ok: true,
+      rideId,
+      points: points.map((point) => ({
+        lat: point.latitude,
+        lng: point.longitude,
+        accuracyMeters: point.accuracyMeters ?? null,
+        capturedAt: point.capturedAt.toISOString(),
+      })),
+    };
+  }
+
   async createRideRequest(
     accessToken: string,
     input: CreateRideRequestInput,
@@ -1148,6 +1204,14 @@ export class RidesService {
       ? toPolicyChargeResponse(policyCharge)
       : null;
     response["paymentRefund"] = paymentRefund;
+
+    queueReceiptWithoutBlocking(
+      rideReceiptsService.queueCancelledRide(
+        cancelled.id,
+        policyCharge?.id ?? null,
+      ),
+      `No se pudo encolar el comprobante de cancelación ${cancelled.id}`,
+    );
 
     return { ok: true, ride: response };
   }
@@ -1782,6 +1846,14 @@ export class RidesService {
       responseRide["requeuedAfterDriverCancellation"] = true;
       responseRide["passengerNotice"] =
         "Tu conductor canceló el viaje. Estamos buscando uno nuevo.";
+    } else {
+      queueReceiptWithoutBlocking(
+        rideReceiptsService.queueCancelledRide(
+          cancelled.id,
+          policyCharge?.id ?? null,
+        ),
+        `No se pudo encolar el comprobante de cancelación ${cancelled.id}`,
+      );
     }
 
     return {
@@ -2235,6 +2307,14 @@ export class RidesService {
     response["policyCharge"] = charge
       ? toPolicyChargeResponse(charge)
       : null;
+
+    queueReceiptWithoutBlocking(
+      rideReceiptsService.queueNoShowRide(
+        closed.id,
+        charge?.id ?? null,
+      ),
+      `No se pudo encolar el comprobante de no-show ${closed.id}`,
+    );
 
     return {
       ok: true,

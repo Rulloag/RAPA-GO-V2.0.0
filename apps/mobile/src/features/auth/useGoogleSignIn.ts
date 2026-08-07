@@ -42,6 +42,7 @@ export interface UseGoogleSignInResult {
   completeSetup: (input: {
     passengerFareType: GooglePassengerFareType;
     acceptedDocumentIds: string[];
+    displayName: string;
     phone: string;
     rut?: string;
     passport?: string;
@@ -60,7 +61,7 @@ function mapGoogleError(code: string, message: string): GoogleSignInOutcome {
     const isInitialSetupPrompt =
       code === "AUTH_GOOGLE_SETUP_REQUIRED" &&
       message.startsWith(
-        "Completa tu celular, categoría de pasajero y documentos legales",
+        "Completa tu nombre, celular, categoría de pasajero y documentos legales",
       );
 
     return isInitialSetupPrompt
@@ -230,6 +231,7 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
     async (input: {
       passengerFareType: GooglePassengerFareType;
       acceptedDocumentIds: string[];
+      displayName: string;
       phone: string;
       rut?: string;
       passport?: string;
@@ -247,6 +249,7 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
       try {
         const acceptedIds = new Set(input.acceptedDocumentIds);
         return await submitToken(idToken, {
+          displayName: input.displayName,
           phone: input.phone,
           passengerFareType: input.passengerFareType,
           ...(input.rut ? { rut: input.rut } : {}),

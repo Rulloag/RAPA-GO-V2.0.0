@@ -70,6 +70,7 @@ function logAppleStage(
 }
 
 type PassengerSetup = {
+  displayName: string;
   phone: string;
   rut: string;
   requestedFareType: ApplePassengerFareType;
@@ -90,6 +91,17 @@ function toUserRole(raw: string): UserRole {
 /** Mirrors AuthService's role-to-initial-status rule. */
 function roleInitialStatus(role: UserRole): "active" | "pending" {
   return role === "passenger" ? "active" : "pending";
+}
+
+function normalizeDisplayName(value: string | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 100);
+}
+
+function isValidDisplayName(value: string): boolean {
+  return value.length >= 2 && value.length <= 100;
 }
 
 function sanitizeNamePart(part: string | undefined): string {
@@ -551,6 +563,7 @@ export class AppleAuthService {
       nonce: "0".repeat(64),
       role: "passenger",
       ...(prepared.name ? { name: prepared.name } : {}),
+      ...(input.displayName ? { displayName: input.displayName } : {}),
       ...(input.phone ? { phone: input.phone } : {}),
       ...(input.contactEmail
         ? { contactEmail: input.contactEmail }
@@ -779,17 +792,18 @@ export class AppleAuthService {
     | { ok: true; setup: PassengerSetup }
     | { ok: false; result: AppleAuthFailure }
   > {
+    const displayName = normalizeDisplayName(payload.displayName);
     const phone = normalizeApplePhone(payload.phone);
     const requestedFareType = normalizeFareType(payload.passengerFareType);
 
-    if (!isValidApplePhone(phone) || !requestedFareType) {
+    if (!isValidDisplayName(displayName) || !isValidApplePhone(phone) || !requestedFareType) {
       return {
         ok: false,
         result: {
           ok: false,
           code: "AUTH_APPLE_SETUP_REQUIRED",
           message:
-            "Completa tu celular, categoría de pasajero y documentos legales para crear la cuenta con Apple.",
+            "Completa tu nombre, celular, categoría de pasajero y documentos legales para crear la cuenta con Apple.",
           statusCode: 409,
         },
       };
@@ -968,6 +982,7 @@ export class AppleAuthService {
     return {
       ok: true,
       setup: {
+        displayName,
         phone,
         rut: rut || passport,
         requestedFareType,
@@ -1291,7 +1306,7 @@ export class AppleAuthService {
 
     const created = await this.identitiesRepository.createUserWithIdentity({
       email,
-      name: buildName(payload.name, email),
+      name: passengerSetup?.displayName ?? buildName(payload.name, email),
       role: payload.role,
       status: roleInitialStatus(payload.role),
       isVerified: identityClaims.emailVerified,

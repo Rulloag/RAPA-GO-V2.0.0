@@ -45,6 +45,8 @@ export interface AppleSignInRequest {
   };
   /** Required only for creation of a new account. */
   role?: UserRole;
+  /** Nombre visible confirmado por la persona durante el alta social. */
+  displayName?: string;
   phone?: string;
   /**
    * Contact email typed by the user, only when Apple's identity token did
@@ -63,6 +65,7 @@ export interface AppleSignInRequest {
 
 export interface AppleWebCompleteRequest {
   flowToken: string;
+  displayName?: string;
   phone?: string;
   contactEmail?: string;
   rut?: string;
@@ -85,6 +88,8 @@ export type GooglePassengerFareType = ApplePassengerFareType;
 export interface GoogleSignInRequest {
   /** Google ID token; the backend verifies signature, issuer and audience. */
   idToken: string;
+  /** Nombre visible confirmado por la persona durante el alta social. */
+  displayName?: string;
   phone?: string;
   rut?: string;
   passport?: string;

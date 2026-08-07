@@ -306,6 +306,7 @@ describe("useAppleSignIn", () => {
       outcome = await result.current.completeSetup({
         passengerFareType: "chilean",
         acceptedDocumentIds: ["legal-terms", "legal-privacy", "legal-users"],
+        displayName: "Pasajero Apple",
         phone: "+56912345678",
         rut: "11111111-1",
       });
@@ -340,6 +341,7 @@ describe("useAppleSignIn", () => {
       outcome = await result.current.completeSetup({
         passengerFareType: "chilean",
         acceptedDocumentIds: ["legal-terms", "legal-privacy", "legal-users"],
+        displayName: "Pasajero Apple",
         phone: "+56912345678",
         rut: "12345678-5",
       });

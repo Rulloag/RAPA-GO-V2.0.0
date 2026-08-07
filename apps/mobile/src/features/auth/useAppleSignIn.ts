@@ -110,7 +110,16 @@ function mapBackendError(code: string, message: string): AppleSignInOutcome {
 
   if (ROLE_REQUIRED_CODES.has(code)) return { kind: "role_required" };
   if (SETUP_REQUIRED_CODES.has(code)) {
-    return { kind: "setup_required", message: fixedMessage ?? message };
+    const resolvedMessage = fixedMessage ?? message;
+    const isInitialSetupPrompt =
+      code === "AUTH_APPLE_SETUP_REQUIRED" &&
+      resolvedMessage.startsWith(
+        "Completa tu nombre, celular, categoría de pasajero y documentos legales",
+      );
+
+    return isInitialSetupPrompt
+      ? { kind: "setup_required" }
+      : { kind: "setup_required", message: resolvedMessage };
   }
   if (LINKING_REQUIRED_CODES.has(code)) {
     return { kind: "linking_required", message: fixedMessage ?? message };
@@ -148,6 +157,7 @@ export interface UseAppleSignInResult {
   completeSetup: (input: {
     passengerFareType: ApplePassengerFareType;
     acceptedDocumentIds: string[];
+    displayName: string;
     phone: string;
     rut?: string;
     passport?: string;
@@ -286,6 +296,7 @@ export function useAppleSignIn(): UseAppleSignInResult {
     async (
       flowToken: string,
       extras: {
+        displayName?: string;
         phone?: string;
         contactEmail?: string;
         rut?: string;
@@ -479,6 +490,7 @@ export function useAppleSignIn(): UseAppleSignInResult {
     async (input: {
       passengerFareType: ApplePassengerFareType;
       acceptedDocumentIds: string[];
+      displayName: string;
       phone: string;
       rut?: string;
       passport?: string;
@@ -500,6 +512,7 @@ export function useAppleSignIn(): UseAppleSignInResult {
         setLoading(true);
         try {
           return await submitWebToBackend(webFlowToken, {
+            displayName: input.displayName,
             phone: input.phone,
             passengerFareType: input.passengerFareType,
             ...(input.rut ? { rut: input.rut } : {}),
@@ -531,6 +544,7 @@ export function useAppleSignIn(): UseAppleSignInResult {
       try {
         return await submitToBackend(credentials, {
           role,
+          displayName: input.displayName,
           phone: input.phone,
           passengerFareType: input.passengerFareType,
           ...(input.rut ? { rut: input.rut } : {}),

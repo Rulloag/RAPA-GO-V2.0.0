@@ -271,6 +271,10 @@ function receiptTitle(type: RideReceiptType): string {
   switch (type) {
     case "completed_ride":
       return "COMPROBANTE DE VIAJE";
+    case "cancelled_ride":
+      return "COMPROBANTE DE CANCELACIÓN";
+    case "no_show_closure":
+      return "COMPROBANTE DE NO-SHOW";
     case "late_cancellation":
       return "COMPROBANTE DE CANCELACIÓN";
     case "no_show":
@@ -285,6 +289,10 @@ function receiptBadge(type: RideReceiptType): {
   switch (type) {
     case "completed_ride":
       return { label: "VIAJE COMPLETADO", color: COLOR.green };
+    case "cancelled_ride":
+      return { label: "VIAJE CANCELADO", color: COLOR.maroon };
+    case "no_show_closure":
+      return { label: "NO-SHOW REGISTRADO", color: COLOR.red };
     case "late_cancellation":
       return { label: "CARGO APROBADO", color: COLOR.maroon };
     case "no_show":
@@ -474,7 +482,13 @@ function buildContent(input: RideReceiptPdfInput): string {
   } else {
     canvas.fillRect(638, MARGIN, contentWidth, 116, COLOR.legal);
     canvas.strokeRect(638, MARGIN, contentWidth, 116, COLOR.gold, 1);
-    canvas.text("INFORMACIÓN DEL CARGO", 654, MARGIN + 15, {
+    const closureHeading =
+      input.type === "cancelled_ride"
+        ? "INFORMACIÓN DE LA CANCELACIÓN"
+        : input.type === "no_show" || input.type === "no_show_closure"
+          ? "INFORMACIÓN DEL NO-SHOW"
+          : "INFORMACIÓN DEL CARGO";
+    canvas.text(closureHeading, 654, MARGIN + 15, {
       size: 9.5,
       bold: true,
       color: COLOR.maroon,
@@ -489,7 +503,8 @@ function buildContent(input: RideReceiptPdfInput): string {
     const policy = [
       input.policyPercent == null ? null : `${input.policyPercent}%`,
       input.policyCapClp == null ? null : `tope ${formatClp(input.policyCapClp)}`,
-      input.type === "no_show" && input.noShowWaitMinutes != null
+      (input.type === "no_show" || input.type === "no_show_closure") &&
+      input.noShowWaitMinutes != null
         ? `espera ${input.noShowWaitMinutes} min`
         : null,
     ].filter((value): value is string => Boolean(value));

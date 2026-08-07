@@ -71,6 +71,26 @@ export const ridesController = {
     sendOk(reply, result.rides);
   },
 
+  async getRideRouteHistory(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = requireToken(request, reply);
+    if (!token) return;
+
+    const result = await ridesService.getRideRouteHistory(
+      token,
+      request.params.id,
+    );
+
+    if (!result.ok) {
+      sendServiceError(reply, result);
+      return;
+    }
+
+    sendOk(reply, { rideId: result.rideId, points: result.points });
+  },
+
   async createRideRequest(
     request: FastifyRequest,
     reply: FastifyReply,

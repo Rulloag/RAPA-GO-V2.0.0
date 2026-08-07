@@ -157,6 +157,7 @@ const PASSENGER_LEGAL_ACCEPTANCES = [
 const basePayload = {
   identityToken: "fake-identity-token",
   authorizationCode: "fake-authorization-code",
+  displayName: "Pasajero Apple",
   phone: "+56912345678",
   passengerFareType: "chilean" as const,
   // RUT obligatorio para la categoría "chilean" (ver preparePassengerSetup).
@@ -273,40 +274,50 @@ describe("AppleAuthService.signIn", () => {
     );
   });
 
-  it("uses the provided name on first login", async () => {
-    const newUser = { id: "user-new2", email: "newuser@example.com", name: "Jane Appleseed", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
+  it("uses the displayName confirmed in the passenger setup instead of trusting Apple's optional name", async () => {
+    const newUser = { id: "user-new2", email: "newuser@example.com", name: "Nombre Confirmado", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
     const fakes = buildFakes({
       existingIdentity: null,
       userByEmail: null,
       createUserWithIdentityResult: { user: newUser, identity: { id: "identity-2" } },
     });
 
-    await fakes.service.signIn({ ...basePayload, role: "passenger", name: { givenName: "Jane", familyName: "Appleseed" } });
+    await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      displayName: "Nombre Confirmado",
+      name: { givenName: "Jane", familyName: "Appleseed" },
+    });
 
     expect(fakes.mockCreateUserWithIdentity).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Jane Appleseed" }),
+      expect.objectContaining({ name: "Nombre Confirmado" }),
     );
   });
 
-  it("falls back to the email local part when name is absent on a later/first login without name", async () => {
-    const newUser = { id: "user-new3", email: "newuser@example.com", name: "newuser", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
+  it("uses the required passenger displayName even when Apple does not send a name", async () => {
+    const newUser = { id: "user-new3", email: "newuser@example.com", name: "Nombre Manual", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
     const fakes = buildFakes({
       existingIdentity: null,
       userByEmail: null,
       createUserWithIdentityResult: { user: newUser, identity: { id: "identity-3" } },
     });
 
-    await fakes.service.signIn({ ...basePayload, role: "passenger" });
+    await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      displayName: "Nombre Manual",
+    });
 
     expect(fakes.mockCreateUserWithIdentity).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "newuser" }),
+      expect.objectContaining({ name: "Nombre Manual" }),
     );
   });
 
-  it("caps the email-local-part name fallback at 50 characters, same as the given/family name path", async () => {
+  it("caps a direct-service passenger displayName at 100 characters", async () => {
     const longLocalPart = "a".repeat(80);
     const longEmail = `${longLocalPart}@example.com`;
-    const newUser = { id: "user-longname", email: longEmail, name: longLocalPart.slice(0, 50), role: "passenger", status: "active", avatarUrl: null, isVerified: true };
+    const longDisplayName = "N".repeat(120);
+    const newUser = { id: "user-longname", email: longEmail, name: longDisplayName.slice(0, 100), role: "passenger", status: "active", avatarUrl: null, isVerified: true };
     const fakes = buildFakes({
       existingIdentity: null,
       userByEmail: null,
@@ -315,11 +326,15 @@ describe("AppleAuthService.signIn", () => {
       createUserWithIdentityResult: { user: newUser, identity: { id: "identity-longname" } },
     });
 
-    await fakes.service.signIn({ ...basePayload, role: "passenger" });
+    await fakes.service.signIn({
+      ...basePayload,
+      role: "passenger",
+      displayName: longDisplayName,
+    });
 
     const call = fakes.mockCreateUserWithIdentity.mock.calls[0]?.[0] as { name: string };
-    expect(call.name.length).toBeLessThanOrEqual(50);
-    expect(call.name).toBe(longLocalPart.slice(0, 50));
+    expect(call.name.length).toBeLessThanOrEqual(100);
+    expect(call.name).toBe(longDisplayName.slice(0, 100));
   });
 
   it("resolves a duplicate-creation race by falling back to the existing identity", async () => {

@@ -179,6 +179,21 @@ export type AvailableRidesResult =
   | { ok: true; rides: AvailableRideResponse[] }
   | { ok: false; code: string; message: string; statusCode: number };
 
+export interface RideRouteHistoryPointResponse {
+  lat: number;
+  lng: number;
+  accuracyMeters: number | null;
+  capturedAt: string;
+}
+
+export type RideRouteHistoryResult =
+  | {
+      ok: true;
+      rideId: string;
+      points: RideRouteHistoryPointResponse[];
+    }
+  | { ok: false; code: string; message: string; statusCode: number };
+
 export type RidesListResult =
   | { ok: true; rides: RideRequestResponse[] }
   | { ok: false; code: string; message: string; statusCode: number };

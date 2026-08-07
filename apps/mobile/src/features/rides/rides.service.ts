@@ -115,6 +115,13 @@ export interface RideRequestData {
   policyChargesAppliedClp?: number;
 }
 
+export interface RideRouteHistoryPoint {
+  lat: number;
+  lng: number;
+  accuracyMeters: number | null;
+  capturedAt: string;
+}
+
 export interface RideStopData {
   id: string;
   rideRequestId: string;
@@ -247,6 +254,25 @@ export const ridesService = {
     const result = await apiClient.get<RidesEnvelope>("/rides/me", { token: accessToken });
     if (result.ok === false) throw new Error(result.message ?? "Failed to load rides.");
     return (result.data as RidesEnvelope).data;
+  },
+
+  async getRideRouteHistory(
+    accessToken: string,
+    rideId: string,
+  ): Promise<RideRouteHistoryPoint[]> {
+    type Envelope = {
+      ok: true;
+      data: { rideId: string; points: RideRouteHistoryPoint[] };
+      statusCode: number;
+    };
+    const result = await apiClient.get<Envelope>(
+      `/rides/${rideId}/route-history`,
+      { token: accessToken },
+    );
+    if (result.ok === false) {
+      throw new Error(result.message ?? "Failed to load ride route history.");
+    }
+    return (result.data as Envelope).data.points;
   },
 
   async createRideRequest(accessToken: string, input: CreateRideInput): Promise<RideRequestData> {

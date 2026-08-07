@@ -141,6 +141,7 @@ type ResidentVerificationDocumentData = ResidenceDocumentMeta & {
 };
 
 type PassengerRegistrationProfile = {
+  name?: string;
   email?: string;
   phone?: string;
   rut?: string;
@@ -643,6 +644,7 @@ export function LoginPage(): JSX.Element {
   async function completeGoogleSetup(input: {
     passengerFareType: "resident" | "chilean" | "foreigner";
     acceptedDocumentIds: string[];
+    displayName: string;
     phone: string;
     rut?: string;
     passport?: string;
@@ -668,6 +670,7 @@ export function LoginPage(): JSX.Element {
         foreigner: "turista_extranjero",
       };
       persistPassengerProfile({
+        name: input.displayName,
         email: google.setupDisplayEmail,
         phone: cleanPhone,
         rut: input.rut ?? "",
@@ -753,6 +756,7 @@ export function LoginPage(): JSX.Element {
   async function completeAppleSetup(input: {
     passengerFareType: "resident" | "chilean" | "foreigner";
     acceptedDocumentIds: string[];
+    displayName: string;
     phone: string;
     rut?: string;
     passport?: string;
@@ -774,6 +778,7 @@ export function LoginPage(): JSX.Element {
         foreigner: "turista_extranjero",
       };
       persistPassengerProfile({
+        name: input.displayName,
         phone: cleanPhone,
         nationality: getPassengerFareLabel(input.passengerFareType),
         passengerFareLabel: getPassengerFareLabel(input.passengerFareType),
@@ -1490,6 +1495,38 @@ export function LoginPage(): JSX.Element {
             </IonText>
           )}
 
+          <div className="rapago-auth-primary-options" data-auth-order="apple-google-email">
+            <AppleSignInButton
+              isAvailable={apple.isAvailable}
+              loading={apple.loading}
+              disabled={loading}
+              onPress={() => void startAppleSignIn()}
+            />
+
+            <GoogleSignInButton
+              isAvailable={google.isAvailable}
+              loading={google.loading}
+              disabled={loading || apple.loading}
+              onNativePress={() => void startGoogleNativeSignIn()}
+              onWebCredential={(idToken) => {
+                void handleGoogleWebCredential(idToken);
+              }}
+              onError={setServerError}
+            />
+
+            <IonButton
+              expand="block"
+              disabled={loading}
+              onClick={goToRegister}
+              type="button"
+              className="rapago-auth-btn-primary rapago-auth-create-email"
+            >
+              Crear cuenta con correo + contraseña
+            </IonButton>
+          </div>
+
+          <div className="rapago-auth-divider">¿Ya tienes cuenta con correo?</div>
+
           <IonItem
             className={`rapago-auth-field ${fieldErrors.email ? "ion-invalid" : ""}`}
             lines="none"
@@ -1569,54 +1606,26 @@ export function LoginPage(): JSX.Element {
             </IonButton>
           </div>
 
-          <div className="rapago-auth-divider">o</div>
-
           {facebookLoginEnabled && (
-            <IonButton
-              expand="block"
-              fill="outline"
-              disabled={loading}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                openFacebookStep();
-              }}
-              type="button"
-              className="rapago-auth-btn-outline"
-            >
-              <IonIcon slot="start" icon={logoFacebook} />
-              Continuar con Facebook
-            </IonButton>
+            <>
+              <div className="rapago-auth-divider">Otros métodos</div>
+              <IonButton
+                expand="block"
+                fill="outline"
+                disabled={loading}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  openFacebookStep();
+                }}
+                type="button"
+                className="rapago-auth-btn-outline"
+              >
+                <IonIcon slot="start" icon={logoFacebook} />
+                Continuar con Facebook
+              </IonButton>
+            </>
           )}
-
-          <GoogleSignInButton
-            isAvailable={google.isAvailable}
-            loading={google.loading}
-            disabled={loading || apple.loading}
-            onNativePress={() => void startGoogleNativeSignIn()}
-            onWebCredential={(idToken) => {
-              void handleGoogleWebCredential(idToken);
-            }}
-            onError={setServerError}
-          />
-
-          <AppleSignInButton
-            isAvailable={apple.isAvailable}
-            loading={apple.loading}
-            disabled={loading}
-            onPress={() => void startAppleSignIn()}
-          />
-
-          <IonButton
-            expand="block"
-            fill="clear"
-            disabled={loading}
-            onClick={goToRegister}
-            type="button"
-            className="rapago-auth-btn-clear"
-          >
-            ¿No tienes cuenta? Crear cuenta
-          </IonButton>
 
           <IonButton
             expand="block"

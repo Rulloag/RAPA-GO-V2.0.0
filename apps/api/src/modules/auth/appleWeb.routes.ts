@@ -89,6 +89,7 @@ const APPLE_WEB_RATE_LIMIT = {
 
 const appleWebCompleteSchema = z.object({
   flowToken: z.string().trim().min(100).max(30000),
+  displayName: z.string().trim().min(2).max(100).optional(),
   phone: z
     .string()
     .trim()
@@ -418,6 +419,9 @@ export async function appleWebRoutes(
           AppleWebCompleteInput,
           "flowToken"
         > = {
+          ...(parsed.data.displayName !== undefined
+            ? { displayName: parsed.data.displayName }
+            : {}),
           ...(parsed.data.phone !== undefined
             ? { phone: parsed.data.phone }
             : {}),

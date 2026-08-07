@@ -1,8 +1,9 @@
-import { and, asc, avg, count, desc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, asc, avg, count, desc, eq, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
   driverProfiles,
   rideDriverAssignments,
+  rideLocationUpdates,
   rideRatings,
   rideRequests,
   transactions,
@@ -294,6 +295,42 @@ export class RidesRepository {
       return rows[0] ?? null;
     } catch (err) {
       throw AppError.internal(`Failed to query ride request: ${String(err)}`);
+    }
+  }
+
+  async listRouteHistory(
+    rideId: string,
+    from: Date | null = null,
+    to: Date | null = null,
+  ): Promise<Array<{
+    latitude: number;
+    longitude: number;
+    accuracyMeters: number | null;
+    capturedAt: Date;
+  }>> {
+    try {
+      const conditions = [
+        eq(rideLocationUpdates.rideId, rideId),
+        eq(rideLocationUpdates.isMocked, false),
+      ];
+      if (from) conditions.push(gte(rideLocationUpdates.capturedAt, from));
+      if (to) conditions.push(lte(rideLocationUpdates.capturedAt, to));
+
+      return await db
+        .select({
+          latitude: rideLocationUpdates.latitude,
+          longitude: rideLocationUpdates.longitude,
+          accuracyMeters: rideLocationUpdates.accuracyMeters,
+          capturedAt: rideLocationUpdates.capturedAt,
+        })
+        .from(rideLocationUpdates)
+        .where(and(...conditions))
+        .orderBy(asc(rideLocationUpdates.capturedAt))
+        .limit(3000);
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to query ride route history: ${String(err)}`,
+      );
     }
   }
 

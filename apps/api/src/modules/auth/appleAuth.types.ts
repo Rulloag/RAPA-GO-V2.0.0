@@ -33,6 +33,7 @@ export interface AppleAuthRequest {
   /** Required only when creating a new account. */
   role?: UserRole | undefined;
   /** Passenger setup fields, ignored for an existing Apple identity. */
+  displayName?: string | undefined;
   phone?: string | undefined;
   /**
    * Contact email typed by the user, only accepted/required when Apple's

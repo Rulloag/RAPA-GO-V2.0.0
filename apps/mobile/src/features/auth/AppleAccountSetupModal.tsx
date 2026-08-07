@@ -28,6 +28,7 @@ interface AppleAccountSetupModalProps {
   onConfirm: (input: {
     passengerFareType: ApplePassengerFareType;
     acceptedDocumentIds: string[];
+    displayName: string;
     phone: string;
     rut?: string;
     passport?: string;
@@ -115,6 +116,7 @@ export function AppleAccountSetupModal({
   const history = useHistory();
   const [passengerCondition, setPassengerCondition] =
     useState<PassengerCondition>("turista_chileno");
+  const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
   const [rut, setRut] = useState("");
   const [passport, setPassport] = useState("");
@@ -133,6 +135,7 @@ export function AppleAccountSetupModal({
   useEffect(() => {
     if (!isOpen) return;
     setPassengerCondition("turista_chileno");
+    setDisplayName("");
     setPhone("");
     setRut("");
     setPassport("");
@@ -228,10 +231,16 @@ export function AppleAccountSetupModal({
     const needsRut = requiresRutForPassengerCondition(passengerCondition);
     const needsPassport =
       requiresPassportForPassengerCondition(passengerCondition);
+    const cleanDisplayName = displayName.trim().replace(/\s+/g, " ");
     const cleanPhone = phone.replace(/[^\d+]/g, "").trim();
     const cleanRut = formatRut(rut);
     const cleanPassport = normalizePassportForAuth(passport);
     const cleanContactEmail = contactEmail.trim().toLowerCase();
+
+    if (cleanDisplayName.length < 2 || cleanDisplayName.length > 100) {
+      setError("Ingresa tu nombre y apellido para continuar.");
+      return;
+    }
 
     if (!hasAppleEmail && !cleanContactEmail) {
       setError("Correo obligatorio.");
@@ -273,6 +282,7 @@ export function AppleAccountSetupModal({
     onConfirm({
       passengerFareType: conditionToApple(passengerCondition),
       acceptedDocumentIds: documents.map((document) => document.id),
+      displayName: cleanDisplayName,
       phone: cleanPhone,
       ...(needsRut ? { rut: cleanRut } : {}),
       ...(needsPassport ? { passport: cleanPassport } : {}),
@@ -304,6 +314,11 @@ export function AppleAccountSetupModal({
             accreditationInputRef.current.value = "";
           }
         }
+      }}
+      displayName={displayName}
+      onDisplayNameChange={(value) => {
+        setDisplayName(value);
+        setError("");
       }}
       email={hasAppleEmail ? displayEmail : contactEmail}
       {...(hasAppleEmail ? {} : { onEmailChange: setContactEmail })}

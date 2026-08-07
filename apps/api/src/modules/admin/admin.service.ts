@@ -8,6 +8,7 @@ import { DriverComplianceService } from "../drivers/driverCompliance.service.js"
 import { OfflineRepository } from "../offline/offline.repository.js";
 import { RidesRepository } from "../rides/rides.repository.js";
 import { RideAssignmentOffersRepository } from "../rides/rideAssignmentOffers.repository.js";
+import { rideReceiptsService } from "../rideReceipts/rideReceipts.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { ListUsersQuery, UpdateUserStatusInput, ListDocumentsQuery, ReviewDocumentInput, AdminListRidesQuery, AdminAssignDriverInput, AdminCancelRideInput, AdminSyncToRideInput } from "./admin.schemas.js";
 import type { AdminUsersListResult, AdminUserResult, AdminUserResponse, AdminDocumentResponse, AdminDocumentsListResult, AdminDocumentResult, AdminRidesListResult, AdminRideResult, AdminRideResponse, ActiveDriversListResult, ActiveDriverResponse } from "./admin.types.js";
@@ -399,6 +400,8 @@ export class AdminService {
 
     const ride = await adminRepo.findRideById(rideId);
     if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found after update.", statusCode: 404 };
+
+
     return { ok: true, ride: toRideResponse(ride) };
   }
 
@@ -466,6 +469,12 @@ export class AdminService {
 
     const ride = await adminRepo.findRideById(rideId);
     if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found after update.", statusCode: 404 };
+
+    // Punto 9: una cancelación definitiva realizada por administración también
+    // debe generar el mismo comprobante del pasajero. La cola es idempotente por
+    // (rideId, type), por lo que reintentar la acción no duplica el correo.
+    void rideReceiptsService.queueCancelledRide(rideId).catch(() => {});
+
     return { ok: true, ride: toRideResponse(ride) };
   }
 
