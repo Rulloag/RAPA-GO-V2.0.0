@@ -217,6 +217,9 @@ export interface PassengerSocialSetupFormProps {
   passengerCondition: PassengerCondition;
   onPassengerConditionChange: (value: PassengerCondition) => void;
 
+  displayName?: string;
+  onDisplayNameChange?: (value: string) => void;
+
   email: string;
   /** Si se omite, el campo de correo se muestra de solo lectura (caso Apple). */
   onEmailChange?: (value: string) => void;
@@ -259,6 +262,8 @@ export function PassengerSocialSetupForm({
   successMessage,
   passengerCondition,
   onPassengerConditionChange,
+  displayName,
+  onDisplayNameChange,
   email,
   onEmailChange,
   phone,
@@ -557,6 +562,26 @@ export function PassengerSocialSetupForm({
               🗿 Si eres Residente Rapa Nui, el documento quedará pendiente
               para revisión del administrador antes de aprobar la tarifa.
             </div>
+
+            {displayName !== undefined && onDisplayNameChange && (
+              <IonItem style={resolvedModalItemStyle}>
+                <IonLabel position="stacked" style={{ color: isAppleLight ? "#8A5A00" : "#F8D879", fontWeight: 950 }}>
+                  Nombre *
+                </IonLabel>
+                <IonInput
+                  style={resolvedModalInputStyle}
+                  type="text"
+                  value={displayName}
+                  onIonInput={(event) => {
+                    onDisplayNameChange(String(event.detail.value ?? ""));
+                  }}
+                  placeholder="Nombre y apellido"
+                  autocomplete="name"
+                  maxlength={100}
+                  required
+                />
+              </IonItem>
+            )}
 
             <IonItem style={resolvedModalItemStyle}>
               <IonLabel position="stacked" style={{ color: isAppleLight ? "#8A5A00" : "#F8D879", fontWeight: 950 }}>

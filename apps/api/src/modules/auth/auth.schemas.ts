@@ -271,7 +271,9 @@ export const appleAuthRequestSchema = z.object({
     .optional(),
   role: z
     .enum(["passenger", "driver", "guide", "rental_operator"])
-    .optional(),  phone: z
+    .optional(),
+  displayName: z.string().trim().min(2).max(100).optional(),
+  phone: z
     .string()
     .trim()
     .regex(/^\+?[0-9]{8,15}$/, "El teléfono de Apple no es válido.")
@@ -304,6 +306,7 @@ export type AppleAuthRequestInput = z.infer<
 export const googleAuthRequestSchema = z
   .object({
     idToken: z.string().trim().min(100).max(16000),
+    displayName: z.string().trim().min(2).max(100).optional(),
     phone: z
       .string()
       .trim()

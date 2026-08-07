@@ -41,9 +41,7 @@ import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/ap
 
 const PAGE_SIZE = 20;
 const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
-// Los viajes cancelados solo viven 30 minutos en Mis Viajes.
-// Así no se acumulan ni se repiten indefinidamente en Todos/Cancelados durante pruebas o uso real.
-const CANCELLED_RIDE_EXPIRATION_MS = 30 * 60 * 1000;
+// Los viajes finalizados se conservan en Mis Viajes como historial del pasajero.
 // v26: mapa pasajero igual que RequestRidePage: azul ubicación real, verde punto accesible en calle.
 const ACTIVE_STATUSES = [
   "scheduled",
@@ -1883,60 +1881,6 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
   };
 }
 
-function getCancelledRideAgeTimestampMs(ride: Partial<RideRequestData> & Record<string, unknown>): number | null {
-  const candidates = [
-    ride.cancelledAt,
-    ride.canceledAt,
-    ride.updatedAt,
-    ride.completedAt,
-    ride.requestedAt,
-    ride.createdAt,
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const parsed = new Date(String(candidate)).getTime();
-    if (Number.isFinite(parsed)) return parsed;
-  }
-
-  return null;
-}
-
-function isRawCancelledRideRecord(ride: Partial<RideRequestData> & Record<string, unknown>): boolean {
-  const status = String(ride.status ?? "").toLowerCase().trim();
-  const cancelledBy = String(ride.cancelledByRole ?? ride.cancelledBy ?? "").toLowerCase();
-  const reason = String(ride.cancellationReason ?? ride.cancelReason ?? ride.requeuedReason ?? "").toLowerCase();
-
-  return (
-    status === "cancelled" ||
-    status === "canceled" ||
-    status === "passenger_cancelled" ||
-    status === "driver_cancelled" ||
-    Boolean(ride.cancelledAt) ||
-    Boolean(ride.canceledAt) ||
-    cancelledBy.includes("passenger") ||
-    cancelledBy.includes("pasajero") ||
-    cancelledBy.includes("driver") ||
-    cancelledBy.includes("conductor") ||
-    reason.includes("cancel")
-  );
-}
-
-function isExpiredCancelledRideRecord(
-  ride: Partial<RideRequestData> & Record<string, unknown>,
-  nowMs = Date.now(),
-): boolean {
-  if (!isRawCancelledRideRecord(ride)) return false;
-
-  const cancelledMs = getCancelledRideAgeTimestampMs(ride);
-
-  // Si es un cancelado antiguo sin fecha real, se limpia igual.
-  // Esto evita que viajes cancelados viejos queden pegados o repetidos en Mis Viajes.
-  if (cancelledMs == null) return true;
-
-  return nowMs - cancelledMs >= CANCELLED_RIDE_EXPIRATION_MS;
-}
-
 function isCancelledBeforeKlapPayment(
   ride: Partial<RideRequestData> & Record<string, unknown>,
 ): boolean {
@@ -1953,13 +1897,12 @@ function isCancelledBeforeKlapPayment(
 
 function purgeExpiredCancelledRideRecords<T extends Partial<RideRequestData> & Record<string, unknown>>(
   rides: T[],
-  nowMs = Date.now(),
+  _nowMs = Date.now(),
 ): T[] {
-  return rides.filter(
-    (ride) =>
-      !isCancelledBeforeKlapPayment(ride) &&
-      !isExpiredCancelledRideRecord(ride, nowMs),
-  );
+  // Punto 8: completados, cancelados y no-show son historial permanente.
+  // Solo se oculta la solicitud técnica que nunca llegó a convertirse en viaje
+  // porque el checkout Klap fue cancelado antes del pago.
+  return rides.filter((ride) => !isCancelledBeforeKlapPayment(ride));
 }
 
 
@@ -2846,7 +2789,7 @@ function cleanupExpiredCancelledRidesEverywhere(): void {
       if (key === "rapago_last_scheduled_ride_for_admin") {
         const raw = localStorage.getItem(key);
         const parsed = raw ? (JSON.parse(raw) as RideRequestData & Record<string, unknown>) : null;
-        if (parsed && isExpiredCancelledRideRecord(parsed)) localStorage.removeItem(key);
+        if (parsed && isCancelledBeforeKlapPayment(parsed)) localStorage.removeItem(key);
         continue;
       }
 
@@ -7126,6 +7069,437 @@ function PassengerLiveRouteMap({
 }
 
 
+function getHistoricalRidePoint(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): { lat: number; lng: number } | null {
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+
+  return { lat: latitude, lng: longitude };
+}
+
+function historicalRideMarkerIcon(
+  fillColor: string,
+  scale: number,
+): google.maps.Symbol {
+  return {
+    path: google.maps.SymbolPath.CIRCLE,
+    scale,
+    fillColor,
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: 4,
+  };
+}
+
+function PassengerHistoricalRouteMap({
+  ride,
+  token,
+  height = 270,
+}: {
+  ride: RideRequestData;
+  token: string;
+  height?: number;
+}): JSX.Element {
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const [routeState, setRouteState] = useState<
+    "loading" | "recorded" | "no_trace" | "error"
+  >("loading");
+  const [routePointCount, setRoutePointCount] = useState(0);
+  const [actualDistanceMeters, setActualDistanceMeters] = useState<number | null>(null);
+  const [actualDurationSeconds, setActualDurationSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let originMarker: google.maps.Marker | null = null;
+    let destinationMarker: google.maps.Marker | null = null;
+    let routePolyline: google.maps.Polyline | null = null;
+    let map: google.maps.Map | null = null;
+
+    async function renderHistoricalRoute(): Promise<void> {
+      setRouteState("loading");
+      setRoutePointCount(0);
+      setActualDistanceMeters(null);
+      setActualDurationSeconds(null);
+
+      try {
+        const [points] = await Promise.all([
+          ridesService.getRideRouteHistory(token, ride.id),
+          loadRapaGoGoogleMaps(),
+        ]);
+
+        if (cancelled || !mapElementRef.current || !window.google?.maps) return;
+
+        const validRecordedPoints = points
+          .map((point) => ({
+            point: getHistoricalRidePoint(point.lat, point.lng),
+            capturedAt: point.capturedAt,
+          }))
+          .filter(
+            (entry): entry is { point: { lat: number; lng: number }; capturedAt: string } =>
+              entry.point !== null,
+          );
+        const recordedPoints = validRecordedPoints.map((entry) => entry.point);
+        const origin = getHistoricalRidePoint(ride.originLat, ride.originLng);
+        const destination = getHistoricalRidePoint(
+          ride.destinationLat,
+          ride.destinationLng,
+        );
+        const center = recordedPoints[0] ?? origin ?? destination ?? {
+          lat: -27.1505,
+          lng: -109.4325,
+        };
+
+        map = new google.maps.Map(mapElementRef.current, {
+          center,
+          zoom: 13,
+          disableDefaultUI: true,
+          zoomControl: true,
+          fullscreenControl: true,
+          gestureHandling: "cooperative",
+        });
+
+        if (origin) {
+          originMarker = new google.maps.Marker({
+            map,
+            position: origin,
+            title: `Origen: ${ride.originText}`,
+            icon: historicalRideMarkerIcon("#16a34a", 10),
+            label: {
+              text: "O",
+              color: "#ffffff",
+              fontSize: "10px",
+              fontWeight: "900",
+            },
+            zIndex: 20,
+          });
+        }
+
+        if (destination) {
+          destinationMarker = new google.maps.Marker({
+            map,
+            position: destination,
+            title: `Destino: ${ride.destinationText}`,
+            icon: historicalRideMarkerIcon("#dc2626", 10),
+            label: {
+              text: "D",
+              color: "#ffffff",
+              fontSize: "10px",
+              fontWeight: "900",
+            },
+            zIndex: 20,
+          });
+        }
+
+        if (recordedPoints.length >= 2) {
+          routePolyline = new google.maps.Polyline({
+            map,
+            path: recordedPoints,
+            geodesic: true,
+            strokeColor: "#2563eb",
+            strokeOpacity: 0.95,
+            strokeWeight: 6,
+          });
+        }
+
+        const bounds = new google.maps.LatLngBounds();
+        recordedPoints.forEach((point) => bounds.extend(point));
+        if (origin) bounds.extend(origin);
+        if (destination) bounds.extend(destination);
+
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, 56);
+        }
+
+        const routeDistance =
+          recordedPoints.length >= 2
+            ? Math.round(
+                recordedPoints.reduce((total, point, index) => {
+                  const previous = recordedPoints[index - 1];
+                  return previous
+                    ? total + getPassengerDistanceMeters(previous, point)
+                    : total;
+                }, 0),
+              )
+            : null;
+        const firstCapturedAt = validRecordedPoints[0]?.capturedAt;
+        const lastCapturedAt = validRecordedPoints[validRecordedPoints.length - 1]?.capturedAt;
+        const routeDuration =
+          firstCapturedAt && lastCapturedAt
+            ? Math.max(
+                0,
+                Math.round(
+                  (new Date(lastCapturedAt).getTime() -
+                    new Date(firstCapturedAt).getTime()) /
+                    1000,
+                ),
+              )
+            : null;
+
+        setRoutePointCount(recordedPoints.length);
+        setActualDistanceMeters(routeDistance);
+        setActualDurationSeconds(
+          routeDuration != null && Number.isFinite(routeDuration)
+            ? routeDuration
+            : null,
+        );
+        setRouteState(recordedPoints.length >= 2 ? "recorded" : "no_trace");
+      } catch {
+        if (!cancelled) {
+          setRouteState("error");
+          setRoutePointCount(0);
+        }
+      }
+    }
+
+    void renderHistoricalRoute();
+
+    return () => {
+      cancelled = true;
+      originMarker?.setMap(null);
+      destinationMarker?.setMap(null);
+      routePolyline?.setMap(null);
+      if (map && window.google?.maps) {
+        google.maps.event.clearInstanceListeners(map);
+      }
+    };
+  }, [ride.id, ride.originLat, ride.originLng, ride.destinationLat, ride.destinationLng, ride.originText, ride.destinationText, token]);
+
+  const distanceLabel = formatPassengerDistanceMeters(
+    actualDistanceMeters ?? ride.distanceMeters,
+  );
+  const resolvedDurationSeconds = actualDurationSeconds ?? ride.durationSeconds;
+  const durationMinutes =
+    resolvedDurationSeconds != null && Number.isFinite(Number(resolvedDurationSeconds))
+      ? Math.max(1, Math.round(Number(resolvedDurationSeconds) / 60))
+      : null;
+
+  return (
+    <div
+      className="rapago-historical-route-map"
+      style={{
+        position: "relative",
+        width: "100%",
+        minHeight: height,
+        background: "#dcecf3",
+        overflow: "hidden",
+      }}
+    >
+      <div ref={mapElementRef} style={{ width: "100%", height }} />
+
+      <div
+        style={{
+          position: "absolute",
+          top: 10,
+          left: 10,
+          right: 10,
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 8,
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          style={{
+            padding: "7px 10px",
+            borderRadius: 999,
+            background: "rgba(17,24,39,.88)",
+            color: "#ffffff",
+            fontSize: ".68rem",
+            fontWeight: 950,
+            boxShadow: "0 6px 18px rgba(0,0,0,.20)",
+          }}
+        >
+          {routeState === "loading"
+            ? "Cargando ruta del servicio..."
+            : routeState === "recorded"
+              ? `Ruta GPS real registrada · ${routePointCount} puntos`
+              : routeState === "no_trace"
+                ? "Sin trazado GPS guardado"
+                : "No se pudo cargar la ruta registrada"}
+        </div>
+
+        {(distanceLabel || durationMinutes != null) && (
+          <div
+            style={{
+              padding: "7px 10px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,.94)",
+              color: "#111827",
+              fontSize: ".68rem",
+              fontWeight: 950,
+              boxShadow: "0 6px 18px rgba(0,0,0,.16)",
+              textAlign: "right",
+            }}
+          >
+            {[distanceLabel, durationMinutes != null ? `${durationMinutes} min` : null]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        )}
+      </div>
+
+      {routeState === "no_trace" && (
+        <div
+          style={{
+            position: "absolute",
+            left: 12,
+            right: 12,
+            bottom: 12,
+            borderRadius: 14,
+            padding: "9px 11px",
+            background: "rgba(255,255,255,.95)",
+            color: "#334155",
+            fontSize: ".72rem",
+            fontWeight: 850,
+            lineHeight: 1.3,
+            boxShadow: "0 8px 20px rgba(0,0,0,.16)",
+            pointerEvents: "none",
+          }}
+        >
+          Se muestran origen y destino. RAPA GO no inventa una ruta cuando el GPS histórico no fue registrado.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatPassengerReceiptDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return new Intl.DateTimeFormat("es-CL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Pacific/Easter",
+  }).format(date);
+}
+
+function PassengerFinalRideSummary({
+  ride,
+  effectiveStatus,
+}: {
+  ride: RideRequestData;
+  effectiveStatus: string;
+}): JSX.Element {
+  const noShow = isPassengerNoShowCompletedRide(ride);
+  const statusLabel = noShow
+    ? "NO SHOW"
+    : effectiveStatus === "completed"
+      ? "COMPLETADO"
+      : "CANCELADO";
+  const statusTone = noShow || effectiveStatus === "cancelled" ? "danger" : "success";
+  const distanceLabel = formatPassengerDistanceMeters(ride.distanceMeters);
+  const durationLabel =
+    ride.durationSeconds != null && Number.isFinite(Number(ride.durationSeconds))
+      ? `${Math.max(1, Math.round(Number(ride.durationSeconds) / 60))} min`
+      : "No informada";
+  const vehicle = [
+    ride.driverVehicleBrand,
+    ride.driverVehicleModel,
+    ride.driverVehicleYear,
+    ride.driverVehicleColor,
+    ride.driverVehiclePlate ? `Patente ${ride.driverVehiclePlate}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const timeline = [
+    ["Solicitado", ride.requestedAt],
+    ["Asignado", ride.acceptedAt],
+    ["En camino", ride.enRouteAt],
+    ["Llegó", ride.arrivedAt],
+    ["Iniciado", ride.startedAt],
+    [noShow ? "No show" : effectiveStatus === "cancelled" ? "Cancelado" : "Completado", noShow || effectiveStatus === "cancelled" ? ride.cancelledAt : ride.completedAt],
+  ]
+    .map(([label, value]) => [label, formatPassengerReceiptDate(value)] as const)
+    .filter(([, value]) => value !== null);
+
+  return (
+    <div
+      className="rapago-trip-theme-panel rapago-passenger-trip-receipt"
+      data-final-trip-record="true"
+      style={{
+        marginBottom: 14,
+        borderRadius: 18,
+        padding: "13px 14px",
+        background: "var(--rp-surface)",
+        border: "1px solid var(--rp-border-c)",
+        color: "var(--rp-text)",
+        boxShadow: "0 8px 22px rgba(0,0,0,.08)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 950, fontSize: ".96rem", lineHeight: 1.25 }}>
+            {ride.originText} → {ride.destinationText}
+          </div>
+          <div style={{ marginTop: 4, color: "var(--rp-muted)", fontSize: ".73rem", fontWeight: 800 }}>
+            {distanceLabel} · {durationLabel}
+          </div>
+        </div>
+        <IonBadge color={statusTone}>{statusLabel}</IonBadge>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+          gap: 8,
+          marginTop: 12,
+        }}
+      >
+        <div style={{ padding: 10, borderRadius: 14, background: "var(--rp-surface-soft)" }}>
+          <div style={{ color: "var(--rp-muted)", fontSize: ".66rem", fontWeight: 950 }}>TARIFA FINAL</div>
+          <div style={{ marginTop: 2, fontWeight: 950 }}>{formatClp(getRideDisplayFareClp(ride))}</div>
+        </div>
+        <div style={{ padding: 10, borderRadius: 14, background: "var(--rp-surface-soft)" }}>
+          <div style={{ color: "var(--rp-muted)", fontSize: ".66rem", fontWeight: 950 }}>PAGO</div>
+          <div style={{ marginTop: 2, fontWeight: 950 }}>{getRidePaymentMethodLabel(ride)}</div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, fontSize: ".78rem", lineHeight: 1.45 }}>
+        <div><strong>Conductor:</strong> {ride.driverName ?? "No informado"}</div>
+        <div><strong>Vehículo:</strong> {vehicle || "No informado"}</div>
+        {effectiveStatus === "cancelled" && ride.cancellationReason && (
+          <div><strong>Motivo:</strong> {ride.cancellationReason}</div>
+        )}
+      </div>
+
+      {timeline.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(92px,.7fr) minmax(0,1.3fr)",
+            gap: "5px 10px",
+            marginTop: 12,
+            paddingTop: 10,
+            borderTop: "1px solid var(--rp-border-c)",
+            fontSize: ".72rem",
+          }}
+        >
+          {timeline.map(([timelineLabel, timelineValue]) => (
+            <div key={`${timelineLabel}-${timelineValue}`} style={{ display: "contents" }}>
+              <strong style={{ color: "var(--rp-muted)" }}>{timelineLabel}</strong>
+              <span>{timelineValue}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 type PassengerCashPaymentDecision = "exact" | "wallet_credit" | "bank_refund" | "refund_whatsapp";
 
 type PassengerCashPaymentReview = {
@@ -8198,11 +8572,14 @@ function PassengerRideCard({
     getDriverPointForPassengerMap(ride, null) !== null;
   const passengerCanTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveStatus);
 
-  // Importante: el mapa debe aparecer apenas el conductor toma/acepta el viaje.
-  // Si todavía no llega el GPS, se muestra el mapa igual con el aviso
-  // "Esperando señal GPS del conductor" para que el usuario no vea una pantalla vacía.
-  const showMap = passengerCanTrackDriver && (hasDriver || navHasMapPoints || effectiveStatus === "driver_scheduled");
-  const label = getPassengerRideStatusLabel(effectiveStatus);
+  // En viajes activos se mantiene el mapa en vivo. En estados finales se muestra
+  // la ruta GPS histórica realmente registrada por el conductor.
+  const showLiveMap = passengerCanTrackDriver && (hasDriver || navHasMapPoints || effectiveStatus === "driver_scheduled");
+  const showHistoricalMap = ["completed", "cancelled"].includes(effectiveStatus);
+  const showMap = showLiveMap || showHistoricalMap;
+  const label = isPassengerNoShowCompletedRide(ride)
+    ? "No show"
+    : getPassengerRideStatusLabel(effectiveStatus);
   const displayFareClp = getRideDisplayFareClp(ride);
   const paymentLabel = getRidePaymentMethodLabel(ride);
   const ridePassengerFareType = getRidePassengerFareType(ride);
@@ -8283,13 +8660,19 @@ function PassengerRideCard({
     >
       <IonCardContent style={{ padding: 0 }}>
         <div style={{ position: "relative", background: "#111827" }}>
-          {showMap && (
+          {showHistoricalMap ? (
+            <PassengerHistoricalRouteMap ride={ride} token={token} height={300} />
+          ) : showLiveMap ? (
             <PassengerLiveRouteMap ride={ride} token={token} height={330} />
-          )}
+          ) : null}
 
         </div>
 
         <div style={{ padding: showMap ? "16px" : "12px 16px", color: "var(--rp-text)" }}>
+          {showHistoricalMap && (
+            <PassengerFinalRideSummary ride={ride} effectiveStatus={effectiveStatus} />
+          )}
+
           {effectiveStatus === "pending_payment" && (
             <div
               style={{
@@ -8838,28 +9221,29 @@ function PassengerRideCard({
             </div>
           )}
 
-          {hasDriver && !["pending_payment", "requested", "scheduled", "cancelled"].includes(effectiveStatus) && (
+          {hasDriver && !showHistoricalMap && !["pending_payment", "requested", "scheduled", "cancelled"].includes(effectiveStatus) && (
             <PassengerDriverAndVehicleDetails ride={ride as RideRequestData & Record<string, unknown>} />
           )}
 
           {/* Mismo escape del wildcard ion-card * que PassengerDriverAndVehicleDetails
               (ver el comentario largo ahí): este panel también declara su propio
               fondo con --rp-surface, así que necesita rapago-trip-theme-panel. */}
-          <div
-            className="rapago-trip-theme-panel"
-            style={{
-              background: "var(--rp-surface)",
-              borderRadius: 18,
-              padding: "12px",
-              color: "var(--rp-text)",
-              border: "1px solid rgba(0,0,0,.06)",
-            }}
-          >
-            <div style={{ fontWeight: 950, fontSize: ".86rem", marginBottom: 10 }}>
-              Detalle del viaje
-            </div>
+          {!showHistoricalMap && (
+            <div
+              className="rapago-trip-theme-panel"
+              style={{
+                background: "var(--rp-surface)",
+                borderRadius: 18,
+                padding: "12px",
+                color: "var(--rp-text)",
+                border: "1px solid rgba(0,0,0,.06)",
+              }}
+            >
+              <div style={{ fontWeight: 950, fontSize: ".86rem", marginBottom: 10 }}>
+                Detalle del viaje
+              </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "20px 1fr", gap: 9, fontSize: ".84rem", lineHeight: 1.35 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "20px 1fr", gap: 9, fontSize: ".84rem", lineHeight: 1.35 }}>
               {nav.passengerOriginalLat != null && nav.passengerOriginalLng != null && (
                 <>
                   <span className="rp-tone-info" style={{ color: "var(--rp-info-fg)", fontSize: "1rem" }}>●</span>
@@ -8895,10 +9279,11 @@ function PassengerRideCard({
                   </div>
                 </>
               )}
+              </div>
             </div>
-          </div>
+          )}
 
-          {displayFareClp != null && (
+          {!showHistoricalMap && displayFareClp != null && (
             <div
               style={{
                 marginTop: 14,

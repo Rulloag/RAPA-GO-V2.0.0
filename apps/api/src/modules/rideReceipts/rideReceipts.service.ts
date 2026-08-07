@@ -145,8 +145,12 @@ function receiptCode(type: RideReceiptType): string {
   switch (type) {
     case "completed_ride":
       return "VIAJE";
-    case "late_cancellation":
+    case "cancelled_ride":
       return "CANCEL";
+    case "no_show_closure":
+      return "NOSHOW-END";
+    case "late_cancellation":
+      return "CARGO";
     case "no_show":
       return "NOSHOW";
   }
@@ -239,21 +243,51 @@ function receiptAmount(
     return Math.max(0, ride.estimatedFareClp ?? 0);
   }
 
-  return Math.max(
-    0,
-    policyCharge?.approvedAmountClp ??
-      policyCharge?.calculatedAmountClp ??
+  if (policyCharge?.status === "approved_pending_next_ride") {
+    return Math.max(
       0,
-  );
+      policyCharge.approvedAmountClp ?? policyCharge.calculatedAmountClp ?? 0,
+    );
+  }
+
+  // Al cerrar una cancelación/no-show se envía el comprobante inmediatamente.
+  // Mientras el administrador no apruebe un cargo, no se presenta un monto
+  // referencial como si fuera una deuda final.
+  return 0;
 }
 
 function paymentStatus(
   type: RideReceiptType,
   ride: RideRequest,
   paymentStatusValue: string | null,
+  policyCharge: RidePolicyCharge | null,
 ): string {
-  if (type !== "completed_ride") {
-    return "Cargo aprobado por administración para su regularización.";
+  if (type === "cancelled_ride") {
+    if (policyCharge?.status === "approved_pending_next_ride") {
+      return "Cargo de cancelación aprobado por administración.";
+    }
+    if (policyCharge) {
+      return "Viaje cancelado. Cargo pendiente de revisión administrativa.";
+    }
+    return "Viaje cancelado. Sin cargo confirmado al cierre.";
+  }
+
+  if (type === "no_show_closure") {
+    if (policyCharge?.status === "approved_pending_next_ride") {
+      return "Cargo de no-show aprobado por administración.";
+    }
+    if (policyCharge) {
+      return "No-show cerrado. Cargo pendiente de revisión administrativa.";
+    }
+    return "No-show cerrado. Sin cargo confirmado al cierre.";
+  }
+
+  if (type === "no_show") {
+    return "Cargo de no-show aprobado por administración para su regularización.";
+  }
+
+  if (type === "late_cancellation") {
+    return "Cargo de cancelación aprobado por administración para su regularización.";
   }
 
   if (ride.paymentMethod === "cash") {
@@ -300,6 +334,13 @@ function emailCopy(type: RideReceiptType): {
         summary:
           "Tu viaje fue completado. Adjuntamos un comprobante simple con la ruta registrada, el conductor, el vehículo y el monto final.",
       };
+    case "cancelled_ride":
+      return {
+        subject: "Tu comprobante de cancelación RAPA GO",
+        heading: "Viaje cancelado",
+        summary:
+          "Tu viaje fue cancelado. Adjuntamos el comprobante de cierre con la ruta registrada hasta la cancelación, los datos del servicio y el estado de cualquier cargo aplicable.",
+      };
     case "late_cancellation":
       return {
         subject: "Comprobante de cargo por cancelación RAPA GO",
@@ -307,12 +348,19 @@ function emailCopy(type: RideReceiptType): {
         summary:
           "El cargo de cancelación fue revisado y aprobado. El comprobante adjunto indica el monto, el motivo y la aceptación legal registrada.",
       };
+    case "no_show_closure":
+      return {
+        subject: "Tu comprobante de no-show RAPA GO",
+        heading: "No-show registrado",
+        summary:
+          "El viaje fue cerrado como no-show. Adjuntamos el comprobante con la ruta registrada, la espera, los datos del servicio y el estado de cualquier cargo aplicable.",
+      };
     case "no_show":
       return {
-        subject: "Comprobante de no-show RAPA GO",
-        heading: "No-show confirmado",
+        subject: "Comprobante de cargo por no-show RAPA GO",
+        heading: "Cargo de no-show aprobado",
         summary:
-          "El no-show fue confirmado y el cargo fue revisado. El comprobante adjunto incluye el punto de recogida, la espera registrada y la aceptación legal.",
+          "El cargo de no-show fue revisado y aprobado. Adjuntamos el comprobante de regularización correspondiente.",
       };
   }
 }
@@ -383,6 +431,44 @@ export class RideReceiptsService {
       ride,
       type: "completed_ride",
       policyChargeId: null,
+    });
+  }
+
+  async queueCancelledRide(
+    rideId: string,
+    policyChargeId: string | null = null,
+  ): Promise<RideReceipt | null> {
+    if (!featureEnabled()) return null;
+
+    const ride = await receiptsRepository.findRide(rideId);
+    if (!ride || ride.status !== "cancelled") return null;
+
+    return this.queueReceipt({
+      ride,
+      type: "cancelled_ride",
+      policyChargeId,
+    });
+  }
+
+  async queueNoShowRide(
+    rideId: string,
+    policyChargeId: string | null = null,
+  ): Promise<RideReceipt | null> {
+    if (!featureEnabled()) return null;
+
+    const ride = await receiptsRepository.findRide(rideId);
+    if (
+      !ride ||
+      ride.status !== "cancelled" ||
+      ride.cancelledByRole !== "driver_no_show"
+    ) {
+      return null;
+    }
+
+    return this.queueReceipt({
+      ride,
+      type: "no_show_closure",
+      policyChargeId,
     });
   }
 
@@ -510,7 +596,7 @@ export class RideReceiptsService {
             );
 
       if (
-        type !== "completed_ride" &&
+        (type === "late_cancellation" || type === "no_show") &&
         (!policyCharge || policyCharge.status !== "approved_pending_next_ride")
       ) {
         throw new Error("The policy charge is not approved for receipt delivery.");
@@ -539,6 +625,7 @@ export class RideReceiptsService {
         type,
         ride,
         payment?.status ?? null,
+        policyCharge,
       );
       const passengerName =
         ride.offlinePassengerName?.trim() || passenger.name;
@@ -583,7 +670,10 @@ export class RideReceiptsService {
         priorityFeeClp: Math.max(0, ride.priorityFeeClp ?? 0),
         cancellationReason:
           policyCharge?.reason ?? ride.cancellationReason ?? null,
-        noShowWaitMinutes: type === "no_show" ? noShowWaitMinutes(ride) : null,
+        noShowWaitMinutes:
+          type === "no_show" || type === "no_show_closure"
+            ? noShowWaitMinutes(ride)
+            : null,
         policyPercent: policyCharge?.feePercent ?? null,
         policyCapClp: policyCharge?.feeCapClp ?? null,
         legalDocumentTitle:

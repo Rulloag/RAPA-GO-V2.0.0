@@ -13,6 +13,10 @@ export async function ridesRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
   fastify.get("/me", ridesController.listMyRides);
+  fastify.get(
+    "/:id/route-history",
+    ridesController.getRideRouteHistory,
+  );
   fastify.get("/available", ridesController.listAvailableRides);
   fastify.get("/driver/me", ridesController.listDriverRides);
 

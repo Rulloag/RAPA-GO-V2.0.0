@@ -14,11 +14,13 @@ export interface GoogleLegalAcceptance {
 }
 
 /**
- * El correo, nombre, foto y subject nunca vienen del cliente como fuente de
- * verdad. El backend los obtiene exclusivamente del ID token verificado.
+ * El correo, foto y subject nunca vienen del cliente como fuente de verdad.
+ * El nombre visible sí puede ser confirmado por la persona durante el alta,
+ * pero nunca se usa como identificador OAuth.
  */
 export interface GoogleAuthRequest {
   idToken: string;
+  displayName?: string | undefined;
   phone?: string | undefined;
   rut?: string | undefined;
   passport?: string | undefined;

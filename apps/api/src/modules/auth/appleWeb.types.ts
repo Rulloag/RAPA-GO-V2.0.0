@@ -17,6 +17,7 @@ export interface ApplePreparedWebIdentity {
 
 export interface AppleWebCompleteInput {
   flowToken: string;
+  displayName?: string;
   phone?: string;
   contactEmail?: string;
   rut?: string;

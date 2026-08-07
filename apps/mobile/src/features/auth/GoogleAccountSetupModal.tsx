@@ -26,6 +26,7 @@ interface GoogleAccountSetupModalProps {
   onConfirm: (input: {
     passengerFareType: GooglePassengerFareType;
     acceptedDocumentIds: string[];
+    displayName: string;
     phone: string;
     rut?: string;
     passport?: string;
@@ -71,6 +72,7 @@ export function GoogleAccountSetupModal({
   const history = useHistory();
   const [passengerCondition, setPassengerCondition] =
     useState<PassengerCondition>("turista_chileno");
+  const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
   const [rut, setRut] = useState("");
   const [passport, setPassport] = useState("");
@@ -83,6 +85,7 @@ export function GoogleAccountSetupModal({
   useEffect(() => {
     if (!isOpen) return;
     setPassengerCondition("turista_chileno");
+    setDisplayName("");
     setPhone("");
     setRut("");
     setPassport("");
@@ -164,9 +167,15 @@ export function GoogleAccountSetupModal({
     const needsRut = requiresRutForPassengerCondition(passengerCondition);
     const needsPassport =
       requiresPassportForPassengerCondition(passengerCondition);
+    const cleanDisplayName = displayName.trim().replace(/\s+/g, " ");
     const cleanPhone = phone.replace(/[^\d+]/g, "").trim();
     const cleanRut = formatRut(rut);
     const cleanPassport = normalizePassportForAuth(passport);
+
+    if (cleanDisplayName.length < 2 || cleanDisplayName.length > 100) {
+      setError("Ingresa tu nombre y apellido para continuar.");
+      return;
+    }
 
     if (!displayEmail.trim()) {
       setError("Google no entregó un correo verificado. Repite el ingreso.");
@@ -207,6 +216,7 @@ export function GoogleAccountSetupModal({
     onConfirm({
       passengerFareType: getPassengerFareType(passengerCondition),
       acceptedDocumentIds: documents.map((document) => document.id),
+      displayName: cleanDisplayName,
       phone: cleanPhone,
       ...(needsRut ? { rut: cleanRut } : {}),
       ...(needsPassport ? { passport: cleanPassport } : {}),
@@ -237,6 +247,11 @@ export function GoogleAccountSetupModal({
             accreditationInputRef.current.value = "";
           }
         }
+      }}
+      displayName={displayName}
+      onDisplayNameChange={(value) => {
+        setDisplayName(value);
+        setError("");
       }}
       email={displayEmail}
       phone={phone}
