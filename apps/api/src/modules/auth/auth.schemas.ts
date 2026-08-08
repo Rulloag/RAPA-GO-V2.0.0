@@ -306,6 +306,7 @@ export type AppleAuthRequestInput = z.infer<
 export const googleAuthRequestSchema = z
   .object({
     idToken: z.string().trim().min(100).max(16000),
+    linkPassword: z.string().min(8).max(128).optional(),
     displayName: z.string().trim().min(2).max(100).optional(),
     phone: z
       .string()

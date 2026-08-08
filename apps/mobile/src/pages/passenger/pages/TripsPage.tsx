@@ -1881,6 +1881,9 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
   };
 }
 
+const PASSENGER_CANCELLED_VISIBILITY_MS = 10 * 60 * 1000;
+const PASSENGER_CANCELLED_VISIBILITY_TICK_MS = 15 * 1000;
+
 function isCancelledBeforeKlapPayment(
   ride: Partial<RideRequestData> & Record<string, unknown>,
 ): boolean {
@@ -1899,9 +1902,9 @@ function purgeExpiredCancelledRideRecords<T extends Partial<RideRequestData> & R
   rides: T[],
   _nowMs = Date.now(),
 ): T[] {
-  // Punto 8: completados, cancelados y no-show son historial permanente.
-  // Solo se oculta la solicitud técnica que nunca llegó a convertirse en viaje
-  // porque el checkout Klap fue cancelado antes del pago.
+  // El historial permanente sigue guardado en backend/BD para comprobantes,
+  // auditoría y soporte. Esta limpieza local solo elimina la solicitud técnica
+  // que nunca llegó a convertirse en viaje porque Klap se canceló antes del pago.
   return rides.filter((ride) => !isCancelledBeforeKlapPayment(ride));
 }
 
@@ -1945,6 +1948,38 @@ function getPassengerRideTimestampMs(
   }
 
   return null;
+}
+
+function getPassengerCancelledTimestampMs(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+): number | null {
+  return getPassengerRideTimestampMs(ride, [
+    "cancelledAt",
+    "canceledAt",
+    "cancelled_at",
+    "updatedAt",
+    "requestedAt",
+    "createdAt",
+  ]);
+}
+
+function isPassengerCancelledRideVisibleForTenMinutes(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): boolean {
+  const cancelledAtMs = getPassengerCancelledTimestampMs(ride);
+
+  if (cancelledAtMs == null) {
+    // Registros antiguos sin fecha no deben llenar indefinidamente el contador.
+    return false;
+  }
+
+  if (cancelledAtMs > nowMs) {
+    // Tolerancia a pequeños desfases del reloj del dispositivo/servidor.
+    return true;
+  }
+
+  return nowMs - cancelledAtMs < PASSENGER_CANCELLED_VISIBILITY_MS;
 }
 
 function getDriverRequeueSearchStartedAtIso(
@@ -9566,6 +9601,7 @@ export default function TripsPage(): JSX.Element {
   const [ratingError,      setRatingError]      = useState<string | null>(null);
   const [ratedIds,         setRatedIds]         = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed" | "cancelled">("active");
+  const [cancelledVisibilityNowMs, setCancelledVisibilityNowMs] = useState(() => Date.now());
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
   const [passengerNotice, setPassengerNotice] = useState<PassengerNotificationPayload | null>(() =>
     readPassengerNotifications().find((item) => !item.read) ?? null,
@@ -10269,7 +10305,39 @@ export default function TripsPage(): JSX.Element {
     };
   }, []);
 
-  const filteredBeforePagination = allRides.filter((r) => {
+  useEffect(() => {
+    // Regla operativa: una cancelación queda visible solo 10 minutos.
+    // No borramos el viaje del backend ni de la BD; únicamente se limpia
+    // automáticamente de "Mis Viajes" y de sus contadores operativos.
+    const updateClock = (): void => {
+      setCancelledVisibilityNowMs(Date.now());
+    };
+
+    updateClock();
+    const interval = window.setInterval(
+      updateClock,
+      PASSENGER_CANCELLED_VISIBILITY_TICK_MS,
+    );
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const ridesVisibleInTrips = allRides.filter((ride) => {
+    const effectiveStatus =
+      getPassengerNoShowCompletedEffectiveStatus(ride);
+
+    return (
+      effectiveStatus !== "cancelled" ||
+      isPassengerCancelledRideVisibleForTenMinutes(
+        ride as RideRequestData & Record<string, unknown>,
+        cancelledVisibilityNowMs,
+      )
+    );
+  });
+
+  const filteredBeforePagination = ridesVisibleInTrips.filter((r) => {
     const effectiveStatus = getPassengerNoShowCompletedEffectiveStatus(r);
 
     if (statusFilter === "all")       return true;
@@ -10520,10 +10588,10 @@ export default function TripsPage(): JSX.Element {
   }
 
   const counts = {
-    all:       allRides.length,
-    active:    allRides.filter((r) => ACTIVE_STATUSES.includes(getPassengerNoShowCompletedEffectiveStatus(r))).length,
-    completed: allRides.filter((r) => getPassengerNoShowCompletedEffectiveStatus(r) === "completed").length,
-    cancelled: allRides.filter((r) => getPassengerNoShowCompletedEffectiveStatus(r) === "cancelled").length,
+    all:       ridesVisibleInTrips.length,
+    active:    ridesVisibleInTrips.filter((r) => ACTIVE_STATUSES.includes(getPassengerNoShowCompletedEffectiveStatus(r))).length,
+    completed: ridesVisibleInTrips.filter((r) => getPassengerNoShowCompletedEffectiveStatus(r) === "completed").length,
+    cancelled: ridesVisibleInTrips.filter((r) => getPassengerNoShowCompletedEffectiveStatus(r) === "cancelled").length,
   };
 
   const hasMore = page * PAGE_SIZE < filteredBeforePagination.length;

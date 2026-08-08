@@ -45,6 +45,30 @@ export class OAuthIdentitiesRepository {
     }
   }
 
+  async findByUserAndProvider(
+    userId: string,
+    provider: string,
+  ): Promise<OAuthIdentity | null> {
+    try {
+      const rows = await db
+        .select()
+        .from(oauthIdentities)
+        .where(
+          and(
+            eq(oauthIdentities.userId, userId),
+            eq(oauthIdentities.provider, provider),
+          ),
+        )
+        .limit(1);
+
+      return rows[0] ?? null;
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to query oauth identity by user/provider: ${String(error)}`,
+      );
+    }
+  }
+
   async updateProviderCredentials(
     id: string,
     providerClientId: string,

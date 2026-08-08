@@ -14,7 +14,9 @@ import { AppError } from "../../shared/errors/AppError.js";
 import { AuditService } from "../audit/audit.service.js";
 import { buildLegalAcceptanceEvidence } from "../legal/legalEvidence.js";
 import { UsersRepository } from "../users/users.repository.js";
+import { AuthCredentialsRepository } from "./authCredentials.repository.js";
 import { OAuthIdentitiesRepository } from "./oauthIdentities.repository.js";
+import { PasswordService } from "./password.service.js";
 import { SessionService } from "./session.service.js";
 import { TokenService } from "./token.service.js";
 import type { AuthUser } from "./auth.types.js";
@@ -37,6 +39,8 @@ const REQUIRED_LEGAL_TYPES = [
 const RESIDENCE_DOCUMENT_TYPE = "rapa_nui_residence";
 const RESIDENCE_DOCUMENT_MAX_BYTES = Math.floor(1.5 * 1024 * 1024);
 const RESIDENCE_META_MARKER = "#rapagoMeta=";
+const GOOGLE_LINK_MAX_FAILED_ATTEMPTS = 5;
+const GOOGLE_LINK_LOCKOUT_MINUTES = 15;
 
 type GoogleRequestMetadata = {
   ipAddress?: string;
@@ -228,6 +232,8 @@ export class GoogleAuthService {
     private readonly identityVerifier = new GoogleIdentityTokenVerifier(),
     private readonly tokenService = new TokenService(),
     private readonly sessionService = new SessionService(),
+    private readonly credentialsRepository = new AuthCredentialsRepository(),
+    private readonly passwordService = new PasswordService(),
   ) {}
 
   async signIn(
@@ -248,26 +254,46 @@ export class GoogleAuthService {
       );
     }
 
-    const prepared = await this.preparePassengerSetup(payload, identity.email);
-    if (!prepared.ok) return prepared.result;
-
     const emailOwner = await this.usersRepository.findByEmail(identity.email);
     if (emailOwner) {
-      this.auditService.recordSafe({
-        eventType: "auth.google.login.conflict",
-        entityType: "user",
-        entityId: emailOwner.id,
-        metadata: { reason: "email_taken" },
-      });
+      if (!payload.linkPassword) {
+        this.auditService.recordSafe({
+          eventType: "auth.google.login.conflict",
+          entityType: "user",
+          entityId: emailOwner.id,
+          metadata: { reason: "email_taken_link_required" },
+        });
 
+        return {
+          ok: false,
+          code: "AUTH_GOOGLE_ACCOUNT_LINKING_REQUIRED",
+          message:
+            "Ya existe una cuenta RAPA GO con este correo. Confirma tu contraseña una sola vez para vincular Google a la misma cuenta.",
+          statusCode: 409,
+          displayEmail: identity.email,
+        };
+      }
+
+      return this.linkExistingAccount(
+        identity,
+        emailOwner,
+        payload.linkPassword,
+      );
+    }
+
+    if (payload.linkPassword) {
       return {
         ok: false,
-        code: "AUTH_GOOGLE_ACCOUNT_LINKING_REQUIRED",
+        code: "AUTH_GOOGLE_LINK_ACCOUNT_NOT_FOUND",
         message:
-          "Ya existe una cuenta con ese correo. Ingresa con tu método actual antes de vincular Google.",
+          "No encontramos una cuenta RAPA GO existente para vincular con este correo de Google.",
         statusCode: 409,
+        displayEmail: identity.email,
       };
     }
+
+    const prepared = await this.preparePassengerSetup(payload, identity.email);
+    if (!prepared.ok) return prepared.result;
 
     const created = await this.identitiesRepository.createUserWithIdentity({
       email: identity.email,
@@ -349,6 +375,214 @@ export class GoogleAuthService {
       },
       refreshToken: session.refreshToken,
     };
+  }
+
+  private async linkExistingAccount(
+    identity: VerifiedGoogleIdentity,
+    user: User,
+    password: string,
+  ): Promise<GoogleAuthResult> {
+    if (user.status === "deleted") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_DELETED",
+        message: "Esta cuenta fue eliminada.",
+        statusCode: 403,
+        displayEmail: identity.email,
+      };
+    }
+
+    if (user.status === "pending") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_PENDING",
+        message: "Tu cuenta todavía está pendiente de aprobación.",
+        statusCode: 403,
+        displayEmail: identity.email,
+      };
+    }
+
+    if (user.status === "suspended" || user.status === "banned") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_SUSPENDED",
+        message: "Esta cuenta está bloqueada. Contacta a soporte.",
+        statusCode: 403,
+        displayEmail: identity.email,
+      };
+    }
+
+    const alreadyLinked =
+      await this.identitiesRepository.findByUserAndProvider(
+        user.id,
+        PROVIDER,
+      );
+
+    if (alreadyLinked) {
+      if (alreadyLinked.providerUserId !== identity.sub) {
+        return {
+          ok: false,
+          code: "AUTH_GOOGLE_ALREADY_LINKED",
+          message:
+            "Esta cuenta RAPA GO ya tiene otra cuenta de Google vinculada.",
+          statusCode: 409,
+          displayEmail: identity.email,
+        };
+      }
+
+      return this.signInExisting(
+        identity,
+        user.id,
+        alreadyLinked.id,
+      );
+    }
+
+    const credentials =
+      await this.credentialsRepository.findByUserId(user.id);
+
+    if (!credentials) {
+      return {
+        ok: false,
+        code: "AUTH_GOOGLE_LINK_PASSWORD_UNAVAILABLE",
+        message:
+          "Esta cuenta no tiene contraseña RAPA GO. Inicia sesión con tu método actual para vincular Google.",
+        statusCode: 409,
+        displayEmail: identity.email,
+      };
+    }
+
+    if (
+      credentials.lockedUntil &&
+      credentials.lockedUntil > new Date()
+    ) {
+      this.auditService.recordSafe({
+        eventType: "auth.google.link.failure",
+        entityType: "user",
+        entityId: user.id,
+        actorUserId: user.id,
+        metadata: { reason: "account_locked" },
+      });
+
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_LOCKED",
+        message:
+          "La cuenta está temporalmente bloqueada por intentos fallidos. Intenta nuevamente más tarde.",
+        statusCode: 423,
+        displayEmail: identity.email,
+      };
+    }
+
+    const passwordMatches =
+      await this.passwordService.verifyPassword(
+        credentials.passwordHash,
+        password,
+      );
+
+    if (!passwordMatches) {
+      const updated =
+        await this.credentialsRepository.incrementFailedAttempts(
+          user.id,
+        );
+
+      if (
+        updated.failedLoginAttempts >=
+        GOOGLE_LINK_MAX_FAILED_ATTEMPTS
+      ) {
+        const until = new Date(
+          Date.now() +
+            GOOGLE_LINK_LOCKOUT_MINUTES * 60 * 1000,
+        );
+        await this.credentialsRepository.lockUntil(
+          user.id,
+          until,
+        );
+      }
+
+      this.auditService.recordSafe({
+        eventType: "auth.google.link.failure",
+        entityType: "user",
+        entityId: user.id,
+        actorUserId: user.id,
+        metadata: {
+          reason: "invalid_password",
+          attempts: updated.failedLoginAttempts,
+        },
+      });
+
+      return {
+        ok: false,
+        code: "AUTH_GOOGLE_LINK_PASSWORD_INVALID",
+        message:
+          "La contraseña de tu cuenta RAPA GO no es correcta.",
+        statusCode: 401,
+        displayEmail: identity.email,
+      };
+    }
+
+    await this.credentialsRepository.resetFailedAttempts(user.id);
+
+    const attached =
+      await this.identitiesRepository.attachToExistingUser({
+        userId: user.id,
+        provider: PROVIDER,
+        providerUserId: identity.sub,
+        providerClientId: identity.aud,
+        providerEmail: identity.email,
+        providerEmailVerified: true,
+        providerIsPrivateEmail: false,
+        encryptedRefreshToken: undefined,
+      });
+
+    if (!attached) {
+      const winner =
+        await this.identitiesRepository.findByProviderAndSub(
+          PROVIDER,
+          identity.sub,
+        );
+
+      if (!winner || winner.userId !== user.id) {
+        this.auditService.recordSafe({
+          eventType: "auth.google.link.failure",
+          entityType: "user",
+          entityId: user.id,
+          actorUserId: user.id,
+          metadata: { reason: "identity_already_owned" },
+        });
+
+        return {
+          ok: false,
+          code: "AUTH_GOOGLE_ALREADY_LINKED",
+          message:
+            "Esta cuenta de Google ya está vinculada a otra cuenta RAPA GO.",
+          statusCode: 409,
+          displayEmail: identity.email,
+        };
+      }
+
+      return this.signInExisting(
+        identity,
+        user.id,
+        winner.id,
+      );
+    }
+
+    this.auditService.recordSafe({
+      eventType: "auth.google.link.success",
+      entityType: "user",
+      entityId: user.id,
+      actorUserId: user.id,
+      metadata: {
+        provider: PROVIDER,
+        providerEmailVerified: true,
+      },
+    });
+
+    return this.signInExisting(
+      identity,
+      user.id,
+      attached.id,
+    );
   }
 
   private async preparePassengerSetup(

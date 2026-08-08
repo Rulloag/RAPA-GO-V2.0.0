@@ -39,6 +39,9 @@ export interface UseGoogleSignInResult {
   setupOpen: boolean;
   documents: LegalDocumentData[];
   setupDisplayEmail: string;
+  linkOpen: boolean;
+  linkDisplayEmail: string;
+  completeLink: (password: string) => Promise<GoogleSignInOutcome>;
   completeSetup: (input: {
     passengerFareType: GooglePassengerFareType;
     acceptedDocumentIds: string[];
@@ -49,6 +52,7 @@ export interface UseGoogleSignInResult {
     residenceAccreditation?: GoogleSignInRequest["residenceAccreditation"];
   }) => Promise<GoogleSignInOutcome>;
   cancelSetup: () => void;
+  cancelLink: () => void;
 }
 
 function mapGoogleError(code: string, message: string): GoogleSignInOutcome {
@@ -88,6 +92,11 @@ function mapGoogleError(code: string, message: string): GoogleSignInOutcome {
   if (
     code === "AUTH_GOOGLE_TOKEN_INVALID" ||
     code === "AUTH_GOOGLE_EMAIL_NOT_VERIFIED" ||
+    code === "AUTH_GOOGLE_LINK_PASSWORD_INVALID" ||
+    code === "AUTH_GOOGLE_LINK_PASSWORD_UNAVAILABLE" ||
+    code === "AUTH_GOOGLE_LINK_ACCOUNT_NOT_FOUND" ||
+    code === "AUTH_GOOGLE_ALREADY_LINKED" ||
+    code === "AUTH_ACCOUNT_LOCKED" ||
     code === "UNAUTHORIZED" ||
     code === "VALIDATION_ERROR"
   ) {
@@ -112,6 +121,8 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
   const [setupOpen, setSetupOpen] = useState(false);
   const [documents, setDocuments] = useState<LegalDocumentData[]>([]);
   const [setupDisplayEmail, setSetupDisplayEmail] = useState("");
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkDisplayEmail, setLinkDisplayEmail] = useState("");
   const pendingTokenRef = useRef<string | null>(null);
   const isNative = Capacitor.isNativePlatform();
   const platform = Capacitor.getPlatform();
@@ -124,6 +135,8 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
     setSetupOpen(false);
     setDocuments([]);
     setSetupDisplayEmail("");
+    setLinkOpen(false);
+    setLinkDisplayEmail("");
   }, []);
 
   const prepareSetup = useCallback(async (idToken: string): Promise<boolean> => {
@@ -137,6 +150,8 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
       if (required.length !== REQUIRED_LEGAL_TYPES.size) return false;
 
       pendingTokenRef.current = idToken;
+      setLinkOpen(false);
+      setLinkDisplayEmail("");
       setDocuments(required);
       setSetupDisplayEmail(readDisplayEmailFromGoogleToken(idToken));
       setSetupOpen(true);
@@ -173,6 +188,20 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
               "No pudimos cargar todos los documentos legales obligatorios.",
           };
         }
+        return outcome;
+      }
+
+      if (outcome.kind === "linking_required") {
+        pendingTokenRef.current = idToken;
+        setSetupOpen(false);
+        setDocuments([]);
+        setSetupDisplayEmail("");
+        setLinkDisplayEmail(
+          "displayEmail" in response && response.displayEmail
+            ? response.displayEmail
+            : readDisplayEmailFromGoogleToken(idToken),
+        );
+        setLinkOpen(true);
         return outcome;
       }
 
@@ -227,6 +256,67 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
     }
   }, [isAvailable, isNative, loading, submitToken]);
 
+  const completeLink = useCallback(
+    async (password: string): Promise<GoogleSignInOutcome> => {
+      const idToken = pendingTokenRef.current;
+      const cleanPassword = String(password ?? "");
+
+      if (!idToken) {
+        clearPending();
+        return {
+          kind: "invalid_credential",
+          message:
+            "El ingreso con Google venció. Vuelve a seleccionar tu cuenta.",
+        };
+      }
+
+      if (cleanPassword.length < 8) {
+        return {
+          kind: "invalid_credential",
+          message:
+            "Ingresa la contraseña actual de tu cuenta RAPA GO.",
+        };
+      }
+
+      setLoading(true);
+
+      try {
+        const response = await signInWithGoogle({
+          idToken,
+          linkPassword: cleanPassword,
+        });
+
+        if ("session" in response) {
+          clearPending();
+          return {
+            kind: "success",
+            role: response.session.user.role,
+          };
+        }
+
+        const outcome = mapGoogleError(
+          response.code,
+          response.message ??
+            "No pudimos vincular tu cuenta de Google.",
+        );
+
+        if (
+          outcome.kind === "invalid_credential" ||
+          outcome.kind === "linking_required"
+        ) {
+          setLinkOpen(true);
+          return outcome;
+        }
+
+        clearPending();
+        return outcome;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [clearPending, signInWithGoogle],
+  );
+
   const completeSetup = useCallback(
     async (input: {
       passengerFareType: GooglePassengerFareType;
@@ -280,7 +370,11 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
     setupOpen,
     documents,
     setupDisplayEmail,
+    linkOpen,
+    linkDisplayEmail,
+    completeLink,
     completeSetup,
     cancelSetup: clearPending,
+    cancelLink: clearPending,
   };
 }
