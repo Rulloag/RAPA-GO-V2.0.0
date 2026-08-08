@@ -20,6 +20,12 @@ export interface GoogleLegalAcceptance {
  */
 export interface GoogleAuthRequest {
   idToken: string;
+  /**
+   * Se envía únicamente cuando Google encuentra una cuenta RAPA GO existente
+   * con el mismo correo verificado. El backend valida la contraseña antes de
+   * asociar el Google sub al user.id existente.
+   */
+  linkPassword?: string | undefined;
   displayName?: string | undefined;
   phone?: string | undefined;
   rut?: string | undefined;

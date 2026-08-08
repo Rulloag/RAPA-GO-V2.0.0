@@ -24,6 +24,7 @@ import { AppleAccountSetupModal } from "./AppleAccountSetupModal.js";
 import { AppleRoleSelectionModal } from "./AppleRoleSelectionModal.js";
 import { AppleSignInButton } from "./AppleSignInButton.js";
 import { GoogleAccountSetupModal } from "./GoogleAccountSetupModal.js";
+import { GoogleExistingAccountLinkModal } from "./GoogleExistingAccountLinkModal.js";
 import { GoogleSignInButton } from "./GoogleSignInButton.js";
 import { useGoogleSignIn, type GoogleSignInOutcome } from "./useGoogleSignIn.js";
 import { useAppleSignIn, type AppleSignInOutcome } from "./useAppleSignIn.js";
@@ -576,6 +577,7 @@ export function LoginPage(): JSX.Element {
   const appleWebCallbackHandledRef = useRef(false);
   const googleWebSignInInFlightRef = useRef(false);
   const googleSetupSubmitInFlightRef = useRef(false);
+  const googleLinkSubmitInFlightRef = useRef(false);
   /* Tema propio del flujo de acceso (compartido con Registro). */
   const { theme, isDark, toggleTheme } = useRapagoSectionTheme("auth");
 
@@ -592,6 +594,16 @@ export function LoginPage(): JSX.Element {
       // mensajes de validación posteriores al primer envío.
       setServerError("");
       setGoogleSetupError(outcome.message ?? "");
+      setGoogleLinkError("");
+      return;
+    }
+
+    if (outcome.kind === "linking_required") {
+      // Google ya verificó el correo y el hook mantiene el ID token únicamente
+      // en memoria. La confirmación de contraseña se realiza en el modal seguro.
+      setServerError("");
+      setGoogleSetupError("");
+      setGoogleLinkError("");
       return;
     }
 
@@ -610,7 +622,9 @@ export function LoginPage(): JSX.Element {
     }
 
     if ("message" in outcome) {
-      if (google.setupOpen) {
+      if (google.linkOpen) {
+        setGoogleLinkError(outcome.message);
+      } else if (google.setupOpen) {
         setGoogleSetupError(outcome.message);
       } else {
         setServerError(outcome.message);
@@ -621,6 +635,7 @@ export function LoginPage(): JSX.Element {
   async function startGoogleNativeSignIn(): Promise<void> {
     setServerError("");
     setGoogleSetupError("");
+    setGoogleLinkError("");
     handleGoogleOutcome(await google.signInNative());
   }
 
@@ -633,11 +648,40 @@ export function LoginPage(): JSX.Element {
     googleWebSignInInFlightRef.current = true;
     setServerError("");
     setGoogleSetupError("");
+    setGoogleLinkError("");
 
     try {
       handleGoogleOutcome(await google.handleWebCredential(idToken));
     } finally {
       googleWebSignInInFlightRef.current = false;
+    }
+  }
+
+  async function completeGoogleLink(passwordToConfirm: string): Promise<void> {
+    if (googleLinkSubmitInFlightRef.current) return;
+
+    googleLinkSubmitInFlightRef.current = true;
+    setServerError("");
+    setGoogleSetupError("");
+    setGoogleLinkError("");
+
+    try {
+      const outcome = await google.completeLink(passwordToConfirm);
+
+      if (outcome.kind === "success") {
+        history.replace(ROLE_HOME[outcome.role] ?? ROUTES.PASSENGER.HOME);
+        return;
+      }
+
+      if ("message" in outcome) {
+        setGoogleLinkError(outcome.message);
+      } else {
+        setGoogleLinkError(
+          "No pudimos vincular Google a tu cuenta RAPA GO.",
+        );
+      }
+    } finally {
+      googleLinkSubmitInFlightRef.current = false;
     }
   }
 
@@ -810,6 +854,7 @@ export function LoginPage(): JSX.Element {
   );
   const [appleSetupError, setAppleSetupError] = useState("");
   const [googleSetupError, setGoogleSetupError] = useState("");
+  const [googleLinkError, setGoogleLinkError] = useState("");
   const facebookLoginEnabled =
     String(import.meta.env.VITE_FACEBOOK_LOGIN_ENABLED ?? "false")
       .trim()
@@ -1686,6 +1731,20 @@ export function LoginPage(): JSX.Element {
         }}
         onConfirm={(input) => {
           void completeGoogleSetup(input);
+        }}
+      />
+
+      <GoogleExistingAccountLinkModal
+        isOpen={google.linkOpen}
+        loading={google.loading}
+        displayEmail={google.linkDisplayEmail}
+        error={googleLinkError}
+        onCancel={() => {
+          setGoogleLinkError("");
+          google.cancelLink();
+        }}
+        onConfirm={(passwordToConfirm) => {
+          void completeGoogleLink(passwordToConfirm);
         }}
       />
 

@@ -88,6 +88,11 @@ export type GooglePassengerFareType = ApplePassengerFareType;
 export interface GoogleSignInRequest {
   /** Google ID token; the backend verifies signature, issuer and audience. */
   idToken: string;
+  /**
+   * Solo para vincular Google a una cuenta RAPA GO existente. La contraseña
+   * viaja al backend por HTTPS y nunca se guarda en el cliente.
+   */
+  linkPassword?: string;
   /** Nombre visible confirmado por la persona durante el alta social. */
   displayName?: string;
   phone?: string;
