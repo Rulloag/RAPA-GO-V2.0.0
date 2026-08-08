@@ -31,7 +31,6 @@ import {
   cashOutline,
   checkmarkCircleOutline,
   chevronForwardOutline,
-  copyOutline,
   createOutline,
   enterOutline,
   exitOutline,
@@ -44,10 +43,8 @@ import {
   logoFacebook,
   mailOutline,
   moonOutline,
-  peopleOutline,
   personOutline,
   saveOutline,
-  shareSocialOutline,
   shieldCheckmarkOutline,
   sparklesOutline,
   sunnyOutline,
@@ -202,26 +199,14 @@ const PROFILE_TEXT: Record<ProfileLanguage, Record<string, string>> = {
     noChanges: "No hay cambios para guardar.",
     saved: "Cambios guardados correctamente.",
     completePhone: "Tu cuenta no tiene teléfono registrado. Solicita la corrección a soporte para poder solicitar viajes.",
-    inviteTitle: "Invita y Gana",
-    inviteSubtitle: "Comparte tu código. Cuando alguien complete su primer viaje, recibirás un beneficio en tu billetera.",
-    yourCode: "Tu código",
-    invited: "Has invitado a",
-    people: "persona(s)",
-    earned: "Has ganado",
-    copyCode: "Copiar código",
-    copied: "¡Copiado!",
-    shareLink: "Compartir link",
-    shareTitle: "RAPA GO",
-    shareText: "Usa mi código para tu primer viaje",
-    generateCode: "Generar mi código",
+    inviteTitle: "Código Promocional",
     logout: "Cerrar sesión",
     invalidAvatar: "Selecciona una imagen válida en JPG, PNG o WebP.",
     invalidName: "El nombre es opcional. Puedes guardar el perfil sin foto.",
     safeBadge: "Protegido",
     verifiedBadge: "Verificación",
     activeBadge: "Cuenta activa",
-    statInvited: "Invitados",
-    statEarned: "Ganado",
+    statEarned: "Créditos",
     statMember: "Miembro",
     quickActions: "Acciones rápidas",
     myInfo: "Mi información",
@@ -234,7 +219,6 @@ const PROFILE_TEXT: Record<ProfileLanguage, Record<string, string>> = {
     actionHelp: "Ayuda",
     actionHelpSub: "Soporte Rapa Go",
     completePhoneCta: "Completar ahora",
-    emptyReferralTitle: "Todavía no tienes código",
     retry: "Reintentar",
     unverified: "Sin verificar",
     themeTitle: "Apariencia",
@@ -286,26 +270,14 @@ const PROFILE_TEXT: Record<ProfileLanguage, Record<string, string>> = {
     noChanges: "No changes to save.",
     saved: "Changes saved successfully.",
     completePhone: "Complete your phone number to request rides.",
-    inviteTitle: "Invite and Earn",
-    inviteSubtitle: "Share your code. When someone completes their first ride, you receive a wallet benefit.",
-    yourCode: "Your code",
-    invited: "You have invited",
-    people: "person(s)",
-    earned: "You have earned",
-    copyCode: "Copy code",
-    copied: "Copied!",
-    shareLink: "Share link",
-    shareTitle: "RAPA GO",
-    shareText: "Use my code for your first ride",
-    generateCode: "Generate my code",
+    inviteTitle: "Promo Code",
     logout: "Log out",
     invalidAvatar: "Select a valid JPG, PNG, or WebP image.",
     invalidName: "Name is optional. You can save the profile without a photo.",
     safeBadge: "Protected",
     verifiedBadge: "Verification",
     activeBadge: "Active account",
-    statInvited: "Invited",
-    statEarned: "Earned",
+    statEarned: "Credits",
     statMember: "Member",
     quickActions: "Quick actions",
     myInfo: "My information",
@@ -318,7 +290,6 @@ const PROFILE_TEXT: Record<ProfileLanguage, Record<string, string>> = {
     actionHelp: "Help",
     actionHelpSub: "Rapa Go support",
     completePhoneCta: "Complete now",
-    emptyReferralTitle: "You don't have a code yet",
     retry: "Retry",
     unverified: "Unverified",
     themeTitle: "Appearance",
@@ -328,8 +299,8 @@ const PROFILE_TEXT: Record<ProfileLanguage, Record<string, string>> = {
   },
 };
 
-/* Las estadísticas viven en una grilla de 3 columnas: a 320px cada tile mide
-   ~93px, así que un "$120.000" sin abreviar rompe la grilla. */
+/* Las estadísticas viven en una grilla de 2 columnas: a 320px cada tile mide
+   ~150px, así que un "$120.000" sin abreviar todavía puede romper la grilla. */
 function formatCompactReward(value: number, language: ProfileLanguage): string {
   if (!Number.isFinite(value) || value <= 0) return "$0";
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
@@ -1225,7 +1196,6 @@ export function ProfileIndexPage(): JSX.Element {
   const [avatarInput,    setAvatarInput]    = useState("");
   const avatarPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const editSectionRef = useRef<HTMLElement | null>(null);
-  const inviteSectionRef = useRef<HTMLElement | null>(null);
   const [avatarPhotoError, setAvatarPhotoError] = useState<string | null>(null);
   const [phoneInput,     setPhoneInput]     = useState("");
   const [passengerFareType, setPassengerFareType] = useState<PassengerFareType | null>(null);
@@ -1235,8 +1205,6 @@ export function ProfileIndexPage(): JSX.Element {
   const [language,       setLanguage]       = useState<ProfileLanguage>(() => readInitialProfileLanguage());
 
   const [referral,       setReferral]       = useState<ReferralSummary | null>(null);
-  const [generatingCode, setGeneratingCode] = useState(false);
-  const [copiedCode,     setCopiedCode]     = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!session?.accessToken) return;
@@ -1434,28 +1402,6 @@ export function ProfileIndexPage(): JSX.Element {
     } finally {
       setSaving(false);
     }
-  }
-
-  async function handleGenerateCode() {
-    if (!session?.accessToken) return;
-    setGeneratingCode(true);
-    try {
-      const result = await referralsService.generateCode(session.accessToken);
-      setReferral(prev => prev
-        ? { ...prev, code: result.code, link: result.link }
-        : { code: result.code, link: result.link, usedCount: 0, totalReward: 0, pendingReward: 0 }
-      );
-    } catch { } finally {
-      setGeneratingCode(false);
-    }
-  }
-
-  async function handleCopyCode(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2000);
-    } catch { }
   }
 
   async function handleLogout() {
@@ -1661,14 +1607,6 @@ export function ProfileIndexPage(): JSX.Element {
             <div className="rapago-profile-stats">
               <div className="rapago-profile-stat">
                 <div className="rapago-profile-stat-value">
-                  {referral?.usedCount ?? 0}
-                </div>
-                <div className="rapago-profile-stat-label">
-                  {profileText.statInvited}
-                </div>
-              </div>
-              <div className="rapago-profile-stat">
-                <div className="rapago-profile-stat-value">
                   {formatCompactReward(referral?.totalReward ?? 0, language)}
                 </div>
                 <div className="rapago-profile-stat-label">
@@ -1734,7 +1672,10 @@ export function ProfileIndexPage(): JSX.Element {
               <button
                 type="button"
                 className="rapago-profile-action"
-                onClick={() => scrollToSection(inviteSectionRef)}
+                // Ya no hace scroll a una sección local: la tarjeta de código
+                // promocional vive en /profile (compartida entre roles), no
+                // duplicada aquí. Mismo destino que el banner de la Home.
+                onClick={() => history.push(ROUTES.PROFILE.INDEX)}
               >
                 <span className="rapago-profile-action-icon">
                   <IonIcon icon={giftOutline} />
@@ -2021,105 +1962,6 @@ export function ProfileIndexPage(): JSX.Element {
               >
                 {saving ? <IonSpinner name="dots" /> : "Guardar foto de perfil"}
               </IonButton>
-            </section>
-
-            {/* ── Invita y Gana ─────────────────────────────────────────── */}
-            <div className="rapago-profile-section-label">
-              {profileText.inviteTitle}
-            </div>
-
-            <section className="rapago-profile-card" ref={inviteSectionRef}>
-              <div className="rapago-profile-card-head">
-                <span className="rapago-profile-card-icon">
-                  <IonIcon icon={giftOutline} />
-                </span>
-                <div>
-                  <h2 className="rapago-profile-card-title">
-                    {profileText.inviteTitle}
-                  </h2>
-                  <p className="rapago-profile-card-sub">
-                    {profileText.inviteSubtitle}
-                  </p>
-                </div>
-              </div>
-
-              {referral && referral.code ? (
-                <>
-                  <div className="rapago-profile-code">
-                    <div className="rapago-profile-row-label">
-                      {profileText.yourCode}
-                    </div>
-                    <div className="rapago-profile-code-value">
-                      {sanitizeProfileText(referral.code, 40)}
-                    </div>
-                    <div className="rapago-profile-code-meta">
-                      {profileText.invited} <strong>{referral.usedCount}</strong>{" "}
-                      {profileText.people} · {profileText.earned}{" "}
-                      <strong>
-                        $
-                        {referral.totalReward.toLocaleString(
-                          language === "en" ? "en-US" : "es-CL",
-                        )}{" "}
-                        CLP
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="rapago-profile-btn-grid">
-                    <IonButton
-                      expand="block"
-                      className="rapago-profile-btn-primary"
-                      onClick={() => void handleCopyCode(referral.code)}
-                    >
-                      <IonIcon icon={copyOutline} slot="start" />
-                      {copiedCode ? profileText.copied : profileText.copyCode}
-                    </IonButton>
-                    <IonButton
-                      expand="block"
-                      className="rapago-profile-btn-outline"
-                      onClick={() => {
-                        const shareData = {
-                          title: profileText.shareTitle,
-                          text: profileText.shareText,
-                          url: referral.link,
-                        };
-                        if (navigator.share) {
-                          void navigator.share(shareData);
-                        } else {
-                          void handleCopyCode(referral.link);
-                        }
-                      }}
-                    >
-                      <IonIcon icon={shareSocialOutline} slot="start" />
-                      {profileText.shareLink}
-                    </IonButton>
-                  </div>
-                </>
-              ) : (
-                /* Estado vacío con ilustración y explicación, no solo un botón. */
-                <div className="rapago-profile-empty">
-                  <div className="rapago-profile-empty-icon">
-                    <IonIcon icon={peopleOutline} />
-                  </div>
-                  <p className="rapago-profile-empty-text">
-                    <strong>{profileText.emptyReferralTitle}</strong>
-                    <br />
-                    {profileText.inviteSubtitle}
-                  </p>
-                  <IonButton
-                    expand="block"
-                    className="rapago-profile-btn-primary"
-                    onClick={() => void handleGenerateCode()}
-                    disabled={generatingCode}
-                  >
-                    {generatingCode ? (
-                      <IonSpinner name="dots" />
-                    ) : (
-                      profileText.generateCode
-                    )}
-                  </IonButton>
-                </div>
-              )}
             </section>
 
             {/* ── Preferencias ──────────────────────────────────────────── */}

@@ -2528,6 +2528,21 @@
   transform: translateY(1px) scale(0.995);
 }
 
+/* Con la acción principal movida a la cabecera de la hoja (__confirm), aquí
+   sólo queda Cancelar: flex centrado con tope de ancho, en vez de ocupar la
+   mitad de una rejilla de dos columnas pensada para dos botones.
+   Selector con las dos clases (mayor especificidad) para que gane siempre
+   sobre el grid-template-columns de las media queries de abajo, sin importar
+   el orden en la hoja de estilos. */
+.rapago-driver-sheet-actions.rapago-driver-sheet-actions--single {
+  display: flex;
+  justify-content: center;
+}
+
+.rapago-driver-sheet-actions.rapago-driver-sheet-actions--single ion-button {
+  flex: 0 1 260px;
+}
+
 /* Acción principal: mismo degradado dorado de marca que el CTA del pasajero,
    para que "el botón que avanza el flujo" se vea igual en ambas apps. */
 .rapago-driver-sheet-actions__primary {
@@ -2992,6 +3007,88 @@
 @media (prefers-reduced-motion: reduce) {
   .rapago-driver-page .rapago-driver-nav-grip {
     transition: none;
+  }
+}
+
+/* ---- Acción principal, esquina superior derecha de la hoja ----
+   Misma idea que .rp-request-map-head-confirm del pasajero (degradado de
+   marca en formato píldora): aquí flota junto al asa de arrastre en vez de
+   compartir fila con "Cancelar" al fondo de la hoja, así queda a la vista
+   sin importar cuánto se pliegue el panel. --rp-btn-primary ya trae el
+   degradado de marca completo (--rp-gold-soft/-dark del pasajero no existen
+   en este árbol, ver .request-map-page). position:absolute la saca del flujo
+   de la franja del asa, que captura el gesto de arrastre en todo su ancho:
+   así el botón nunca compite por ese gesto. */
+.rapago-driver-page .rapago-driver-nav-sheet__confirm {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 152px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--rp-btn-primary);
+  color: var(--rp-btn-primary-fg);
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--rp-shadow-accent);
+  touch-action: manipulation;
+  transition:
+    transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm ion-icon {
+  flex: 0 0 auto;
+  font-size: 1rem;
+}
+
+/* El propio texto se recorta con ellipsis: el aria-label en el JSX conserva
+   la etiqueta completa para lectores de pantalla. */
+.rapago-driver-page .rapago-driver-nav-sheet__confirm span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm:hover {
+  filter: brightness(1.03);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm:focus-visible {
+  outline: 2px solid var(--rp-gold);
+  outline-offset: 2px;
+}
+
+/* Pantallas muy angostas: la píldora se compacta para no invadir el asa. */
+@media (max-width: 360px) {
+  .rapago-driver-page .rapago-driver-nav-sheet__confirm {
+    top: 6px;
+    right: 10px;
+    max-width: 112px;
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 0.74rem;
+    gap: 4px;
+  }
+
+  .rapago-driver-page .rapago-driver-nav-sheet__confirm ion-icon {
+    font-size: 0.9rem;
   }
 }
 

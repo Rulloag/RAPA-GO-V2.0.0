@@ -587,74 +587,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Próximamente (carrusel horizontal) ─────────────────────────────────── */
-/* Scroll propio con overflow-x: el body de la página nunca se desplaza en
-   horizontal. */
-.rapago-home-news {
-  display: flex;
-  gap: var(--rp-gap-sm);
-  overflow-x: auto;
-  padding: 2px 2px 8px;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-}
-
-.rapago-home-news::-webkit-scrollbar {
-  display: none;
-}
-
-.rapago-home-news-card {
-  flex: 0 0 auto;
-  width: clamp(228px, 68vw, 262px);
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: var(--rp-pad-x);
-  border-radius: var(--rp-radius-sm);
-  background: var(--rp-surface);
-  border: var(--rp-border-w) solid var(--rp-border-c);
-  box-shadow: var(--rp-shadow);
-  color: var(--rp-text);
-  scroll-snap-align: start;
-}
-
-.rapago-home-news-icon {
-  width: var(--rp-icon-size);
-  height: var(--rp-icon-size);
-  border-radius: 13px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  background: var(--rp-icon-bg);
-  border: 1px solid var(--rp-icon-bd);
-  color: var(--rp-icon-fg);
-  font-size: 1.25rem;
-}
-
-.rapago-home-news-tag {
-  font-size: var(--rp-fs-label);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--rp-muted-soft);
-}
-
-.rapago-home-news-title {
-  margin-top: 4px;
-  font-size: var(--rp-fs-body);
-  font-weight: 850;
-  line-height: 1.18;
-  color: var(--rp-text);
-}
-
-.rapago-home-news-sub {
-  margin-top: 5px;
-  font-size: var(--rp-fs-micro);
-  font-weight: 650;
-  line-height: 1.35;
-  color: var(--rp-muted);
-}
-
 /* ── Banner de referidos ────────────────────────────────────────────────── */
 .rapago-home-referral {
   display: flex;
@@ -795,6 +727,36 @@
   font-weight: 800;
   text-transform: none;
   margin: 0;
+}
+
+/* Botón deshabilitado "todavía no disponible": ámbar transparente en vez del
+   gris/tan plano que global.css aplica por defecto a todo ion-button[disabled]
+   (--rapago-ui-disabled-bg/-text). El selector necesita más especificidad que
+   esa regla global — (0,2,1) con !important — para ganarle; de ahí las tres
+   clases/atributo encadenados en vez de solo una clase. */
+.rapago-home-page .rapago-home-btn-disabled[disabled] {
+  --border-radius: var(--rp-radius-sm) !important;
+  --border-color: var(--rp-gold) !important;
+  --border-width: var(--rp-border-w) !important;
+  --background: color-mix(in srgb, var(--rp-gold) 14%, transparent) !important;
+  --background-activated: color-mix(in srgb, var(--rp-gold) 14%, transparent) !important;
+  --background-hover: color-mix(in srgb, var(--rp-gold) 14%, transparent) !important;
+  --color: var(--rp-gold) !important;
+  --opacity: 1 !important;
+  color: var(--rp-gold) !important;
+  opacity: 1 !important;
+  filter: none !important;
+  height: calc(var(--rp-control-h) - 4px);
+  font-weight: 800;
+  text-transform: none;
+  margin: 0;
+  cursor: not-allowed;
+}
+
+.rapago-home-page .rapago-home-btn-disabled[disabled]::part(native) {
+  color: var(--rp-gold) !important;
+  background: color-mix(in srgb, var(--rp-gold) 14%, transparent) !important;
+  border-color: var(--rp-gold) !important;
 }
 
 /* ── FAB de WhatsApp ────────────────────────────────────────────────────── */

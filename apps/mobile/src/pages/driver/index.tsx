@@ -91,6 +91,15 @@ import {
   type LatLng,
   type GoogleMapInstance,
 } from "../../features/maps/index.js";
+import {
+  createRouteController,
+  formatNavigationDuration,
+  formatNavigationMeters as formatRouteMeters,
+  hydrateRouteCache,
+  type RouteController,
+  type RoutePhase,
+  type RouteSnapshot,
+} from "../../features/navigation/index.js";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { DriverRestScheduleCard } from "./components/DriverRestScheduleCard";
 import { AccountDeletionCard } from "../../components/accountDeletion/AccountDeletionCard.js";
@@ -1576,6 +1585,7 @@ function UberDriverNavigationMap({
   sheetHeader = null,
   sheetBody = null,
   sheetActions = null,
+  sheetPrimaryAction = null,
 }: {
   ride: {
     id?: string | null;
@@ -1604,6 +1614,10 @@ function UberDriverNavigationMap({
   // scroll propio: si no cabe, se desplaza aquí dentro y nunca empuja a las
   // acciones principales fuera de la pantalla.
   sheetBody?: JSX.Element | null;
+  // Acción principal del viaje, flotando en la esquina superior derecha de la
+  // hoja (junto al asa), no dentro de sheetActions: así queda siempre a la
+  // vista sin importar cuánto se despliegue o se pliegue la hoja.
+  sheetPrimaryAction?: JSX.Element | null;
 }): JSX.Element {
   // Alto en px para los desplazamientos de cámara (panBy). Cuando `height`
   // es "100%" (mapa a pantalla completa) no hay forma barata de conocer el
@@ -1881,33 +1895,25 @@ function UberDriverNavigationMap({
 
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(
-    null,
-  );
-  const directionsServiceRef = useRef<google.maps.DirectionsService | null>(
-    null,
-  );
   const driverMarkerRef = useRef<google.maps.Marker | null>(null);
   const pickupMarkerRef = useRef<google.maps.Marker | null>(null);
   const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
-  const fallbackLineRef = useRef<google.maps.Polyline | null>(null);
 
   const driverPointRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastGpsPointRef = useRef<{ lat: number; lng: number } | null>(null);
   const headingRef = useRef(0);
   const lastCameraAtRef = useRef(0);
-  const routeRequestIdRef = useRef(0);
-  const routeKeyRef = useRef("");
   const didInitialCameraRef = useRef(false);
   const mapReadyRef = useRef(false);
-  const lastRouteOriginRef = useRef<{ lat: number; lng: number } | null>(null);
-  const lastRouteRecalculateAtRef = useRef(0);
   const lastSpokenInstructionRef = useRef("");
   const navigationCameraLockedRef = useRef(true);
   const manualCameraUnlockUntilRef = useRef(0);
   const routePathRef = useRef<Array<{ lat: number; lng: number }>>([]);
   const routeHeadingRef = useRef<number | null>(null);
-  const lastOffRouteRecalculationAtRef = useRef(0);
+  // Dueño de la ruta dibujada. La polyline sale siempre de aquí (caché local),
+  // así que perder la conexión ya no borra nada de la pantalla.
+  const routeControllerRef = useRef<RouteController | null>(null);
+  const routeSnapshotHandlerRef = useRef<(snapshot: RouteSnapshot) => void>(() => {});
 
   const [driverGpsReady, setDriverGpsReady] = useState(false);
   const [driverOutsideRapaNui, setDriverOutsideRapaNui] = useState(false);
@@ -1922,6 +1928,8 @@ function UberDriverNavigationMap({
     street?: string | null;
   } | null>(null);
   const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
+  // true mientras se navega con la última ruta guardada sin poder revalidarla.
+  const [routeOffline, setRouteOffline] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [instructionBannerCollapsed, setInstructionBannerCollapsed] = useState(false);
@@ -2106,46 +2114,6 @@ function UberDriverNavigationMap({
     return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
   }
 
-  function cleanDirectionInstruction(value: string | null | undefined): string {
-    const raw = repairDriverDisplayText(value).trim();
-    if (!raw) return "Sigue la ruta marcada.";
-
-    return raw
-      .replace(/<div[^>]*>/gi, ". ")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/\s+/g, " ")
-      .replace(/\s+\./g, ".")
-      .trim();
-  }
-
-  function extractStreetFromDirectionInstruction(value: string | null | undefined): string | null {
-    const text = cleanDirectionInstruction(value);
-    if (!text || text === "Sigue la ruta marcada.") return null;
-
-    const patterns = [
-      /(?:hacia|en dirección a|por|en|toma|contin[uú]a por|mantente en)\s+([^.,;]+)/i,
-      /(?:gira|dobla|incorp[oó]rate)\s+(?:a la derecha|a la izquierda|ligeramente a la derecha|ligeramente a la izquierda)?\s*(?:hacia|en)?\s*([^.,;]+)/i,
-    ];
-
-    for (const pattern of patterns) {
-      const match = text.match(pattern);
-      const street = match?.[1]?.trim();
-      if (street && street.length >= 3) return street.replace(/^la\s+/i, "").trim();
-    }
-
-    const afterArrow = text.split(" hacia ").pop()?.trim();
-    if (afterArrow && afterArrow !== text && afterArrow.length >= 3) {
-      return afterArrow.split(/[.,;]/)[0]?.trim() ?? null;
-    }
-
-    return null;
-  }
-
-
   function formatNavigationMeters(value: number | null): string {
     if (value == null || !Number.isFinite(value)) return "";
     if (value < 1000) return `${Math.max(10, Math.round(value / 10) * 10)} m`;
@@ -2203,46 +2171,6 @@ function UberDriverNavigationMap({
     } catch {
       // La voz es opcional. La indicación visual se mantiene aunque el navegador bloquee audio.
     }
-  }
-
-  function latLngToPlainPoint(
-    value: google.maps.LatLng | google.maps.LatLngLiteral | null | undefined,
-  ): { lat: number; lng: number } | null {
-    if (!value) return null;
-
-    const raw = value as {
-      lat?: number | (() => number);
-      lng?: number | (() => number);
-    };
-
-    const rawLat = raw.lat;
-    const rawLng = raw.lng;
-    const lat = typeof rawLat === "function" ? rawLat() : Number(rawLat);
-    const lng = typeof rawLng === "function" ? rawLng() : Number(rawLng);
-
-    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
-  }
-
-  function buildRoutePathFromLeg(
-    leg: google.maps.DirectionsLeg | undefined,
-  ): Array<{ lat: number; lng: number }> {
-    const path: Array<{ lat: number; lng: number }> = [];
-
-    for (const step of leg?.steps ?? []) {
-      const points = step.path?.length
-        ? step.path
-        : [step.start_location, step.end_location];
-
-      for (const point of points) {
-        const plain = latLngToPlainPoint(point);
-        if (!plain) continue;
-
-        const last = path[path.length - 1];
-        if (!last || distanceMeters(last, plain) >= 1) path.push(plain);
-      }
-    }
-
-    return path;
   }
 
   function distancePointToSegmentMeters(
@@ -2309,60 +2237,6 @@ function UberDriverNavigationMap({
     return bearingDegrees(from, to);
   }
 
-  function getLiveDirectionInstruction(
-    leg: google.maps.DirectionsLeg | undefined,
-    driverPoint: { lat: number; lng: number },
-  ): { text: string; distance: string; maneuver: string | null; street?: string | null } | null {
-    const steps = leg?.steps ?? [];
-    if (steps.length === 0) return null;
-
-    let selectedStep = steps[0];
-
-    // No nos quedamos pegados en la primera instrucción si el conductor ya la pasó.
-    for (const step of steps) {
-      const end = latLngToPlainPoint(step.end_location);
-      if (!end || distanceMeters(driverPoint, end) > 18) {
-        selectedStep = step;
-        break;
-      }
-    }
-
-    const stepEnd = latLngToPlainPoint(selectedStep.end_location);
-    const liveDistance = stepEnd ? formatNavigationMeters(distanceMeters(driverPoint, stepEnd)) : selectedStep.distance?.text ?? "";
-
-    return {
-      text: cleanDirectionInstruction(selectedStep.instructions),
-      distance: liveDistance,
-      maneuver: selectedStep.maneuver ?? null,
-      street: extractStreetFromDirectionInstruction(selectedStep.instructions),
-    };
-  }
-
-  function shouldRecalculateRouteFrom(point: {
-    lat: number;
-    lng: number;
-  }): boolean {
-    const targetPoint = goingToDestination
-      ? destination
-      : goingToPickup
-        ? pickup
-        : waitingPassenger
-          ? destination ?? pickup
-          : null;
-    if (!targetPoint) return false;
-
-    const lastRouteOrigin = lastRouteOriginRef.current;
-    const now = Date.now();
-
-    if (!lastRouteOrigin) return true;
-
-    const movedSinceRoute = distanceMeters(lastRouteOrigin, point);
-    const secondsSinceRoute = (now - lastRouteRecalculateAtRef.current) / 1000;
-
-    // Recalcula si el conductor se movió o tomó otro camino.
-    // En celular no esperamos tanto: así el mapa no queda "pegado" y la distancia baja en vivo.
-    return movedSinceRoute >= 3 && secondsSinceRoute >= 1.2;
-  }
 
   function focusNavigationCameraInsideApp(force = true): void {
     const map = mapRef.current;
@@ -2408,7 +2282,7 @@ function UberDriverNavigationMap({
       map.panTo(focusPoint);
     }
 
-    calculateRouteOnce(true);
+    calculateRouteOnce();
   }
 
   function openExternalNavigationToTarget(): void {
@@ -2561,10 +2435,83 @@ function UberDriverNavigationMap({
     });
   }
 
-  function calculateRouteOnce(force = false): void {
-    const map = mapRef.current;
-    const renderer = directionsRendererRef.current;
-    const service = directionsServiceRef.current;
+  /**
+   * Vuelca el estado del controlador en la UI.
+   *
+   * Todo lo que se muestra (distancia, ETA, instrucción) sale del progreso
+   * calculado localmente sobre la polyline guardada, así que sigue vivo y
+   * actualizándose aunque no haya señal.
+   */
+  function applyRouteSnapshot(snapshot: RouteSnapshot): void {
+    routePathRef.current = routeControllerRef.current?.getPath() ?? [];
+
+    if (snapshot.headingDegrees != null) {
+      routeHeadingRef.current = snapshot.headingDegrees;
+      headingRef.current = snapshot.headingDegrees;
+    }
+
+    setRouteOffline(snapshot.isStale || !snapshot.isOnline);
+
+    if (!snapshot.route) {
+      setRouteInfo(null);
+      setTargetDistanceMeters(null);
+      setNextInstruction(null);
+      return;
+    }
+
+    const remaining = snapshot.remainingMeters ?? snapshot.route.distanceMeters;
+    const driverPoint = driverPointRef.current;
+
+    setTargetDistanceMeters(remaining);
+    setRouteInfo({
+      duration: formatNavigationDuration(snapshot.etaSeconds ?? snapshot.route.durationSeconds),
+      distance: formatRouteMeters(remaining),
+    });
+
+    const arrivalText = arrivalInstructionText(remaining);
+
+    if (arrivalText) {
+      setNextInstruction({
+        text: arrivalText,
+        distance: formatRouteMeters(remaining),
+        maneuver: "arrive",
+        street: null,
+      });
+      return;
+    }
+
+    const step = snapshot.step;
+
+    setNextInstruction(
+      step
+        ? {
+            text: step.text,
+            distance: formatRouteMeters(
+              driverPoint
+                ? distanceMeters(driverPoint, step.endLocation)
+                : step.distanceMeters,
+            ),
+            maneuver: step.maneuver,
+            street: step.street,
+          }
+        : null,
+    );
+  }
+
+  // El controlador se crea una sola vez, así que su callback capturaría el
+  // primer render para siempre. Se llama a través de esta ref para que use
+  // siempre los valores actuales de la pantalla.
+  routeSnapshotHandlerRef.current = applyRouteSnapshot;
+
+  /**
+   * Fija el destino activo. Ya no dispara una petición por sí misma: el
+   * controlador dibuja desde la caché al instante y decide si vale la pena
+   * ir a la red.
+   */
+  function calculateRouteOnce(): void {
+    const controller = routeControllerRef.current;
+    if (!controller) return;
+
     const currentTarget = goingToDestination
       ? destination
       : goingToPickup
@@ -2572,123 +2519,20 @@ function UberDriverNavigationMap({
         : waitingPassenger
           ? destination ?? pickup
           : null;
+
     const driverPoint = driverPointRef.current;
 
-    if (!map || !renderer || !service || !window.google?.maps) return;
-    const currentKey = `${rideStatus}:${goingToDestination ? "destination" : "pickup"}:${driverPoint?.lat?.toFixed(6) ?? "none"},${driverPoint?.lng?.toFixed(6) ?? "none"}:${currentTarget?.lat ?? "none"},${currentTarget?.lng ?? "none"}`;
-
-    if (!force && routeKeyRef.current === currentKey) return;
-    routeKeyRef.current = currentKey;
-
-    fallbackLineRef.current?.setMap(null);
-    fallbackLineRef.current = null;
-
-    if (!driverPoint || !currentTarget) {
-      renderer.set("directions", null);
-      routePathRef.current = [];
-      routeHeadingRef.current = null;
-      setRouteInfo(null);
-      setNextInstruction(null);
-      setTargetDistanceMeters(null);
+    if (!currentTarget) {
+      controller.setTarget(null, driverPoint);
       return;
     }
 
-    const requestId = routeRequestIdRef.current + 1;
-    routeRequestIdRef.current = requestId;
+    const phase: RoutePhase = goingToDestination ? "to_destination" : "to_pickup";
 
-    service.route(
-      {
-        origin: driverPoint,
-        destination: currentTarget,
-        travelMode: google.maps.TravelMode.DRIVING,
-        provideRouteAlternatives: false,
-        optimizeWaypoints: false,
-        region: "CL",
-        drivingOptions: {
-          departureTime: new Date(),
-          trafficModel: google.maps.TrafficModel.BEST_GUESS,
-        },
-      },
-      (result, status) => {
-        if (requestId !== routeRequestIdRef.current) return;
-
-        if (status === google.maps.DirectionsStatus.OK && result) {
-          fallbackLineRef.current?.setMap(null);
-          fallbackLineRef.current = null;
-
-          renderer.setOptions({
-            suppressMarkers: true,
-            preserveViewport: true,
-            polylineOptions: {
-              strokeColor: goingToPickup ? "#06B6D4" : "#4F46E5",
-              strokeOpacity: 1,
-              strokeWeight: 9,
-            },
-          });
-          renderer.setDirections(result);
-
-          // Al recalcular, Google entrega los bounds reales de la ruta.
-          // Si todavía no estamos siguiendo el GPS, mostramos toda la ruta automáticamente.
-          const routeBounds = result.routes[0]?.bounds;
-          if (routeBounds && (!driverPointRef.current || !didInitialCameraRef.current)) {
-            try {
-              map.fitBounds(routeBounds, 64);
-            } catch {
-              // No bloquea la navegación.
-            }
-          }
-
-          const leg = result.routes[0]?.legs[0];
-          routePathRef.current = buildRoutePathFromLeg(leg);
-          routeHeadingRef.current = getRouteHeadingForPoint(driverPoint) ?? routeHeadingRef.current;
-          if (routeHeadingRef.current != null) headingRef.current = routeHeadingRef.current;
-          const instruction = getLiveDirectionInstruction(leg, driverPoint);
-
-          lastRouteOriginRef.current = driverPoint;
-          lastRouteRecalculateAtRef.current = Date.now();
-
-          const remainingMeters = Number(leg?.distance?.value ?? NaN);
-          const safeRemainingMeters = Number.isFinite(remainingMeters)
-            ? remainingMeters
-            : distanceMeters(driverPoint, currentTarget);
-          const arrivalText = arrivalInstructionText(safeRemainingMeters);
-
-          setRouteInfo({
-            duration: leg?.duration?.text ?? "",
-            distance: leg?.distance?.text ?? "",
-          });
-          setTargetDistanceMeters(safeRemainingMeters);
-          setNextInstruction(
-            arrivalText
-              ? {
-                  text: arrivalText,
-                  distance: formatNavigationMeters(safeRemainingMeters),
-                  maneuver: "arrive",
-                  street: null,
-                }
-              : instruction,
-          );
-
-          // Sin voz automática: el conductor pidió indicación visual tipo Waze/Google Maps.
-          // Si después quieres voz, se puede reactivar llamando a speakDriverNavigationInstruction().
-
-          return;
-        }
-
-        // Si Google Maps no entrega ruta por calles, no dibujamos línea ficticia.
-        // Así evitamos navegación falsa: el conductor debe abrir Google Maps oficial.
-        renderer.set("directions", null);
-        fallbackLineRef.current?.setMap(null);
-        fallbackLineRef.current = null;
-        routePathRef.current = [];
-        routeHeadingRef.current = null;
-
-        lastRouteOriginRef.current = driverPoint;
-        lastRouteRecalculateAtRef.current = Date.now();
-        setRouteInfo(null);
-        setTargetDistanceMeters(distanceMeters(driverPoint, currentTarget));
-        setNextInstruction(null);
-      },
+    controller.setStrokeColor(goingToPickup ? "#06B6D4" : "#4F46E5");
+    controller.setTarget(
+      { rideId: ride.id, phase, destination: currentTarget },
+      driverPoint,
     );
   }
 
@@ -2745,6 +2589,10 @@ function UberDriverNavigationMap({
 
   useEffect(() => {
     let cancelled = false;
+
+    // Sube la ruta guardada a memoria antes de que el mapa exista, para que un
+    // arranque en frío sin señal ya tenga qué dibujar.
+    void hydrateRouteCache();
 
     void loadRapaGoGoogleMaps()
       .then(() => {
@@ -2803,16 +2651,15 @@ function UberDriverNavigationMap({
           updateNavigationCameraLock(false);
         });
         mapReadyRef.current = true;
-        directionsServiceRef.current = new google.maps.DirectionsService();
-        directionsRendererRef.current = new google.maps.DirectionsRenderer({
-          map,
-          suppressMarkers: true,
-          preserveViewport: true,
-          polylineOptions: {
-            strokeColor: "#00b7ff",
-            strokeOpacity: 1,
-            strokeWeight: 8,
-          },
+
+        // Ya no se usa DirectionsRenderer: exige un DirectionsResult vivo y no
+        // se puede rehidratar desde disco, así que mientras fuera la fuente de
+        // verdad era imposible dibujar la ruta sin red.
+        routeControllerRef.current = createRouteController({
+          getMap: () => mapRef.current,
+          strokeColor: "#4F46E5",
+          strokeWeight: 9,
+          onChange: (snapshot) => routeSnapshotHandlerRef.current(snapshot),
         });
 
         drawStaticMarkers();
@@ -2820,7 +2667,7 @@ function UberDriverNavigationMap({
 
         if (driverPointRef.current) {
           moveDriverOnly(driverPointRef.current, headingRef.current);
-          calculateRouteOnce(true);
+          calculateRouteOnce();
         } else {
           const bounds = new google.maps.LatLngBounds();
           if (pickup) bounds.extend(pickup);
@@ -2833,6 +2680,8 @@ function UberDriverNavigationMap({
     return () => {
       cancelled = true;
       mapReadyRef.current = false;
+      routeControllerRef.current?.destroy();
+      routeControllerRef.current = null;
     };
     // El mapa se crea una sola vez. No depende del GPS para evitar remounts/parpadeos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2840,7 +2689,7 @@ function UberDriverNavigationMap({
 
   useEffect(() => {
     drawStaticMarkers();
-    calculateRouteOnce(true);
+    calculateRouteOnce();
     // Solo recalcula cuando cambia el estado o el destino. Nunca en cada punto GPS.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -2916,23 +2765,18 @@ function UberDriverNavigationMap({
         // No se usa ninguna coordenada ficticia para simular que está en Rapa Nui.
         // Si Google Maps no puede calcular una ruta real, se muestra aviso y queda el botón de Google Maps.
         if (mapReadyRef.current) {
-          const distanceToRoute = getDistanceToCurrentRouteMeters(next);
-          const now = Date.now();
-          const isOffRoute = distanceToRoute != null && distanceToRoute > 28;
-          const canRecalculateOffRoute = now - lastOffRouteRecalculationAtRef.current > 1600;
+          // Modelo Waze: el GPS se proyecta sobre la polyline local y la
+          // política decide si de verdad hace falta ir a la red. Antes esta
+          // rama pedía una ruta nueva cada ~1,2 s.
+          routeControllerRef.current?.updatePosition(next);
 
-          if (isOffRoute && canRecalculateOffRoute) {
-            lastOffRouteRecalculationAtRef.current = now;
-            routeKeyRef.current = "";
-            calculateRouteOnce(true);
-          }
-
-          const roadHeading = routeHeadingRef.current ?? getRouteHeadingForPoint(next) ?? headingRef.current;
+          const roadHeading =
+            routeHeadingRef.current ?? getRouteHeadingForPoint(next) ?? headingRef.current;
           moveDriverOnly(next, roadHeading);
 
-          if (!routeKeyRef.current || shouldRecalculateRouteFrom(next)) {
-            calculateRouteOnce(true);
-          }
+          // Si todavía no hay destino fijado (por ejemplo, el GPS llegó antes
+          // que los puntos del viaje), se fija ahora sin forzar red.
+          if (!routeControllerRef.current?.getPath().length) calculateRouteOnce();
         }
       },
       () => {
@@ -3091,6 +2935,11 @@ function UberDriverNavigationMap({
             >
               {routeInfo?.duration ? `${routeInfo.duration}` : "Calculando ruta"}
               {routeInfo?.distance ? ` · ${routeInfo.distance}` : ""}
+              {/* Sin conexión la ruta sigue en pantalla y la distancia sigue
+                  bajando; solo se avisa que el tráfico no está actualizado. */}
+              {routeOffline && routeInfo ? (
+                <span style={{ color: "#fbbf24" }}> · sin conexión</span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -3227,7 +3076,7 @@ function UberDriverNavigationMap({
         <button
           type="button"
           onClick={() => {
-            calculateRouteOnce(true);
+            calculateRouteOnce();
             focusNavigationCameraInsideApp(true);
           }}
           style={{
@@ -3467,6 +3316,11 @@ function UberDriverNavigationMap({
             </button>
           </div>
         )}
+
+        {/* Flota con position:absolute (ver CSS): así queda por encima de la
+            franja del asa —que captura el gesto de arrastre en todo su
+            ancho— sin competir por ese gesto ni depender del orden del DOM. */}
+        {!isCompactPreview && sheetPrimaryAction}
 
         {/* Una sola columna. Antes esta franja llevaba dos botones de 58px a los
             lados del ETA: "soltar cámara" (✕) y "recentrar ruta".
@@ -8337,6 +8191,41 @@ export function DriverHomePage(): JSX.Element {
             disabled={availabilitySaving}
           />
 
+          <section className="driver-home-cta">
+            <div className="driver-home-cta__icon" aria-hidden="true">
+              <IonIcon
+                icon={isDriverAvailable ? notificationsOutline : carOutline}
+              />
+            </div>
+
+            <div>
+              <div className="driver-home-cta__title">
+                {isDriverAvailable
+                  ? "Revisa tus solicitudes disponibles"
+                  : "Actualmente estás fuera de línea"}
+              </div>
+              <div className="driver-home-cta__copy">
+                {isDriverAvailable
+                  ? "Las nuevas solicitudes y reservas aparecerán con una alerta clara."
+                  : "No recibirás servicios hasta volver a marcarte como disponible."}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="driver-home-cta__button"
+              onClick={() => {
+                if (isDriverAvailable) {
+                  history.push(ROUTES.DRIVER.REQUESTS);
+                } else {
+                  void handleAvailabilityChange("available");
+                }
+              }}
+            >
+              {isDriverAvailable ? "Ver solicitudes" : "Ponerme disponible"}
+            </button>
+          </section>
+
           {availabilityError && (
             <div
               role="alert"
@@ -8578,40 +8467,6 @@ export function DriverHomePage(): JSX.Element {
             </div>
           </section>
 
-          <section className="driver-home-cta">
-            <div className="driver-home-cta__icon" aria-hidden="true">
-              <IonIcon
-                icon={isDriverAvailable ? notificationsOutline : carOutline}
-              />
-            </div>
-
-            <div>
-              <div className="driver-home-cta__title">
-                {isDriverAvailable
-                  ? "Revisa tus solicitudes disponibles"
-                  : "Actualmente estás fuera de línea"}
-              </div>
-              <div className="driver-home-cta__copy">
-                {isDriverAvailable
-                  ? "Las nuevas solicitudes y reservas aparecerán con una alerta clara."
-                  : "No recibirás servicios hasta volver a marcarte como disponible."}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="driver-home-cta__button"
-              onClick={() => {
-                if (isDriverAvailable) {
-                  history.push(ROUTES.DRIVER.REQUESTS);
-                } else {
-                  void handleAvailabilityChange("available");
-                }
-              }}
-            >
-              {isDriverAvailable ? "Ver solicitudes" : "Ponerme disponible"}
-            </button>
-          </section>
         </main>
       </IonContent>
     </IonPage>
@@ -11727,12 +11582,19 @@ function DriverCashCloseRideOverlay({
           </div>
         </div>
 
+        {/* Cuerpo con scroll propio: flex:1 + minHeight:0 es lo que permite que
+            se encoja dentro del maxHeight del diálogo en vez de empujarlo a
+            crecer sin control (Safari/iOS necesita minHeight:0 explícito;
+            sin él, un hijo flex nunca baja de su alto de contenido).
+            El pie de botones YA NO vive aquí dentro como sticky: ver más abajo
+            por qué eso rompía el diseño. */}
         <div
           style={{
+            flex: "1 1 auto",
+            minHeight: 0,
             padding: 12,
             overflowY: "auto",
             WebkitOverflowScrolling: "touch",
-            paddingBottom: "calc(86px + env(safe-area-inset-bottom))",
           }}
         >
           <div
@@ -11901,42 +11763,47 @@ function DriverCashCloseRideOverlay({
               Este viaje no está marcado como efectivo. Se cerrará sin pedir monto recibido.
             </div>
           )}
+        </div>
 
-          <div
-            style={{
-              position: "sticky",
-              bottom: 0,
-              zIndex: 3,
-              display: "grid",
-              gridTemplateColumns: "1fr 1.35fr",
-              gap: 8,
-              margin: "12px -12px -12px",
-              padding: "10px 12px calc(12px + env(safe-area-inset-bottom))",
-              background: "var(--rp-surface)",
-              borderTop: "1px solid var(--rp-border-c)",
-              boxShadow: "0 -12px 28px rgba(0,0,0,.08)",
-            }}
+        {/* Pie de botones como hermano flex fuera del scroll, no como
+            position:sticky adentro. Con sticky, el alto reservado abajo del
+            scroll (paddingBottom) era un número fijo adivinado; en pantallas
+            angostas "Cerrar y enviar al admin" se parte en dos líneas, el pie
+            crece más de lo reservado y queda montado sobre "Pago justo/Pago
+            demás". Como hermano flex (flex:"0 0 auto"), el navegador le da
+            exactamente el alto que necesita y el cuerpo de arriba cede ese
+            espacio solo, sin importar cuántas líneas ocupe el texto. */}
+        <div
+          style={{
+            flex: "0 0 auto",
+            display: "grid",
+            gridTemplateColumns: "1fr 1.35fr",
+            gap: 8,
+            padding: "10px 12px calc(12px + env(safe-area-inset-bottom))",
+            background: "var(--rp-surface)",
+            borderTop: "1px solid var(--rp-border-c)",
+            boxShadow: "0 -12px 28px rgba(0,0,0,.08)",
+          }}
+        >
+          <IonButton
+            expand="block"
+            color="medium"
+            fill="outline"
+            disabled={loading}
+            onClick={onCancel}
+            style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
           >
-            <IonButton
-              expand="block"
-              color="medium"
-              fill="outline"
-              disabled={loading}
-              onClick={onCancel}
-              style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-            >
-              Seguir viaje
-            </IonButton>
-            <IonButton
-              expand="block"
-              color="success"
-              disabled={!canConfirm || loading}
-              onClick={confirmClose}
-              style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-            >
-              {loading ? <IonSpinner name="dots" /> : isCash ? "Cerrar y enviar al admin" : "Cerrar carrera"}
-            </IonButton>
-          </div>
+            Seguir viaje
+          </IonButton>
+          <IonButton
+            expand="block"
+            color="success"
+            disabled={!canConfirm || loading}
+            onClick={confirmClose}
+            style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+          >
+            {loading ? <IonSpinner name="dots" /> : isCash ? "Cerrar y enviar al admin" : "Cerrar carrera"}
+          </IonButton>
         </div>
       </div>
     </div>
@@ -16577,20 +16444,13 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           ? checkmarkCircleOutline
           : flagOutline;
 
+    /* La acción principal ("Llegué al punto" / "Iniciar viaje" / "Finalizar
+       viaje") se movió a la cabecera de la hoja (sheetHeader, más abajo),
+       igual que el atajo "Confirmar" del pasajero: fija en la esquina
+       superior derecha del panel, visible aunque el resto de la hoja se
+       desplace o quede plegada al mínimo. Aquí sólo queda Cancelar. */
     const sheetActions = (
-      <div className="rapago-driver-sheet-actions">
-        <IonButton
-          expand="block"
-          className="rapago-driver-sheet-actions__primary"
-          // El texto visible puede recortarse con ellipsis en pantallas
-          // angostas; aria-label conserva siempre la etiqueta completa.
-          aria-label={sheetPrimaryLabel}
-          onClick={runSheetPrimary}
-        >
-          <IonIcon icon={sheetPrimaryIcon} slot="start" aria-hidden="true" />
-          {sheetPrimaryLabel}
-        </IonButton>
-
+      <div className="rapago-driver-sheet-actions rapago-driver-sheet-actions--single">
         <IonButton
           expand="block"
           fill="outline"
@@ -16646,6 +16506,26 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           </small>
         </span>
       </div>
+    );
+
+    /* Acción principal ("Llegué al punto" / "Iniciar viaje" / "Finalizar
+       viaje"), en la esquina superior derecha de la hoja completa —junto al
+       asa de arrastre, no dentro de la tarjeta de estado—, igual que el atajo
+       "Confirmar" del pasajero (rp-request-map-head-confirm). Se pasa como
+       prop aparte (sheetPrimaryAction) porque UberDriverNavigationMap es quien
+       controla esa zona absoluta de la hoja. */
+    const sheetPrimaryAction = (
+      <button
+        type="button"
+        className="rapago-driver-nav-sheet__confirm"
+        // El texto visible puede recortarse con ellipsis en pantallas
+        // angostas; aria-label conserva siempre la etiqueta completa.
+        aria-label={sheetPrimaryLabel}
+        onClick={runSheetPrimary}
+      >
+        <IonIcon icon={sheetPrimaryIcon} aria-hidden="true" />
+        <span>{sheetPrimaryLabel}</span>
+      </button>
     );
 
     /* Cuerpo de la hoja: avisos y acciones secundarias. Todo lo que antes vivía
@@ -16757,6 +16637,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           sheetHeader={sheetHeader}
           sheetBody={sheetBody}
           sheetActions={sheetActions}
+          sheetPrimaryAction={sheetPrimaryAction}
         />
 
         {/* SOS. Fuera de la hoja a propósito: es el único control que debe

@@ -58,6 +58,12 @@ import { useAuth } from "../../features/auth";
 import { ridesService, type RideRequestData } from "../../features/rides/rides.service";
 import { MapFallback, loadRapaGoGoogleMaps } from "../../components/MapFallback";
 import { RAPA_NUI_PLACES, RAPAGO_CONTACT, WA_MESSAGES, getDistanceBetween } from "@rapa-go/shared";
+import {
+  createRouteController,
+  hydrateRouteCache,
+  type RouteController,
+  type RouteSnapshot,
+} from "../../features/navigation/index.js";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { touristService, type GuidePublicData, type TouristServiceData, type ServiceBookingData } from "../../features/tourist/tourist.service.js";
 import { useIonViewWillEnter } from "@ionic/react";
@@ -4780,14 +4786,13 @@ function PassengerDriverLiveMap({
 }): JSX.Element {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const driverMarkerRef = useRef<google.maps.Marker | null>(null);
   const pickupMarkerRef = useRef<google.maps.Marker | null>(null);
   const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
   const passengerMarkerRef = useRef<google.maps.Marker | null>(null);
-  const fallbackLineRef = useRef<google.maps.Polyline | null>(null);
-  const routeKeyRef = useRef("");
+  // Dueño de la ruta dibujada: sale de la caché local, no de la red.
+  const routeControllerRef = useRef<RouteController | null>(null);
+  const routeSnapshotHandlerRef = useRef<(snapshot: RouteSnapshot) => void>(() => {});
   const didInitialFitRef = useRef(false);
   const lastDriverPointRef = useRef<{ lat: number; lng: number } | null>(null);
 
@@ -4795,6 +4800,8 @@ function PassengerDriverLiveMap({
   const [mapReady, setMapReady] = useState(false);
   const [liveMessage, setLiveMessage] = useState("Esperando GPS real del conductor...");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  // true mientras se muestra la última ruta guardada sin poder revalidarla.
+  const [routeOffline, setRouteOffline] = useState(false);
 
   const nav = extractPassengerLiveNavPoints(ride.notes);
 
@@ -4915,58 +4922,46 @@ function PassengerDriverLiveMap({
     }
   }
 
-  function drawRoute(force = false): void {
-    const map = mapRef.current;
-    const service = directionsServiceRef.current;
-    const renderer = directionsRendererRef.current;
+  /** Refleja en la UI lo que el controlador tiene dibujado. */
+  function applyRouteSnapshot(snapshot: RouteSnapshot): void {
+    setRouteOffline(snapshot.isStale || !snapshot.isOnline);
+  }
 
-    if (!map || !service || !renderer || !window.google?.maps) return;
+  routeSnapshotHandlerRef.current = applyRouteSnapshot;
 
-    const key = `${ride.status}:${driverPoint?.lat ?? "none"},${driverPoint?.lng ?? "none"}:${routeTarget?.lat ?? "none"},${routeTarget?.lng ?? "none"}`;
+  /**
+   * Fija el destino que se le muestra al pasajero.
+   *
+   * Ya no existe el respaldo de línea recta: cuando fallaba la red, aquella
+   * rama borraba la ruta real por calles y la sustituía por un segmento
+   * directo entre conductor y destino, que es lo que se veía como si la ruta
+   * "se rompiera". Ahora, sin conexión, simplemente se conserva la última
+   * ruta buena.
+   */
+  function drawRoute(): void {
+    const controller = routeControllerRef.current;
+    if (!controller) return;
 
-    if (!force && routeKeyRef.current === key) return;
-
-    // Solo recalcula si aparece el conductor o cambia el estado. No recalcula en cada render.
-    routeKeyRef.current = key;
-
-    fallbackLineRef.current?.setMap(null);
-    fallbackLineRef.current = null;
-
-    if (!driverPoint || !routeTarget) {
-      renderer.set("directions", null);
+    if (!routeTarget) {
+      controller.setTarget(null, driverPoint ?? null);
       return;
     }
 
-    service.route(
+    controller.setTarget(
       {
-        origin: driverPoint,
+        rideId: ride.id,
+        phase: ride.status === "in_progress" ? "to_destination" : "to_pickup",
         destination: routeTarget,
-        travelMode: google.maps.TravelMode.DRIVING,
-        provideRouteAlternatives: false,
-        optimizeWaypoints: false,
-        region: "CL",
       },
-      (result, status) => {
-        if (status === google.maps.DirectionsStatus.OK && result) {
-          renderer.setDirections(result);
-          return;
-        }
-
-        renderer.set("directions", null);
-        fallbackLineRef.current = new google.maps.Polyline({
-          map,
-          path: [driverPoint, routeTarget],
-          strokeColor: "#00b7ff",
-          strokeOpacity: 1,
-          strokeWeight: 6,
-          zIndex: 20,
-        });
-      },
+      driverPoint ?? null,
     );
   }
 
   useEffect(() => {
     let cancelled = false;
+
+    // Deja la ruta guardada en memoria antes de que exista el mapa.
+    void hydrateRouteCache();
 
     void loadRapaGoGoogleMaps()
       .then(() => {
@@ -4995,16 +4990,14 @@ function PassengerDriverLiveMap({
         });
 
         mapRef.current = map;
-        directionsServiceRef.current = new google.maps.DirectionsService();
-        directionsRendererRef.current = new google.maps.DirectionsRenderer({
-          map,
-          suppressMarkers: true,
-          preserveViewport: true,
-          polylineOptions: {
-            strokeColor: "#00b7ff",
-            strokeOpacity: 1,
-            strokeWeight: 7,
-          },
+
+        // Polyline propia en vez de DirectionsRenderer: este último exige un
+        // DirectionsResult vivo y no se puede rehidratar desde la caché.
+        routeControllerRef.current = createRouteController({
+          getMap: () => mapRef.current,
+          strokeColor: "#00b7ff",
+          strokeWeight: 7,
+          onChange: (snapshot) => routeSnapshotHandlerRef.current(snapshot),
         });
 
         drawMarkers();
@@ -5017,6 +5010,8 @@ function PassengerDriverLiveMap({
 
     return () => {
       cancelled = true;
+      routeControllerRef.current?.destroy();
+      routeControllerRef.current = null;
     };
     // El mapa se crea una sola vez para evitar pantalla blanca/parpadeos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5089,10 +5084,11 @@ function PassengerDriverLiveMap({
     lastDriverPointRef.current = driverPoint;
     fitOnce();
 
-    // Recalcula la ruta solo cuando aparece el primer punto o cuando cambia el estado.
-    if (!routeKeyRef.current || ride.status === "in_progress") {
-      drawRoute(true);
-    }
+    // Idempotente: con el mismo destino no toca lo dibujado ni va a la red.
+    drawRoute();
+
+    // Sigue la posición del conductor sobre la ruta local, sin recalcular.
+    if (driverPoint) routeControllerRef.current?.updatePosition(driverPoint);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, livePoint?.lat, livePoint?.lng, ride.status]);
 
@@ -5124,6 +5120,11 @@ function PassengerDriverLiveMap({
             {lastUpdatedAt
               ? `Actualizado ${lastUpdatedAt.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}`
               : liveMessage}
+            {/* La ruta sigue visible sin conexión; solo se avisa que no se
+                está recibiendo la posición del conductor en vivo. */}
+            {routeOffline ? (
+              <span style={{ color: "#fbbf24" }}> · sin conexión</span>
+            ) : null}
           </div>
         </div>
         <IonBadge color={driverPoint ? "success" : "warning"}>
