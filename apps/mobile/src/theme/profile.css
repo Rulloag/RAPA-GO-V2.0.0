@@ -207,9 +207,10 @@
 }
 
 /* ── Estadísticas ───────────────────────────────────────────────────────── */
+/* 2 columnas: quedaron Créditos y Miembro tras quitar el stat de Invitados. */
 .rapago-profile-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--rp-gap-sm);
 }
 
@@ -545,43 +546,6 @@
   font-weight: 800;
   text-transform: none;
   margin: 0;
-}
-
-.rapago-profile-btn-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--rp-gap-sm);
-}
-
-/* ── Código de referido ─────────────────────────────────────────────────── */
-.rapago-profile-code {
-  border-radius: var(--rp-radius-sm);
-  background: var(--rp-seg-track);
-  border: 1px dashed var(--rp-border-c);
-  padding: var(--rp-pad-x);
-  text-align: center;
-  margin-bottom: 12px;
-}
-
-.rapago-profile-code-value {
-  font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
-  font-size: clamp(1.2rem, 5.4vw, 1.5rem);
-  font-weight: 900;
-  color: var(--rp-icon-fg);
-  letter-spacing: 0.14em;
-  word-break: break-all;
-}
-
-.rapago-profile-code-meta {
-  margin-top: 8px;
-  font-size: var(--rp-fs-sub);
-  font-weight: 650;
-  color: var(--rp-muted);
-}
-
-.rapago-profile-code-meta strong {
-  color: var(--rp-text);
-  font-weight: 850;
 }
 
 /* ── Estados: vacío, alerta, éxito, error ───────────────────────────────── */

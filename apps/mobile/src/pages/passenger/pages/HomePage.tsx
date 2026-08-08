@@ -11,7 +11,6 @@ import {
   mapOutline,
   logoWhatsapp,
   moonOutline,
-  newspaperOutline,
   peopleOutline,
   sparklesOutline,
   sunnyOutline,
@@ -59,28 +58,6 @@ const HOME_CAROUSEL_IMAGES = [
     subtitle: "Viajes seguros y servicios locales",
   },
 ];
-
-const RAPA_NUI_NEWS = [
-  {
-    title: "Noticias y avisos locales",
-    subtitle: "Próximamente: avisos oficiales, horarios y recomendaciones para moverte mejor en Rapa Nui.",
-    tag: "Próximamente",
-    icon: newspaperOutline,
-  },
-  {
-    title: "Actividades culturales",
-    subtitle: "Próximamente: eventos, panoramas y experiencias culturales dentro de Rapa Go.",
-    tag: "Próximamente",
-    icon: ticketOutline,
-  },
-  {
-    title: "Turismo local",
-    subtitle: "Próximamente: guías locales, rutas turísticas y experiencias protegidas por la plataforma.",
-    tag: "Próximamente",
-    icon: mapOutline,
-  },
-];
-
 
 export default function HomePage(): JSX.Element {
   const history = useHistory();
@@ -344,36 +321,11 @@ export default function HomePage(): JSX.Element {
             </div>
           </section>
 
-          {/* ── Próximamente ───────────────────────────────────────────── */}
-          <section className="rapago-home-section">
-            <div className="rapago-home-section-label">Próximamente</div>
-
-            <div className="rapago-home-news">
-              {RAPA_NUI_NEWS.map((news) => (
-                <article
-                  key={news.title}
-                  className="rapago-home-news-card"
-                  aria-disabled="true"
-                >
-                  <span className="rapago-home-news-icon">
-                    <IonIcon icon={news.icon} />
-                  </span>
-
-                  <div style={{ minWidth: 0 }}>
-                    <div className="rapago-home-news-tag">{news.tag}</div>
-                    <div className="rapago-home-news-title">{news.title}</div>
-                    <div className="rapago-home-news-sub">{news.subtitle}</div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-
           {/* ── Referidos ──────────────────────────────────────────────── */}
           <button
             type="button"
             className="rapago-home-referral"
-            aria-label="Invita amigos y gana crédito"
+            aria-label="Ingresa tu código promocional"
             onClick={() => history.push(ROUTES.PROFILE.INDEX)}
           >
             <span className="rapago-home-referral-icon">
@@ -382,10 +334,10 @@ export default function HomePage(): JSX.Element {
 
             <span className="rapago-home-referral-body">
               <span className="rapago-home-referral-title">
-                Invita amigos y gana
+                Ingresa tu código promocional
               </span>
               <span className="rapago-home-referral-sub">
-                Comparte tu código y obtén descuentos en tus próximos viajes
+                Accede a tarifas y descuentos especiales
               </span>
             </span>
 
@@ -421,13 +373,19 @@ export default function HomePage(): JSX.Element {
                 Inscríbete como conductor
               </IonButton>
 
+              {/* Deshabilitado a propósito: las postulaciones de guía todavía
+                  no están abiertas. Sin routerLink no navega a ningún lado, y
+                  el estilo ámbar-transparente (en vez del gris genérico que
+                  usa el resto de la app para "deshabilitado") deja claro que
+                  es un "todavía no", no un error. */}
               <IonButton
                 expand="block"
-                className="rapago-home-btn-outline"
-                routerLink="/apply/guide"
+                className="rapago-home-btn-disabled"
+                disabled
+                aria-label="Inscríbete como guía — Próximamente"
               >
                 <IonIcon icon={mapOutline} slot="start" />
-                Inscríbete como guía
+                Inscríbete como guía · Próximamente
               </IonButton>
 
               <IonButton
