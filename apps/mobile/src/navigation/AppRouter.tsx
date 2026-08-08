@@ -4,7 +4,6 @@ import { ROUTES } from "./routes";
 import { RouteErrorBoundary } from "./RouteErrorBoundary.js";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { LoginPage, RegisterPage, useAuth } from "../features/auth";
-import { FacebookCallbackPage } from "../features/auth/FacebookCallbackPage";
 import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
 import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
 import { PassengerLayout } from "../layouts/PassengerLayout";
@@ -36,6 +35,7 @@ import {
   UserConditionsPublicPage,
 } from "../pages/public/PublicLegalPages.js";
 import { RELEASE_FEATURES } from "../config/releaseFeatures.js";
+import { LegalReacceptanceGate } from "../features/legal/LegalReacceptanceGate.js";
 
 /**
  * MODO DE RECUPERACIÓN VISUAL
@@ -62,11 +62,6 @@ function StandaloneRoutes(): JSX.Element {
       <Route exact path={ROUTES.AUTH.BASE} component={LoginPage} />
       <Route exact path={ROUTES.AUTH.LOGIN} component={LoginPage} />
       <Route exact path={ROUTES.AUTH.REGISTER} component={RegisterPage} />
-      <Route
-        exact
-        path={ROUTES.AUTH.FACEBOOK_CALLBACK}
-        component={FacebookCallbackPage}
-      />
       <Route
         exact
         path="/auth/forgot-password"
@@ -141,33 +136,45 @@ export function AppRouter(): JSX.Element {
 
   if (isPathInside(pathname, ROUTES.PASSENGER.BASE) || (pathname === ROUTES.SUPPORT.CENTER && isPassengerRole)) {
     return (
-      <RouteErrorBoundary>
-        <PassengerLayout />
-      </RouteErrorBoundary>
+      <>
+        <LegalReacceptanceGate />
+        <RouteErrorBoundary>
+          <PassengerLayout />
+        </RouteErrorBoundary>
+      </>
     );
   }
 
   if (isPathInside(pathname, ROUTES.DRIVER.BASE)) {
     return (
-      <RouteErrorBoundary>
-        <DriverLayout />
-      </RouteErrorBoundary>
+      <>
+        <LegalReacceptanceGate />
+        <RouteErrorBoundary>
+          <DriverLayout />
+        </RouteErrorBoundary>
+      </>
     );
   }
 
   if (isPathInside(pathname, ROUTES.ADMIN.BASE)) {
     return (
-      <RouteErrorBoundary>
-        <AdminLayout />
-      </RouteErrorBoundary>
+      <>
+        <LegalReacceptanceGate />
+        <RouteErrorBoundary>
+          <AdminLayout />
+        </RouteErrorBoundary>
+      </>
     );
   }
 
   if (isPathInside(pathname, ROUTES.GUIDE.BASE)) {
     return RELEASE_FEATURES.tourism ? (
-      <RouteErrorBoundary>
-        <GuideLayout />
-      </RouteErrorBoundary>
+      <>
+        <LegalReacceptanceGate />
+        <RouteErrorBoundary>
+          <GuideLayout />
+        </RouteErrorBoundary>
+      </>
     ) : (
       <Redirect to={ROUTES.NOT_FOUND} />
     );
@@ -175,17 +182,23 @@ export function AppRouter(): JSX.Element {
 
   if (isPathInside(pathname, ROUTES.RENTAL.BASE)) {
     return RELEASE_FEATURES.rentals ? (
-      <RouteErrorBoundary>
-        <RentalLayout />
-      </RouteErrorBoundary>
+      <>
+        <LegalReacceptanceGate />
+        <RouteErrorBoundary>
+          <RentalLayout />
+        </RouteErrorBoundary>
+      </>
     ) : (
       <Redirect to={ROUTES.NOT_FOUND} />
     );
   }
 
   return (
-    <RouteErrorBoundary>
-      <StandaloneRoutes />
-    </RouteErrorBoundary>
+    <>
+      <LegalReacceptanceGate />
+      <RouteErrorBoundary>
+        <StandaloneRoutes />
+      </RouteErrorBoundary>
+    </>
   );
 }

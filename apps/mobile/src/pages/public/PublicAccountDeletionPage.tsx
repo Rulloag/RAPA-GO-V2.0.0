@@ -93,6 +93,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [reason, setReason] = useState("");
+  const [preferNotToSay, setPreferNotToSay] = useState(false);
   const [comment, setComment] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [codeRequested, setCodeRequested] = useState(false);
@@ -162,7 +163,9 @@ export function PublicAccountDeletionPage(): JSX.Element {
     setLoading(true);
 
     try {
-      const cleanReason = reason.trim();
+      const cleanReason = preferNotToSay
+        ? "Prefiero no indicar"
+        : reason.trim();
       const request = await publicAccountDeletionService.submit({
         email: normalizeEmail(email),
         code: code.trim(),
@@ -336,8 +339,12 @@ export function PublicAccountDeletionPage(): JSX.Element {
                     autoGrow
                     maxlength={500}
                     value={reason}
-                    disabled={loading}
-                    placeholder="Puedes explicar por qué deseas eliminar la cuenta"
+                    disabled={loading || preferNotToSay}
+                    placeholder={
+                      preferNotToSay
+                        ? "Prefiero no indicar"
+                        : "Puedes explicar por qué deseas eliminar la cuenta"
+                    }
                     onIonInput={(event) => {
                       setReason(String(event.detail.value ?? ""));
                       setError("");
@@ -346,6 +353,30 @@ export function PublicAccountDeletionPage(): JSX.Element {
                   <IonNote slot="helper">
                     Opcional. Máximo 500 caracteres.
                   </IonNote>
+                </IonItem>
+
+                <IonItem
+                  lines="none"
+                  style={{
+                    "--background": "transparent",
+                    "--color": "#f6f2ec",
+                    marginBottom: 12,
+                  } as CSSProperties}
+                >
+                  <IonCheckbox
+                    slot="start"
+                    checked={preferNotToSay}
+                    disabled={loading}
+                    onIonChange={(event) => {
+                      const checked = Boolean(event.detail.checked);
+                      setPreferNotToSay(checked);
+                      if (checked) setReason("");
+                      setError("");
+                    }}
+                  />
+                  <IonLabel className="ion-text-wrap">
+                    Prefiero no indicar el motivo.
+                  </IonLabel>
                 </IonItem>
 
                 <IonItem style={inputStyle}>

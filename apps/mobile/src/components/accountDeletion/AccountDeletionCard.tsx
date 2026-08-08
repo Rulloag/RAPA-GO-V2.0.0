@@ -98,6 +98,7 @@ export function AccountDeletionCard({
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [reason, setReason] = useState("");
+  const [preferNotToSay, setPreferNotToSay] = useState(false);
   const [comment, setComment] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
@@ -139,7 +140,9 @@ export function AccountDeletionCard({
       return;
     }
 
-    const cleanReason = reason.trim();
+    const cleanReason = preferNotToSay
+      ? "Prefiero no indicar"
+      : reason.trim();
     const cleanComment = comment.trim();
 
     if (!confirmed) {
@@ -174,6 +177,7 @@ export function AccountDeletionCard({
 
       setRequest(created);
       setReason("");
+      setPreferNotToSay(false);
       setComment("");
       setConfirmed(false);
       setShowForm(false);
@@ -289,11 +293,16 @@ export function AccountDeletionCard({
 
                   <IonTextarea
                     value={reason}
+                    disabled={preferNotToSay}
                     onIonInput={(event) => {
                       setReason(String(event.detail.value ?? ""));
                       setError("");
                     }}
-                    placeholder="Puedes explicar por qué quieres eliminar la cuenta"
+                    placeholder={
+                      preferNotToSay
+                        ? "Prefiero no indicar"
+                        : "Puedes explicar por qué quieres eliminar la cuenta"
+                    }
                     maxlength={500}
                     counter
                     autoGrow
@@ -303,6 +312,22 @@ export function AccountDeletionCard({
                   <IonNote slot="helper">
                     Opcional. Máximo 500 caracteres.
                   </IonNote>
+                </IonItem>
+
+                <IonItem lines="none" className="rapago-profile-field">
+                  <IonCheckbox
+                    slot="start"
+                    checked={preferNotToSay}
+                    onIonChange={(event) => {
+                      const checked = Boolean(event.detail.checked);
+                      setPreferNotToSay(checked);
+                      if (checked) setReason("");
+                      setError("");
+                    }}
+                  />
+                  <IonLabel style={{ whiteSpace: "normal" }}>
+                    Prefiero no indicar el motivo.
+                  </IonLabel>
                 </IonItem>
 
                 <IonItem lines="none" className="rapago-profile-field">

@@ -39,4 +39,26 @@ export const legalService = {
     if (!result.ok) throw new Error("Error al cargar aceptaciones");
     return result.data.data.items;
   },
+  async getMissingRequired(
+    token: string,
+    requiredTypes: string[],
+  ): Promise<LegalDocumentData[]> {
+    const [documents, acceptances] = await Promise.all([
+      this.getActive(),
+      this.getMyAcceptances(token),
+    ]);
+
+    const acceptedDocumentIds = new Set(
+      acceptances.map(
+        (acceptance) =>
+          `${acceptance.legalDocumentId}:${acceptance.versionAccepted}`,
+      ),
+    );
+
+    return documents.filter(
+      (document) =>
+        requiredTypes.includes(document.type) &&
+        !acceptedDocumentIds.has(`${document.id}:${document.version}`),
+    );
+  },
 };

@@ -30,7 +30,7 @@ Base de datos: Supabase PostgreSQL, región declarada São Paulo (`sa-east-1`)
 
 - El job `RetentionJob` se inicia con la API en producción.
 - El job elimina ubicaciones vencidas.
-- Elimina verificaciones de borrado y credenciales efímeras de Facebook vencidas.
+- Elimina verificaciones de borrado y credenciales efímeras históricas de Facebook vencidas; Facebook Login permanece deshabilitado.
 - Borra el número bancario cifrado y el comprobante adjunto treinta días después de completar un reembolso, conservando referencia, monto y últimos cuatro dígitos.
 - El acceso administrativo a los datos de transferencia queda auditado.
 

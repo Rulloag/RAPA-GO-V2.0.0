@@ -38,9 +38,9 @@ import {
   helpCircleOutline,
   languageOutline,
   keyOutline,
-  linkOutline,
   lockClosedOutline,
-  logoFacebook,
+  logoApple,
+  logoGoogle,
   mailOutline,
   moonOutline,
   personOutline,
@@ -2583,38 +2583,14 @@ export function ProfileSecurityPage(): JSX.Element {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
-  const [linkingFacebook, setLinkingFacebook] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const authProviders = user?.authProviders ?? [];
   const hasPassword =
     user?.hasPassword === true || authProviders.includes("password");
-  const facebookLinked = authProviders.includes("facebook");
-
-  useEffect(() => {
-    const linkStatus = new URLSearchParams(
-      window.location.search,
-    ).get("facebookLink");
-
-    if (!linkStatus) return;
-
-    if (linkStatus === "success") {
-      setSuccess("Facebook quedó vinculado correctamente.");
-      setError("");
-      void refreshSession();
-    } else if (linkStatus === "already-linked") {
-      setError(
-        "Esa cuenta de Facebook ya está vinculada a otra cuenta RAPA GO.",
-      );
-    } else {
-      setError(
-        "No se pudo vincular Facebook. Inicia el proceso nuevamente.",
-      );
-    }
-
-    history.replace(ROUTES.PROFILE.SECURITY);
-  }, [history, refreshSession]);
+  const googleLinked = authProviders.includes("google");
+  const appleLinked = authProviders.includes("apple");
 
   async function createBackupPassword(): Promise<void> {
     if (!session?.accessToken) {
@@ -2654,31 +2630,6 @@ export function ProfileSecurityPage(): JSX.Element {
       );
     } finally {
       setSavingPassword(false);
-    }
-  }
-
-  async function linkFacebook(): Promise<void> {
-    if (!session?.accessToken) {
-      setError("Debes iniciar sesión nuevamente.");
-      return;
-    }
-
-    setLinkingFacebook(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const authorizationUrl = await authService.startFacebookLink(
-        session.accessToken,
-      );
-      window.location.assign(authorizationUrl);
-    } catch (linkError) {
-      setError(
-        linkError instanceof Error
-          ? linkError.message
-          : "No se pudo iniciar la vinculación.",
-      );
-      setLinkingFacebook(false);
     }
   }
 
@@ -2747,13 +2698,24 @@ export function ProfileSecurityPage(): JSX.Element {
                 </IonItem>
 
                 <IonItem lines="none">
-                  <IonIcon icon={logoFacebook} slot="start" />
+                  <IonIcon icon={logoGoogle} slot="start" />
                   <IonLabel>
-                    <strong>Facebook</strong>
-                    <p>{facebookLinked ? "Vinculado de forma segura" : "No vinculado"}</p>
+                    <strong>Google</strong>
+                    <p>{googleLinked ? "Vinculado a esta misma cuenta RAPA GO" : "No vinculado"}</p>
                   </IonLabel>
-                  <IonBadge color={facebookLinked ? "success" : "medium"}>
-                    {facebookLinked ? "Activo" : "Disponible"}
+                  <IonBadge color={googleLinked ? "success" : "medium"}>
+                    {googleLinked ? "Activo" : "No vinculado"}
+                  </IonBadge>
+                </IonItem>
+
+                <IonItem lines="none">
+                  <IonIcon icon={logoApple} slot="start" />
+                  <IonLabel>
+                    <strong>Apple</strong>
+                    <p>{appleLinked ? "Vinculado a esta misma cuenta RAPA GO" : "No vinculado"}</p>
+                  </IonLabel>
+                  <IonBadge color={appleLinked ? "success" : "medium"}>
+                    {appleLinked ? "Activo" : "No vinculado"}
                   </IonBadge>
                 </IonItem>
               </div>
@@ -2767,8 +2729,9 @@ export function ProfileSecurityPage(): JSX.Element {
               </IonCardHeader>
               <IonCardContent>
                 <p style={{ color: "#5b4632", fontWeight: 750 }}>
-                  Podrás seguir entrando con Facebook y también recuperar el
-                  acceso mediante tu correo verificado.
+                  Podrás seguir entrando con Google o Apple cuando estén
+                  vinculados y también recuperar el acceso mediante tu correo
+                  verificado.
                 </p>
 
                 <IonItem>
@@ -2818,32 +2781,26 @@ export function ProfileSecurityPage(): JSX.Element {
             </IonCardHeader>
             <IonCardContent>
               <p style={{ color: "#5b4632", fontWeight: 750 }}>
-                RAPA GO nunca fusiona cuentas solo porque tengan el mismo correo.
-                Para vincular Facebook debes iniciar sesión en RAPA GO y autorizar
-                expresamente el proveedor.
+                RAPA GO utiliza una sola cuenta interna. Si tu correo ya existe
+                y eliges Continuar con Google, se verifica tu cuenta y Google
+                queda vinculado al mismo usuario; no se crea un perfil duplicado.
+                Facebook ya no está habilitado como método de acceso.
               </p>
 
-              <IonButton
-                expand="block"
-                color="primary"
-                disabled={facebookLinked || linkingFacebook}
-                onClick={() => void linkFacebook()}
-                style={{ fontWeight: 950 } as CSSProperties}
-              >
-                <IonIcon icon={linkOutline} slot="start" />
-                {facebookLinked
-                  ? "Facebook ya está vinculado"
-                  : linkingFacebook
-                    ? "Abriendo Facebook..."
-                    : "Vincular Facebook"}
-              </IonButton>
+              {!googleLinked && (
+                <IonNote color="medium">
+                  Para vincular Google, cierra sesión y usa “Continuar con Google”
+                  con el mismo correo. RAPA GO te pedirá verificar la cuenta
+                  existente antes de completar la vinculación.
+                </IonNote>
+              )}
 
               <IonButton
                 expand="block"
                 fill="outline"
                 color="dark"
                 onClick={() => history.push("/auth/forgot-password")}
-                style={{ marginTop: 10, fontWeight: 900 } as CSSProperties}
+                style={{ marginTop: 14, fontWeight: 900 } as CSSProperties}
               >
                 Recuperar o cambiar contraseña por correo
               </IonButton>

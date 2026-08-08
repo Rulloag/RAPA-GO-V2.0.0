@@ -30,7 +30,7 @@
 - [ ] Viaje completo pasajero/conductor.
 - [ ] Cancelación 30 %, tope $3.000.
 - [ ] No show 50 %, tope $5.000 y reparto 50/50.
-- [ ] Pago Mercado Pago real.
+- [ ] Pago Klap real.
 - [ ] Cierre efectivo y beneficio real.
 - [ ] Eliminación sin motivo.
 - [ ] Reintento de solicitud `failed`.
