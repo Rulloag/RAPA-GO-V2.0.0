@@ -1,3 +1,5 @@
+import { clearRouteCache } from "../../features/navigation/routeCache.js";
+
 /**
  * Política de almacenamiento del cliente.
  *
@@ -60,6 +62,13 @@ export function clearSensitiveClientStorage(): void {
   } catch {
     // El cierre de sesión debe continuar aunque Web Storage esté bloqueado.
   }
+
+  // Las rutas guardadas viven en almacenamiento nativo (Preferences), fuera del
+  // alcance de los borrados de Web Storage de arriba: sin esto sobrevivirían al
+  // cierre de sesión y expondrían el origen y el destino de los viajes a la
+  // siguiente cuenta que use el teléfono. No se espera el resultado para no
+  // bloquear el cierre de sesión.
+  void clearRouteCache();
 }
 
 export function prepareClientStorageForAuthentication(): void {
