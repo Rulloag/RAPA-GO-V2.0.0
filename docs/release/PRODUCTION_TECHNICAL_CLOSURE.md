@@ -1,6 +1,6 @@
 # RAPA GO — Cierre técnico para producción
 
-Fecha del paquete: 23 de julio de 2026
+Fecha de actualización: 8 de agosto de 2026
 Frontend público y legales: `https://api.rapago.cl`
 Backend: `https://backend.rapago.cl`
 Base de datos: Supabase PostgreSQL, región declarada São Paulo (`sa-east-1`)
@@ -9,7 +9,7 @@ Base de datos: Supabase PostgreSQL, región declarada São Paulo (`sa-east-1`)
 
 ### Eliminación de cuenta
 
-- El motivo quedó opcional en API, aplicación y migración SQL.
+- El motivo de eliminación es obligatorio en API, aplicación y flujo público, alineado con Términos 2.2.
 - El estado genérico `rejected` se migra a `identity_not_verified`.
 - Una solicitud `failed` puede reintentarse desde Administración.
 - Se registra `verified_at` y el plazo de treinta días se calcula desde la verificación.
@@ -48,27 +48,26 @@ El backend móvil se mantiene en `https://backend.rapago.cl/api`.
 
 ### Legales
 
-La migración `0042_production_closure.sql` activa la versión 2.1 de:
+Estado legal verificado en Supabase al 08-08-2026:
 
-- Términos y Condiciones.
-- Condiciones para Usuarios, subordinadas expresamente a los Términos Generales.
-- Condiciones para Conductores.
-- Política de Privacidad.
+- Términos y Condiciones `2.2`: activo; exige motivo de eliminación.
+- Política de Privacidad `2.2`: activa; declara Klap, Google Sign-In y Sign in with Apple, con Facebook Login deshabilitado.
+- Condiciones para Conductores `2.1`: activa; no requiere cambio material por proveedores.
 
-La versión 2.1 incorpora cancelación, no show, distribución 50/50, eliminación con motivo opcional, arquitectura Hostinger/Supabase, retención y URLs canónicas.
+La migración `0054_auth_provider_privacy_alignment.sql` queda corregida para reproducir o verificar ese mismo estado sin reescribir documentos históricos ni sus aceptaciones.
 
 ## 2. Orden obligatorio de despliegue
 
 1. Guardar una copia o snapshot de la base de producción.
-2. Revisar que `0041_fix_resident_registration_trigger.sql` esté aplicada.
-3. Aplicar `0042_production_closure.sql` en Supabase.
-4. Ejecutar `0042_production_closure_verify.sql` y guardar el resultado como evidencia.
-5. Configurar las variables de Hostinger indicadas en `.env.example` sin exponer valores.
+2. Confirmar el estado legal activo: Términos 2.2, Privacidad 2.2 y Conductores 2.1.
+3. No volver a ejecutar `0052_klap_deferred_capture.sql` ni `0053_lock_profile_identity.sql` si ya fueron aplicadas.
+4. Validar `0054_auth_provider_privacy_alignment.sql`; si el sistema de migraciones la tiene pendiente, aplicarla una sola vez y guardar la verificación.
+5. Configurar las variables de Hostinger necesarias sin exponer valores.
 6. Desplegar la API y comprobar `/health` y `/ready` según las rutas del proyecto.
 7. Desplegar el frontend en `api.rapago.cl`.
 8. Ejecutar `npm run verify:release`.
-9. Ejecutar typecheck, pruebas y builds.
-10. Ejecutar pruebas reales de eliminación con una cuenta correo y una cuenta Apple QA.
+9. Ejecutar typecheck, pruebas y builds con Node 22.
+10. Ejecutar pruebas reales de eliminación con motivo obligatorio, incluyendo una cuenta correo y una cuenta Apple QA.
 11. Construir y firmar Android e iOS desde el commit congelado.
 12. Completar las evidencias externas y firmas.
 
@@ -87,8 +86,16 @@ No pegar valores en GitHub ni en documentos compartidos.
 - `APPLE_TEAM_ID`
 - `APPLE_KEY_ID`
 - `APPLE_PRIVATE_KEY`
-- `MERCADOPAGO_ACCESS_TOKEN`
-- `MERCADOPAGO_WEBHOOK_SECRET`
+- `KLAP_API_KEY`
+- `KLAP_ENVIRONMENT`
+- `KLAP_RETURN_URL`
+- `KLAP_CANCEL_URL`
+- `KLAP_WEBHOOK_CONFIRM_URL`
+- `KLAP_WEBHOOK_REJECT_URL`
+- `KLAP_ORDER_EXPIRATION_MINUTES`
+- `KLAP_DEFERRED_CAPTURE_ENABLED`
+- `KLAP_CAPTURE_CONTRACT_CONFIRMED`
+- `KLAP_CAPTURE_SUCCESS_STATUSES`
 - `RETENTION_PURGE_ENABLED=true`
 - `RETENTION_PURGE_INTERVAL_MINUTES=60`
 - `FRONTEND_URL=https://api.rapago.cl`
@@ -101,7 +108,7 @@ Las claves de cifrado no deben cambiarse sin un plan de rotación, porque los to
 ### Eliminación por correo
 
 1. Solicitar código desde la URL pública.
-2. Crear solicitud sin escribir motivo.
+2. Crear solicitud indicando un motivo válido.
 3. Confirmar `verified_at` y `deadline_at`.
 4. Aprobar desde Admin.
 5. Confirmar sesiones revocadas, cuenta anonimizada y acceso bloqueado.

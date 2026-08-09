@@ -6,36 +6,42 @@ import {
 } from "../accountDeletion.schemas.js";
 
 describe("account deletion schemas", () => {
-  it("permite una solicitud autenticada sin motivo", () => {
+  it("exige motivo en una solicitud autenticada", () => {
     const result = createAccountDeletionRequestSchema.safeParse({});
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.reason).toBeUndefined();
-    }
+    expect(result.success).toBe(false);
   });
 
-  it("normaliza un motivo vacío como ausente", () => {
+  it("rechaza un motivo vacío", () => {
     const result = createAccountDeletionRequestSchema.safeParse({
       reason: "   ",
     });
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.reason).toBeUndefined();
-    }
+    expect(result.success).toBe(false);
   });
 
-  it("permite una solicitud pública verificada sin motivo", () => {
+  it("exige motivo en una solicitud pública verificada", () => {
     const result = publicAccountDeletionSubmitSchema.safeParse({
       email: "usuario@rapago.cl",
       code: "123456",
       accepted: true,
     });
+    expect(result.success).toBe(false);
+  });
+
+  it("rechaza la antigua opción de no indicar motivo", () => {
+    const result = createAccountDeletionRequestSchema.safeParse({
+      reason: "Prefiero no indicar",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("acepta un motivo válido", () => {
+    const result = createAccountDeletionRequestSchema.safeParse({
+      reason: "Ya no utilizaré la aplicación.",
+    });
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.reason).toBeUndefined();
+      expect(result.data.reason).toBe("Ya no utilizaré la aplicación.");
     }
   });
 
@@ -43,7 +49,6 @@ describe("account deletion schemas", () => {
     const result = createAccountDeletionRequestSchema.safeParse({
       reason: "x".repeat(501),
     });
-
     expect(result.success).toBe(false);
   });
 });

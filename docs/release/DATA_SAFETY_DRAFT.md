@@ -1,6 +1,6 @@
 # Google Play Data Safety — borrador de cierre
 
-> Este archivo es una guía para completar Play Console. La declaración final debe compararse con el AAB firmado mediante App Bundle Explorer y con la Política de Privacidad v2.1. No se debe marcar una respuesta únicamente porque aparezca en este documento.
+> Este archivo es una guía para completar Play Console. La declaración final debe compararse con el AAB firmado mediante App Bundle Explorer y con la Política de Privacidad v2.2. No se debe marcar una respuesta únicamente porque aparezca en este documento.
 
 ## 1. Datos recopilados o tratados por funciones activas
 
@@ -31,7 +31,7 @@ En Play Console se debe justificar la ubicación en segundo plano con un video q
 ## 3. Eliminación de cuenta
 
 - Disponible dentro de la aplicación y en `https://api.rapago.cl/eliminar-cuenta`.
-- El motivo es opcional.
+- El motivo es obligatorio y debe tener entre 3 y 500 caracteres.
 - La identidad se verifica mediante sesión autenticada o código en el flujo público.
 - El plazo ordinario se cuenta desde la verificación.
 - Solo se permite aplazar por causas objetivas y temporales.

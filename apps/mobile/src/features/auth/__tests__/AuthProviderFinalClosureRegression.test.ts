@@ -15,9 +15,11 @@ describe("final auth/deletion/legal closure", () => {
     expect(routerSource).not.toContain("FacebookCallbackPage");
   });
 
-  it("offers an explicit no-reason choice for account deletion", () => {
-    expect(deletionCardSource).toContain("Prefiero no indicar el motivo");
-    expect(publicDeletionSource).toContain("Prefiero no indicar el motivo");
+  it("requires an explicit reason for account deletion", () => {
+    expect(deletionCardSource).toContain("Motivo (obligatorio)");
+    expect(publicDeletionSource).toContain("Motivo (obligatorio)");
+    expect(deletionCardSource).not.toContain("Prefiero no indicar el motivo");
+    expect(publicDeletionSource).not.toContain("Prefiero no indicar el motivo");
   });
 
   it("provides a legal reacceptance gate for active versions", () => {

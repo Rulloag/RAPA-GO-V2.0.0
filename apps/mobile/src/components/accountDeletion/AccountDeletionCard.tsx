@@ -98,7 +98,6 @@ export function AccountDeletionCard({
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [reason, setReason] = useState("");
-  const [preferNotToSay, setPreferNotToSay] = useState(false);
   const [comment, setComment] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
@@ -140,10 +139,13 @@ export function AccountDeletionCard({
       return;
     }
 
-    const cleanReason = preferNotToSay
-      ? "Prefiero no indicar"
-      : reason.trim();
+    const cleanReason = reason.trim();
     const cleanComment = comment.trim();
+
+    if (cleanReason.length < 3) {
+      setError("Debes indicar un motivo de al menos 3 caracteres.");
+      return;
+    }
 
     if (!confirmed) {
       setError(
@@ -158,12 +160,10 @@ export function AccountDeletionCard({
 
     try {
       const payload: {
-        reason?: string;
+        reason: string;
         comment?: string;
         requesterSnapshot?: AccountDeletionClientSnapshot;
-      } = {};
-
-      if (cleanReason) payload.reason = cleanReason;
+      } = { reason: cleanReason };
       if (cleanComment) payload.comment = cleanComment;
 
       if (requesterSnapshot) {
@@ -177,7 +177,6 @@ export function AccountDeletionCard({
 
       setRequest(created);
       setReason("");
-      setPreferNotToSay(false);
       setComment("");
       setConfirmed(false);
       setShowForm(false);
@@ -198,7 +197,7 @@ export function AccountDeletionCard({
   const hasOpenRequest =
     request != null && OPEN_STATUSES.has(request.status);
 
-  const canSubmit = confirmed && !submitting;
+  const canSubmit = confirmed && reason.trim().length >= 3 && !submitting;
 
   return (
     <IonCard>
@@ -214,7 +213,7 @@ export function AccountDeletionCard({
           La cuenta no se elimina automáticamente. Tu solicitud
           llegará al administrador, quien verificará tu identidad y
           revisará únicamente viajes, pagos, beneficios o casos pendientes.
-          Informar un motivo es voluntario.
+          Debes indicar un motivo para que la solicitud pueda enviarse.
         </p>
 
         {loading && (
@@ -288,21 +287,16 @@ export function AccountDeletionCard({
               <div style={{ marginTop: 12 }}>
                 <IonItem lines="none" className="rapago-profile-field">
                   <IonLabel position="stacked">
-                    Motivo (opcional)
+                    Motivo (obligatorio)
                   </IonLabel>
 
                   <IonTextarea
                     value={reason}
-                    disabled={preferNotToSay}
                     onIonInput={(event) => {
                       setReason(String(event.detail.value ?? ""));
                       setError("");
                     }}
-                    placeholder={
-                      preferNotToSay
-                        ? "Prefiero no indicar"
-                        : "Puedes explicar por qué quieres eliminar la cuenta"
-                    }
+                    placeholder="Indica por qué quieres eliminar la cuenta"
                     maxlength={500}
                     counter
                     autoGrow
@@ -310,25 +304,10 @@ export function AccountDeletionCard({
                   />
 
                   <IonNote slot="helper">
-                    Opcional. Máximo 500 caracteres.
+                    Obligatorio. Entre 3 y 500 caracteres.
                   </IonNote>
                 </IonItem>
 
-                <IonItem lines="none" className="rapago-profile-field">
-                  <IonCheckbox
-                    slot="start"
-                    checked={preferNotToSay}
-                    onIonChange={(event) => {
-                      const checked = Boolean(event.detail.checked);
-                      setPreferNotToSay(checked);
-                      if (checked) setReason("");
-                      setError("");
-                    }}
-                  />
-                  <IonLabel style={{ whiteSpace: "normal" }}>
-                    Prefiero no indicar el motivo.
-                  </IonLabel>
-                </IonItem>
 
                 <IonItem lines="none" className="rapago-profile-field">
                   <IonLabel position="stacked">

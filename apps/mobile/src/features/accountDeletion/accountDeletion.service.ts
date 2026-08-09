@@ -172,7 +172,7 @@ export const accountDeletionService = {
   async create(
     accessToken: string,
     payload: {
-      reason?: string;
+      reason: string;
       comment?: string;
       requesterSnapshot?: AccountDeletionClientSnapshot;
     },
