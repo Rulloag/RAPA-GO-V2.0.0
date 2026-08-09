@@ -112,8 +112,9 @@ export function PublicAccountDeletionPage(): JSX.Element {
     () =>
       validEmail(normalizeEmail(email)) &&
       /^\d{6}$/.test(code.trim()) &&
+      reason.trim().length >= 3 &&
       accepted,
-    [accepted, code, email],
+    [accepted, code, email, reason],
   );
 
   async function requestCode(): Promise<void> {
@@ -154,7 +155,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
 
     if (!canSubmit) {
       setError(
-        "Completa el correo, el código y la confirmación.",
+        "Completa el correo, el código, el motivo y la confirmación.",
       );
       return;
     }
@@ -166,7 +167,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
       const request = await publicAccountDeletionService.submit({
         email: normalizeEmail(email),
         code: code.trim(),
-        ...(cleanReason ? { reason: cleanReason } : {}),
+        reason: cleanReason,
         comment: comment.trim() || undefined,
         accepted: true,
       });
@@ -231,7 +232,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
         </h2>
         <ol style={{ ...publicSiteStyles.muted, paddingLeft: 22 }}>
           <li>Verificamos el correo mediante un código de 6 números.</li>
-          <li>El motivo es opcional y generamos un número de seguimiento.</li>
+          <li>Debes indicar un motivo y generamos un número de seguimiento.</li>
           <li>La solicitud llega al panel administrativo.</li>
           <li>La cuenta no se elimina automáticamente.</li>
           <li>Si se aprueba, se anonimizan los datos no necesarios y se cierran las sesiones.</li>
@@ -331,22 +332,23 @@ export function PublicAccountDeletionPage(): JSX.Element {
                 </IonItem>
 
                 <IonItem style={inputStyle}>
-                  <IonLabel position="stacked">Motivo (opcional)</IonLabel>
+                  <IonLabel position="stacked">Motivo (obligatorio)</IonLabel>
                   <IonTextarea
                     autoGrow
                     maxlength={500}
                     value={reason}
                     disabled={loading}
-                    placeholder="Puedes explicar por qué deseas eliminar la cuenta"
+                    placeholder="Indica por qué deseas eliminar la cuenta"
                     onIonInput={(event) => {
                       setReason(String(event.detail.value ?? ""));
                       setError("");
                     }}
                   />
                   <IonNote slot="helper">
-                    Opcional. Máximo 500 caracteres.
+                    Obligatorio. Entre 3 y 500 caracteres.
                   </IonNote>
                 </IonItem>
+
 
                 <IonItem style={inputStyle}>
                   <IonLabel position="stacked">Observación opcional</IonLabel>

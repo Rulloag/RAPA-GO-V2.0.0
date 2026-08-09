@@ -15,6 +15,7 @@ import { SessionService } from "./session.service.js";
 import { AuthCredentialsRepository } from "./authCredentials.repository.js";
 import { FacebookLoginExchangeRepository } from "./facebookLoginExchange.repository.js";
 import { AuthIdentitiesRepository } from "./authIdentities.repository.js";
+import { OAuthIdentitiesRepository } from "./oauthIdentities.repository.js";
 import { MailService } from "./mail.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
@@ -54,6 +55,7 @@ const credentialsRepo = new AuthCredentialsRepository();
 const auditService = new AuditService();
 const facebookLoginExchangeRepo = new FacebookLoginExchangeRepository();
 const authIdentitiesRepo = new AuthIdentitiesRepository();
+const oauthIdentitiesRepo = new OAuthIdentitiesRepository();
 const mailService = new MailService();
 
 function roleInitialStatus(role: UserRole): "active" | "pending" {
@@ -472,16 +474,25 @@ async function findPassengerFareProfile(
 export async function buildAuthUser(
   user: typeof users.$inferSelect,
 ): Promise<AuthUser> {
-  const [profile, credentials, externalProviders] = await Promise.all([
+  const [
+    profile,
+    credentials,
+    externalProviders,
+    oauthProviders,
+  ] = await Promise.all([
     findPassengerFareProfile(user.id),
     credentialsRepo.findByUserId(user.id),
     authIdentitiesRepo.listActiveProviders(user.id),
+    oauthIdentitiesRepo.listProviders(user.id),
   ]);
 
-  const authProviders = [
-    ...(credentials ? (["password"] as const) : []),
-    ...externalProviders,
-  ];
+  const authProviders = Array.from(
+    new Set([
+      ...(credentials ? (["password"] as const) : []),
+      ...externalProviders,
+      ...oauthProviders,
+    ]),
+  );
 
   return {
     id: user.id,

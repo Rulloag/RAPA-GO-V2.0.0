@@ -46,14 +46,15 @@ Guardar las evidencias sin contraseñas, tokens, claves privadas, URLs firmadas 
 - [ ] Notas del revisor cargadas.
 - [ ] Prueba en pista interna.
 
-## Meta/Facebook
+## Google Sign-In y retiro de Facebook
 
-- [ ] Configuración OAuth y redirect URI.
-- [ ] Permisos realmente utilizados.
-- [ ] Confirmación de que no existe tracking publicitario.
-- [ ] Confirmación de IDFA no solicitado por Facebook.
-- [ ] Confirmación de App Events automáticos desactivados o declarados.
-- [ ] Limited Login en iOS confirmado cuando corresponda.
+- [ ] Google OAuth/Client IDs coinciden con web, Android e iOS.
+- [ ] Prueba de cuenta nueva con Google.
+- [ ] Prueba de vinculación Google con cuenta RAPA GO existente sin crear duplicado.
+- [ ] Reingreso con Google conserva el mismo `user.id`.
+- [ ] Confirmación de que Facebook no aparece en Login ni Perfil.
+- [ ] Confirmación de que el backend no expone rutas `/api/auth/facebook/*`.
+- [ ] Confirmación de que el binario final no incorpora SDK de Meta/Facebook ni tracking publicitario.
 
 ## Dispositivos reales
 
@@ -69,7 +70,7 @@ Guardar las evidencias sin contraseñas, tokens, claves privadas, URLs firmadas 
 - [ ] Responsable de emitir el documento de transporte.
 - [ ] Responsable de emitir el documento por comisión.
 - [ ] Flujo para efectivo.
-- [ ] Flujo para Mercado Pago.
+- [ ] Flujo para Klap.
 - [ ] Flujo para hoteles/empresas.
 - [ ] Prueba de emisión real ante SII/proveedor DTE.
 - [ ] Corrección/anulación y conciliación por `rideId`.

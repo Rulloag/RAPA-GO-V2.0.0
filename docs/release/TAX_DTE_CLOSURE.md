@@ -2,7 +2,7 @@
 
 ## Estado técnico
 
-Mercado Pago procesa/certifica la transacción del medio de pago, pero su comprobante no reemplaza el documento tributario que corresponda emitir a Haka Taiko SpA o al prestador definido por Contabilidad.
+Klap procesa/certifica la transacción del medio de pago electrónico, pero su comprobante no reemplaza el documento tributario que corresponda emitir a Haka Taiko SpA o al prestador definido por Contabilidad.
 
 Este repositorio no contiene credenciales de SII ni una integración DTE certificada. Por seguridad y cumplimiento, no se simula una emisión real.
 
@@ -22,7 +22,7 @@ Completar y firmar:
 
 ## Evidencia mínima para GO
 
-- DTE real de una transacción QA Mercado Pago.
+- DTE real de una transacción QA Klap.
 - DTE real o procedimiento probado para efectivo.
 - Conciliación entre DTE, pago y `rideId`.
 - Manejo de rechazo del proveedor.

@@ -10,10 +10,6 @@ const REGISTER_RATE_LIMIT = {
   config: { rateLimit: { max: 5, timeWindow: "1 hour" } },
 } as const;
 
-const FACEBOOK_RATE_LIMIT = {
-  config: { rateLimit: { max: 15, timeWindow: "15 minutes" } },
-} as const;
-
 /** Auth routes — prefix /api/auth. */
 export async function authRoutes(
   fastify: FastifyInstance,
@@ -96,51 +92,8 @@ export async function authRoutes(
     authController.createPassword,
   );
 
-  fastify.post(
-    "/facebook/resident-precheck",
-    {
-      bodyLimit: 3 * 1024 * 1024,
-      config: {
-        rateLimit: { max: 5, timeWindow: "15 minutes" },
-      },
-    },
-    authController.facebookResidentPrecheck,
-  );
+  // Facebook Login fue retirado de RAPA GO.
+  // Los handlers históricos se conservan en código únicamente para
+  // compatibilidad/auditoría, pero no se exponen rutas públicas.
 
-  fastify.post(
-    "/facebook/resident-status",
-    FACEBOOK_RATE_LIMIT,
-    authController.facebookResidentStatus,
-  );
-
-  fastify.get(
-    "/facebook",
-    FACEBOOK_RATE_LIMIT,
-    authController.facebookLogin,
-  );
-  fastify.post(
-    "/facebook/link/start",
-    FACEBOOK_RATE_LIMIT,
-    authController.facebookLinkStart,
-  );
-  fastify.get(
-    "/facebook/callback",
-    FACEBOOK_RATE_LIMIT,
-    authController.facebookCallback,
-  );
-  fastify.post(
-    "/facebook/link-existing",
-    FACEBOOK_RATE_LIMIT,
-    authController.facebookLinkExisting,
-  );
-  fastify.post(
-    "/facebook/setup",
-    FACEBOOK_RATE_LIMIT,
-    authController.facebookSetup,
-  );
-  fastify.post(
-    "/facebook/exchange",
-    FACEBOOK_RATE_LIMIT,
-    authController.facebookExchange,
-  );
 }

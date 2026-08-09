@@ -76,7 +76,7 @@ export const publicAccountDeletionService = {
   async submit(payload: {
     email: string;
     code: string;
-    reason?: string;
+    reason: string;
     comment?: string;
     accepted: true;
   }): Promise<PublicAccountDeletionRequestData> {

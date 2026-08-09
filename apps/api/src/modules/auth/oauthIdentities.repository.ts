@@ -12,6 +12,18 @@ import { AppError } from "../../shared/errors/AppError.js";
 
 const UNIQUE_VIOLATION = "23505";
 
+export type OAuthIdentityProvider = "apple" | "facebook" | "google";
+
+function isOAuthIdentityProvider(
+  value: string,
+): value is OAuthIdentityProvider {
+  return (
+    value === "apple" ||
+    value === "facebook" ||
+    value === "google"
+  );
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -22,6 +34,29 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 export class OAuthIdentitiesRepository {
+  async listProviders(
+    userId: string,
+  ): Promise<OAuthIdentityProvider[]> {
+    try {
+      const rows = await db
+        .select({ provider: oauthIdentities.provider })
+        .from(oauthIdentities)
+        .where(eq(oauthIdentities.userId, userId));
+
+      return Array.from(
+        new Set(
+          rows
+            .map((row) => String(row.provider))
+            .filter(isOAuthIdentityProvider),
+        ),
+      );
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to list oauth identity providers: ${String(error)}`,
+      );
+    }
+  }
+
   async findByProviderAndSub(
     provider: string,
     providerUserId: string,

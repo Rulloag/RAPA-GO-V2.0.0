@@ -569,7 +569,10 @@ function getFacebookSetupRequest(): FacebookSetupRequest | null {
 }
 
 export function LoginPage(): JSX.Element {
-  const initialFacebookSetupRequest = getFacebookSetupRequest();
+  // Facebook Login fue retirado. Se conserva el código histórico sin
+  // exponerlo para poder auditar/migrar cuentas antiguas si fuera necesario.
+  const initialFacebookSetupRequest: FacebookSetupRequest | null =
+    false ? getFacebookSetupRequest() : null;
   const history = useHistory();
   const { login } = useAuth();
   const apple = useAppleSignIn();
@@ -850,15 +853,12 @@ export function LoginPage(): JSX.Element {
   const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState(
-    getFacebookRedirectErrorMessage,
+    false ? getFacebookRedirectErrorMessage() : "",
   );
   const [appleSetupError, setAppleSetupError] = useState("");
   const [googleSetupError, setGoogleSetupError] = useState("");
   const [googleLinkError, setGoogleLinkError] = useState("");
-  const facebookLoginEnabled =
-    String(import.meta.env.VITE_FACEBOOK_LOGIN_ENABLED ?? "false")
-      .trim()
-      .toLowerCase() === "true";
+  const facebookLoginEnabled = false;
 
   const [facebookSetupRequest] =
     useState<FacebookSetupRequest | null>(
