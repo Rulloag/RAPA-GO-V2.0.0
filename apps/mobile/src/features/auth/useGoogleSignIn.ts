@@ -23,6 +23,7 @@ export type GoogleSignInOutcome =
   | { kind: "success"; role: UserRole }
   | { kind: "setup_required"; message?: string }
   | { kind: "linking_required"; message: string }
+  | { kind: "link_unavailable"; message: string }
   | { kind: "suspended"; message: string }
   | { kind: "invalid_credential"; message: string }
   | { kind: "network_error"; message: string }
@@ -89,11 +90,14 @@ function mapGoogleError(code: string, message: string): GoogleSignInOutcome {
     return { kind: "network_error", message };
   }
 
+  if (code === "AUTH_GOOGLE_LINK_PASSWORD_UNAVAILABLE") {
+    return { kind: "link_unavailable", message };
+  }
+
   if (
     code === "AUTH_GOOGLE_TOKEN_INVALID" ||
     code === "AUTH_GOOGLE_EMAIL_NOT_VERIFIED" ||
     code === "AUTH_GOOGLE_LINK_PASSWORD_INVALID" ||
-    code === "AUTH_GOOGLE_LINK_PASSWORD_UNAVAILABLE" ||
     code === "AUTH_GOOGLE_LINK_ACCOUNT_NOT_FOUND" ||
     code === "AUTH_GOOGLE_ALREADY_LINKED" ||
     code === "AUTH_ACCOUNT_LOCKED" ||
@@ -299,6 +303,11 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
           response.message ??
             "No pudimos vincular tu cuenta de Google.",
         );
+
+        if (outcome.kind === "link_unavailable") {
+          clearPending();
+          return outcome;
+        }
 
         if (
           outcome.kind === "invalid_credential" ||

@@ -1,7 +1,19 @@
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   apiClient,
   buildApiUrl,
 } from "../../services/api/index.js";
+
+interface RapaGoDocumentViewerPlugin {
+  openAuthenticatedPdf(options: {
+    url: string;
+    token: string;
+    fileName: string;
+  }): Promise<void>;
+}
+
+const RapaGoDocumentViewer =
+  registerPlugin<RapaGoDocumentViewerPlugin>("RapaGoDocumentViewer");
 
 export interface ApplicationData {
   id: string; type: string; status: string;
@@ -248,10 +260,22 @@ export const applicationsService = {
     token: string,
     applicationId: string,
   ): Promise<void> {
+    const fileName = `Contrato-Rapa-Go-${applicationId}.pdf`;
+    const contractUrl = buildApiUrl(
+      `/applications/${encodeURIComponent(applicationId)}/contract`,
+    );
+
+    if (Capacitor.getPlatform() === "android") {
+      await RapaGoDocumentViewer.openAuthenticatedPdf({
+        url: contractUrl,
+        token,
+        fileName,
+      });
+      return;
+    }
+
     const response = await fetch(
-      buildApiUrl(
-        `/applications/${encodeURIComponent(applicationId)}/contract`,
-      ),
+      contractUrl,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -276,13 +300,13 @@ export const applicationsService = {
     const url = URL.createObjectURL(blob);
     const disposition = response.headers.get("content-disposition") ?? "";
     const fileNameMatch = /filename="?([^";]+)"?/i.exec(disposition);
-    const fileName =
+    const downloadedFileName =
       fileNameMatch?.[1] ??
-      `Contrato-Rapa-Go-${applicationId}.pdf`;
+      fileName;
     const anchor = document.createElement("a");
 
     anchor.href = url;
-    anchor.download = fileName;
+    anchor.download = downloadedFileName;
     anchor.rel = "noopener";
     document.body.appendChild(anchor);
     anchor.click();

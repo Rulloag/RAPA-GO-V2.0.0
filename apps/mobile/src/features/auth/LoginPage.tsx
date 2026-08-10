@@ -676,6 +676,12 @@ export function LoginPage(): JSX.Element {
         return;
       }
 
+      if (outcome.kind === "link_unavailable") {
+        setGoogleLinkError("");
+        setServerError(outcome.message);
+        return;
+      }
+
       if ("message" in outcome) {
         setGoogleLinkError(outcome.message);
       } else {

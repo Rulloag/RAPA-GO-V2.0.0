@@ -10824,7 +10824,14 @@ export default function TripsPage(): JSX.Element {
           <div
             role="radiogroup"
             aria-label="Filtrar viajes por estado"
-            style={{ display: "flex", gap: "8px", padding: "0 12px 10px", overflowX: "auto" }}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: "8px",
+              padding: "0 12px 10px",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
           >
             {(["all", "active", "completed", "cancelled"] as const).map((f) => {
               const labels = { all: "Todos", active: "Activos", completed: "Completados", cancelled: "Cancelados" };
@@ -10841,6 +10848,12 @@ export default function TripsPage(): JSX.Element {
                   aria-label={`Filtrar por ${labels[f]}`}
                   tabIndex={0}
                   className={active ? "rapago-filter-chip is-active" : "rapago-filter-chip"}
+                  style={{
+                    width: "100%",
+                    minWidth: 0,
+                    margin: 0,
+                    justifyContent: "center",
+                  }}
                   onClick={() => setStatusFilter(f)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {

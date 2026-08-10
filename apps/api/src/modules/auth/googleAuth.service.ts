@@ -256,6 +256,27 @@ export class GoogleAuthService {
 
     const emailOwner = await this.usersRepository.findByEmail(identity.email);
     if (emailOwner) {
+      const emailOwnerCredentials =
+        await this.credentialsRepository.findByUserId(emailOwner.id);
+
+      if (!emailOwnerCredentials) {
+        this.auditService.recordSafe({
+          eventType: "auth.google.login.conflict",
+          entityType: "user",
+          entityId: emailOwner.id,
+          metadata: { reason: "email_taken_password_unavailable" },
+        });
+
+        return {
+          ok: false,
+          code: "AUTH_GOOGLE_LINK_PASSWORD_UNAVAILABLE",
+          message:
+            "Esta cuenta no tiene contraseÃ±a RAPA GO. Inicia sesiÃ³n con tu mÃ©todo actual, crea una contraseÃ±a de respaldo en Perfil y luego vuelve a vincular Google.",
+          statusCode: 409,
+          displayEmail: identity.email,
+        };
+      }
+
       if (!payload.linkPassword) {
         this.auditService.recordSafe({
           eventType: "auth.google.login.conflict",
