@@ -9,6 +9,12 @@ describe("Klap production checkout host regression", () => {
     expect(validateKlapRedirectUrl(url)).toBe(url);
   });
 
+  it("acepta el host productivo real www.klap.cl", () => {
+    const url =
+      "https://www.klap.cl/order/test-production-order";
+
+    expect(validateKlapRedirectUrl(url)).toBe(url);
+  });
   it("conserva el host Sandbox para pruebas controladas", () => {
     const url =
       "https://pagos-pasarela-sandbox.mcdesaqa.cl/order/test-sandbox-order";
