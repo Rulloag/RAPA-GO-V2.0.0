@@ -6,8 +6,12 @@ import type { CreatePaymentParams } from "../payment.provider.js";
 
 const SANDBOX_ORDERS_URL =
   "https://api-pasarela-sandbox.mcdesaqa.cl/payment-gateway/v1/orders";
+const PRODUCTION_ORDERS_URL =
+  "https://api.pasarela.multicaja.cl/payment-gateway/v1/orders";
 const CHECKOUT_URL =
   "https://pagos-pasarela-sandbox.mcdesaqa.cl/order/test-order-123";
+const PRODUCTION_CHECKOUT_URL =
+  "https://pagos.pasarela.multicaja.cl/order/test-order-production";
 
 function params(
   overrides: Partial<CreatePaymentParams> = {},
@@ -61,6 +65,9 @@ beforeEach(() => {
   process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "true";
   process.env["KLAP_CAPTURE_SUCCESS_STATUSES"] = "captured,success,approved";
   delete process.env["KLAP_SANDBOX_ORDERS_URL"];
+  delete process.env["KLAP_PRODUCTION_ORDERS_URL"];
+  delete process.env["KLAP_ALLOWED_SANDBOX_CHECKOUT_HOSTS"];
+  delete process.env["KLAP_ALLOWED_PRODUCTION_CHECKOUT_HOSTS"];
   delete process.env["KLAP_REQUEST_TIMEOUT_MS"];
 });
 
@@ -271,16 +278,49 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
     });
   });
 
-  it("valida montos CLP y no opera en producción todavía", async () => {
+  it("valida montos CLP y rechaza entornos desconocidos", async () => {
     await expect(
       new KlapProvider().createHostedOrder(params({ amountClp: 49 })),
     ).rejects.toMatchObject({ kind: "config" });
 
-    process.env["KLAP_ENVIRONMENT"] = "production";
+    process.env["KLAP_ENVIRONMENT"] = "otro";
 
     await expect(
       new KlapProvider().createHostedOrder(params()),
     ).rejects.toMatchObject({ kind: "config" });
+  });
+
+  it("selecciona el endpoint y redirect oficiales de producción", async () => {
+    process.env["KLAP_ENVIRONMENT"] = "production";
+    process.env["KLAP_API_KEY"] = "production-secret";
+    mockJson(201, {
+      order_id: "test-order-production",
+      status: "pending",
+      redirect_url: PRODUCTION_CHECKOUT_URL,
+    });
+
+    const result = await new KlapProvider().createHostedOrder(params());
+    const [url, init] = request();
+
+    expect(url).toBe(PRODUCTION_ORDERS_URL);
+    expect((init.headers as Record<string, string>)["apikey"]).toBe(
+      "production-secret",
+    );
+    expect(result.publicCheckoutData.redirectUrl).toBe(
+      PRODUCTION_CHECKOUT_URL,
+    );
+  });
+
+  it("no permite mezclar un redirect de Sandbox cuando el backend está en producción", async () => {
+    process.env["KLAP_ENVIRONMENT"] = "production";
+    mockJson(201, {
+      order_id: "test-order-production",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await expect(
+      new KlapProvider().createHostedOrder(params()),
+    ).rejects.toMatchObject({ kind: "unsafe_redirect" });
   });
 });
 

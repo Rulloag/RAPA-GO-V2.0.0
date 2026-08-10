@@ -10,6 +10,7 @@ export const RAPAGO_PENDING_CARD_PAYMENT_KEY =
 const ALLOWED_KLAP_CHECKOUT_HOSTS = new Set([
   "pagos-pasarela-sandbox.mcdesaqa.cl",
   "sandbox.mcdesaqa.cl",
+  "pagos.pasarela.multicaja.cl",
 ]);
 
 export type PendingKlapPaymentRecord = {
@@ -81,7 +82,7 @@ export function validateKlapRedirectUrl(value: string): string {
     !ALLOWED_KLAP_CHECKOUT_HOSTS.has(url.hostname.toLowerCase())
   ) {
     throw new Error(
-      "El enlace de pago no pertenece al dominio oficial del Sandbox de Klap.",
+      "El enlace de pago no pertenece a un dominio oficial permitido de Klap.",
     );
   }
 
