@@ -213,9 +213,17 @@ check(
   "El esquema debe aceptar el motivo mediante reasonSchema",
 );
 check(
-  accountDeletionSchema.includes(".optional()") &&
-    !accountDeletionSchema.includes('.min(10, "El motivo'),
-  "El motivo de eliminaciÃ³n debe ser opcional",
+  accountDeletionSchema.includes(
+    'required_error: "Debes indicar el motivo de eliminación."',
+  ) &&
+    accountDeletionSchema.includes(
+      '.min(3, "Debes indicar un motivo de al menos 3 caracteres.")',
+    ) &&
+    accountDeletionSchema.includes(
+      'normalized !== "prefiero no indicar"',
+    ) &&
+    !accountDeletionSchema.includes("const reasonSchema = z.preprocess"),
+  "El motivo de eliminación debe ser obligatorio y rechazar la opción de no indicarlo",
 );
 check(
   !accountDeletionTypes.includes('| "rejected"'),
@@ -249,10 +257,7 @@ check(
   ),
   "La identidad no verificada debe notificar al usuario sin usar rechazo genÃ©rico",
 );
-check(
-  migration0042.includes("ALTER COLUMN reason DROP NOT NULL"),
-  "La migraciÃ³n 0042 debe hacer opcional el motivo",
-);
+
 check(
   migration0042.includes("status = 'identity_not_verified'"),
   "La migraciÃ³n 0042 debe migrar rejected",
