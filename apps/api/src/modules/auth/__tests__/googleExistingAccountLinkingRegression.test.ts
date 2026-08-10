@@ -25,6 +25,24 @@ describe("Google existing-account linking regressions", () => {
     );
   });
 
+  it("does not open the password-link flow when the existing account has no password", () => {
+    const credentialsCheck = googleServiceSource.indexOf(
+      "findByUserId(emailOwner.id)",
+    );
+    const linkingPrompt = googleServiceSource.indexOf(
+      'code: "AUTH_GOOGLE_ACCOUNT_LINKING_REQUIRED"',
+    );
+
+    expect(credentialsCheck).toBeGreaterThan(-1);
+    expect(linkingPrompt).toBeGreaterThan(credentialsCheck);
+    expect(googleServiceSource).toContain(
+      'code: "AUTH_GOOGLE_LINK_PASSWORD_UNAVAILABLE"',
+    );
+    expect(googleServiceSource).toContain(
+      "crea una contraseÃ±a de respaldo en Perfil",
+    );
+  });
+
   it("keeps Google sub as the stable identity and prevents attaching another Google account to the same user", () => {
     expect(oauthRepositorySource).toContain(
       "async findByUserAndProvider(",

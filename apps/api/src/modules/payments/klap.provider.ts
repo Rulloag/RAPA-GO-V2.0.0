@@ -9,6 +9,7 @@ import {
   KlapProviderError,
   KLAP_TRANSACTION_TYPE_AUTHORIZATION,
   type KlapConfig,
+  type KlapEnvironment,
   type KlapCustom,
   type KlapOrderRequest,
   type KlapCreateOrderValidatedResponse,
@@ -20,6 +21,8 @@ import {
 
 const KLAP_SANDBOX_ORDERS_URL_DEFAULT =
   "https://api-pasarela-sandbox.mcdesaqa.cl/payment-gateway/v1/orders";
+const KLAP_PRODUCTION_ORDERS_URL_DEFAULT =
+  "https://api.pasarela.multicaja.cl/payment-gateway/v1/orders";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_ORDER_EXPIRATION_MINUTES = 30;
@@ -28,17 +31,37 @@ const MAX_AMOUNT_CLP = 99_999_999;
 const MAX_REFERENCE_ID_LENGTH = 100;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
-const configuredSandboxCheckoutHosts = String(
-  process.env["KLAP_ALLOWED_SANDBOX_CHECKOUT_HOSTS"] ?? "",
-)
-  .split(",")
-  .map((host) => host.trim().toLowerCase())
-  .filter((host) => /^[a-z0-9.-]+$/.test(host));
-
-const ALLOWED_SANDBOX_CHECKOUT_HOSTS = new Set([
+const DEFAULT_SANDBOX_CHECKOUT_HOSTS = [
   "pagos-pasarela-sandbox.mcdesaqa.cl",
-  ...configuredSandboxCheckoutHosts,
-]);
+  "sandbox.mcdesaqa.cl",
+] as const;
+
+const DEFAULT_PRODUCTION_CHECKOUT_HOSTS = [
+  "pagos.pasarela.multicaja.cl",
+] as const;
+
+function parseConfiguredCheckoutHosts(value: string | undefined): string[] {
+  return String(value ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter((host) => /^[a-z0-9.-]+$/.test(host));
+}
+
+function getAllowedCheckoutHosts(
+  environment: KlapEnvironment,
+): ReadonlySet<string> {
+  const defaults =
+    environment === "production"
+      ? DEFAULT_PRODUCTION_CHECKOUT_HOSTS
+      : DEFAULT_SANDBOX_CHECKOUT_HOSTS;
+  const extraHosts = parseConfiguredCheckoutHosts(
+    environment === "production"
+      ? process.env["KLAP_ALLOWED_PRODUCTION_CHECKOUT_HOSTS"]
+      : process.env["KLAP_ALLOWED_SANDBOX_CHECKOUT_HOSTS"],
+  );
+
+  return new Set([...defaults, ...extraHosts]);
+}
 
 export function verifyKlapWebhookApikey(
   orderId: unknown,
@@ -122,18 +145,30 @@ function buildDefaultCallbackUrl(path: string): string {
 }
 
 function getKlapConfig(): KlapConfig {
-  const environment = (process.env["KLAP_ENVIRONMENT"] ?? "sandbox").trim();
+  const rawEnvironment = String(
+    process.env["KLAP_ENVIRONMENT"] ?? "sandbox",
+  )
+    .trim()
+    .toLowerCase();
 
-  if (environment !== "sandbox") {
+  if (rawEnvironment !== "sandbox" && rawEnvironment !== "production") {
     throw new KlapProviderError(
       "config",
-      `KlapProvider solo admite Sandbox en esta fase (recibido KLAP_ENVIRONMENT="${environment}").`,
+      `KLAP_ENVIRONMENT must be "sandbox" or "production" (received "${rawEnvironment}").`,
     );
   }
 
+  const environment = rawEnvironment as KlapEnvironment;
+  const ordersUrlEnvName =
+    environment === "production"
+      ? "KLAP_PRODUCTION_ORDERS_URL"
+      : "KLAP_SANDBOX_ORDERS_URL";
   const ordersUrl =
-    process.env["KLAP_SANDBOX_ORDERS_URL"] ??
-    KLAP_SANDBOX_ORDERS_URL_DEFAULT;
+    environment === "production"
+      ? process.env["KLAP_PRODUCTION_ORDERS_URL"] ??
+        KLAP_PRODUCTION_ORDERS_URL_DEFAULT
+      : process.env["KLAP_SANDBOX_ORDERS_URL"] ??
+        KLAP_SANDBOX_ORDERS_URL_DEFAULT;
   const apiKey = process.env["KLAP_API_KEY"] ?? "";
   const requestTimeoutMs = Number(
     process.env["KLAP_REQUEST_TIMEOUT_MS"] ?? DEFAULT_TIMEOUT_MS,
@@ -192,7 +227,7 @@ function getKlapConfig(): KlapConfig {
     throw new KlapProviderError("config", "KLAP_API_KEY is not configured.");
   }
 
-  assertValidHttpUrl(ordersUrl, "KLAP_SANDBOX_ORDERS_URL");
+  assertValidHttpUrl(ordersUrl, ordersUrlEnvName);
   assertValidHttpUrl(returnUrl, "KLAP_RETURN_URL");
   assertValidHttpUrl(cancelUrl, "KLAP_CANCEL_URL");
   assertValidHttpUrl(webhookConfirmUrl, "KLAP_WEBHOOK_CONFIRM_URL");
@@ -209,7 +244,7 @@ function getKlapConfig(): KlapConfig {
   }
 
   return {
-    environment: "sandbox",
+    environment,
     ordersUrl,
     apiKey,
     requestTimeoutMs:
@@ -306,7 +341,10 @@ function readString(
   return null;
 }
 
-function validateKlapRedirectUrl(value: string): string {
+function validateKlapRedirectUrl(
+  value: string,
+  environment: KlapEnvironment,
+): string {
   let parsed: URL;
 
   try {
@@ -319,10 +357,11 @@ function validateKlapRedirectUrl(value: string): string {
   }
 
   const hostname = parsed.hostname.toLowerCase();
+  const allowedHosts = getAllowedCheckoutHosts(environment);
 
   if (
     parsed.protocol !== "https:" ||
-    !ALLOWED_SANDBOX_CHECKOUT_HOSTS.has(hostname)
+    !allowedHosts.has(hostname)
   ) {
     throw new KlapProviderError(
       "unsafe_redirect",
@@ -335,6 +374,7 @@ function validateKlapRedirectUrl(value: string): string {
 
 function parseCreateOrderResponse(
   raw: unknown,
+  environment: KlapEnvironment,
 ): KlapCreateOrderValidatedResponse {
   const record = asRecord(raw);
   const orderId = readString(record, "order_id", "orderId");
@@ -357,7 +397,7 @@ function parseCreateOrderResponse(
 
   return {
     order_id: orderId,
-    redirect_url: validateKlapRedirectUrl(redirectUrl),
+    redirect_url: validateKlapRedirectUrl(redirectUrl, environment),
     status,
   };
 }
@@ -389,6 +429,7 @@ function readAmount(
 
 function parseOrderStatusResponse(
   raw: unknown,
+  environment: KlapEnvironment,
 ): KlapOrderStatusValidatedResponse {
   const record = asRecord(raw);
   const orderId = readString(record, "order_id", "orderId");
@@ -408,7 +449,7 @@ function parseOrderStatusResponse(
     reference_id: readString(record, "reference_id", "referenceId"),
     status,
     redirect_url: redirectUrl
-      ? validateKlapRedirectUrl(redirectUrl)
+      ? validateKlapRedirectUrl(redirectUrl, environment)
       : null,
     amount: readAmount(record),
     transaction_id: readString(
@@ -541,7 +582,7 @@ export class KlapProvider implements PaymentProvider {
       "Klap order creation",
     );
 
-    const validated = parseCreateOrderResponse(raw);
+    const validated = parseCreateOrderResponse(raw, config.environment);
 
     return {
       checkoutType: "redirect",
@@ -599,7 +640,7 @@ export class KlapProvider implements PaymentProvider {
       "Klap order status query",
     );
 
-    return parseOrderStatusResponse(raw);
+    return parseOrderStatusResponse(raw, config.environment);
   }
 
   verifyWebhookSignature(
