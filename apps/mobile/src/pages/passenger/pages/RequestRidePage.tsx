@@ -7561,10 +7561,6 @@ export default function RequestRidePage(): JSX.Element {
     setBackendPendingPassengerCharges,
   ] = useState<PassengerPendingChargeForRequest[]>([]);
   const [rideMode, setRideMode] = useState<RideMode>("now");
-  const [showInitialRideModePrompt, setShowInitialRideModePrompt] =
-    useState(true);
-  const [showInitialOriginPrompt, setShowInitialOriginPrompt] =
-    useState(false);
   const [tripFareMode, setTripFareMode] = useState<TripFareMode>("one_way");
   const [selectedRoundTripPromotionId, setSelectedRoundTripPromotionId] = useState<string | null>(null);
   const [pendingRoundTripPromotion, setPendingRoundTripPromotion] = useState<RoundTripPromotion | null>(null);
@@ -8067,7 +8063,7 @@ export default function RequestRidePage(): JSX.Element {
     }
   }
 
-  function selectRideModeNow(options?: { askOrigin?: boolean }): void {
+  function selectRideModeNow(): void {
     setRideMode("now");
     setSelectedRoundTripPromotionId(null);
     setTripFareMode("one_way");
@@ -8083,10 +8079,6 @@ export default function RequestRidePage(): JSX.Element {
     setOriginSuggestions([]);
     setDestSuggestions([]);
     setSubmitError(null);
-
-    if (options?.askOrigin) {
-      window.setTimeout(() => setShowInitialOriginPrompt(true), 120);
-    }
   }
 
   function selectRideModeScheduled(): void {
@@ -8104,7 +8096,6 @@ export default function RequestRidePage(): JSX.Element {
     setDestInput("");
     setDestSuggestions([]);
     setSubmitError(null);
-    setShowInitialOriginPrompt(false);
   }
 
   function handleUseCurrentLocation(): void {
@@ -9366,10 +9357,7 @@ return (
                 type="button"
                 role="tab"
                 aria-selected={rideMode === "now"}
-                onClick={() => {
-                  setShowInitialRideModePrompt(false);
-                  selectRideModeNow({ askOrigin: true });
-                }}
+                onClick={selectRideModeNow}
                 style={{
                   minHeight: "48px",
                   padding: "12px",
@@ -9400,10 +9388,7 @@ return (
                 type="button"
                 role="tab"
                 aria-selected={rideMode === "scheduled"}
-                onClick={() => {
-                  setShowInitialRideModePrompt(false);
-                  selectRideModeScheduled();
-                }}
+                onClick={selectRideModeScheduled}
                 style={{
                   minHeight: "48px",
                   padding: "12px",
@@ -11106,55 +11091,6 @@ return (
             </IonButton>
           </div>
         </div>
-
-        <IonAlert
-          isOpen={showInitialRideModePrompt}
-          backdropDismiss={false}
-          header="¿Cuándo quieres viajar?"
-          message="Elige primero si necesitas un traslado ahora o una reserva para después."
-          buttons={[
-            {
-              text: "Viajar ahora",
-              handler: () => {
-                setShowInitialRideModePrompt(false);
-                selectRideModeNow({ askOrigin: true });
-              },
-            },
-            {
-              text: "Reservar para después",
-              handler: () => {
-                setShowInitialRideModePrompt(false);
-                selectRideModeScheduled();
-              },
-            },
-          ]}
-        />
-
-        <IonAlert
-          isOpen={showInitialOriginPrompt}
-          backdropDismiss={false}
-          header="¿Desde dónde te recogemos?"
-          message="Puedes usar tu ubicación actual o solicitar el servicio desde otro lugar."
-          buttons={[
-            {
-              text: "Elegir otro lugar",
-              role: "cancel",
-              handler: () => {
-                setShowInitialOriginPrompt(false);
-                setPickerAutoFocusSearch(true);
-                setPickerTarget("origin");
-              },
-            },
-            {
-              text: "Usar mi ubicación",
-              handler: () => {
-                setShowInitialOriginPrompt(false);
-                handleUseCurrentLocation();
-              },
-            },
-          ]}
-          onDidDismiss={() => setShowInitialOriginPrompt(false)}
-        />
 
         <IonAlert
           isOpen={pendingRoundTripPromotion !== null}

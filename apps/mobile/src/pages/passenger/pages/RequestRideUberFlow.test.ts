@@ -34,13 +34,19 @@ describe("flujo de solicitud tipo Uber en Rapa Nui", () => {
     expect(requestRideSource).toContain("localRapaNuiPlaceToPickerResult");
   });
 
-  it("pregunta primero ahora o reserva y luego guía la ubicación", () => {
-    expect(requestRideSource).toContain('header="¿Cuándo quieres viajar?"');
-    expect(requestRideSource).toContain('text: "Viajar ahora"');
-    expect(requestRideSource).toContain('text: "Reservar para después"');
-    expect(requestRideSource).toContain('header="¿Desde dónde te recogemos?"');
-    expect(requestRideSource).toContain('text: "Usar mi ubicación"');
-    expect(requestRideSource).toContain('text: "Elegir otro lugar"');
+  it("usa los controles visibles de ahora, reserva y ubicación sin avisos duplicados", () => {
+    expect(requestRideSource).not.toContain('header="¿Cuándo quieres viajar?"');
+    expect(requestRideSource).not.toContain('text: "Viajar ahora"');
+    expect(requestRideSource).not.toContain('text: "Reservar para después"');
+    expect(requestRideSource).not.toContain('header="¿Desde dónde te recogemos?"');
+    expect(requestRideSource).not.toContain('text: "Usar mi ubicación"');
+    expect(requestRideSource).not.toContain('text: "Elegir otro lugar"');
+    expect(requestRideSource).toContain("AHORA");
+    expect(requestRideSource).toContain("RESERVAR");
+    expect(requestRideSource).toContain("Elegir en mapa");
+    expect(requestRideSource).toContain("Mi ubicación");
+    expect(requestRideSource).toContain("onClick={selectRideModeNow}");
+    expect(requestRideSource).toContain("onClick={selectRideModeScheduled}");
     expect(requestRideSource).toContain(
       "Puedes escribir el origen o elegirlo manualmente en el mapa.",
     );
