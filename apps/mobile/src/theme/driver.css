@@ -161,7 +161,8 @@
    sobre el stop más oscuro del degradado (terracota #b84f2e) da 3,6:1 —
    supera el mínimo de 3:1 de WCAG 1.4.11 para componentes gráficos (es un
    ion-icon, no texto). */
-.rapago-driver-page button[aria-label="Acercar mapa y seguir ruta dentro de Rapa Go"] {
+.rapago-driver-page
+  button[aria-label="Acercar mapa y seguir ruta dentro de Rapa Go"] {
   background: var(--rp-btn-primary) !important;
   border-color: var(--rp-hero-bd) !important;
   box-shadow: var(--rp-shadow-accent) !important;
@@ -290,7 +291,8 @@
    de clases (título, copia, insignia), así que puede vivir sobre la superficie
    del tema como cualquier tarjeta del pasajero. Es el modelo al que tienen que
    llegar las demás. */
-.rapago-driver-page ion-card:not(.rapago-home-quick-card):not(.rapago-driver-card) {
+.rapago-driver-page
+  ion-card:not(.rapago-home-quick-card):not(.rapago-driver-card) {
   background: var(--rp-surface-legacy) !important;
   color: var(--rp-text-legacy) !important;
 }
@@ -310,14 +312,18 @@
   letter-spacing: 0.08em;
 }
 
-.rapago-driver-page ion-card:not(.rapago-home-quick-card):not(.rapago-driver-card) ion-card-content {
+.rapago-driver-page
+  ion-card:not(.rapago-home-quick-card):not(.rapago-driver-card)
+  ion-card-content {
   color: var(--rp-text-legacy) !important;
   font-size: var(--rp-fs-body) !important;
 }
 
 /* Los títulos sueltos dentro de la tarjeta heredan el color legible en vez del
    del tema, que sobre superficie clara sería ivory sobre blanco. */
-.rapago-driver-page ion-card:not(.rapago-driver-card) :is(h1, h2, h3, h4, h5, p, li, dt, dd) {
+.rapago-driver-page
+  ion-card:not(.rapago-driver-card)
+  :is(h1, h2, h3, h4, h5, p, li, dt, dd) {
   color: inherit;
 }
 
@@ -330,23 +336,37 @@
 }
 
 .rapago-driver-page ion-card:not(.rapago-driver-card) ion-item ion-label,
-.rapago-driver-page ion-card:not(.rapago-driver-card) ion-item ion-label.label-stacked {
+.rapago-driver-page
+  ion-card:not(.rapago-driver-card)
+  ion-item
+  ion-label.label-stacked {
   color: var(--rp-accent-legacy) !important;
 }
 
-.rapago-driver-page ion-card:not(.rapago-driver-card) ion-item ion-label :is(h1, h2, h3, p) {
+.rapago-driver-page
+  ion-card:not(.rapago-driver-card)
+  ion-item
+  ion-label
+  :is(h1, h2, h3, p) {
   color: var(--rp-text-legacy) !important;
 }
 
-.rapago-driver-page ion-card:not(.rapago-driver-card) :is(ion-input, ion-textarea, ion-select) {
+.rapago-driver-page
+  ion-card:not(.rapago-driver-card)
+  :is(ion-input, ion-textarea, ion-select) {
   --color: var(--rp-field-fg-legacy) !important;
   --placeholder-color: var(--rp-field-ph-legacy) !important;
   color: var(--rp-field-fg-legacy) !important;
 }
 
-.rapago-driver-page ion-card:not(.rapago-driver-card) :is(ion-input, ion-textarea) :is(input, textarea),
+.rapago-driver-page
+  ion-card:not(.rapago-driver-card)
+  :is(ion-input, ion-textarea)
+  :is(input, textarea),
 .rapago-driver-page ion-card:not(.rapago-driver-card) ion-input::part(native),
-.rapago-driver-page ion-card:not(.rapago-driver-card) ion-textarea::part(native) {
+.rapago-driver-page
+  ion-card:not(.rapago-driver-card)
+  ion-textarea::part(native) {
   color: var(--rp-field-fg-legacy) !important;
   -webkit-text-fill-color: var(--rp-field-fg-legacy) !important;
 }
@@ -1109,7 +1129,8 @@
   color: var(--rp-text) !important;
 }
 
-.rapago-driver-page ion-card.rapago-home-quick-card.rapago-home-quick-card--attention {
+.rapago-driver-page
+  ion-card.rapago-home-quick-card.rapago-home-quick-card--attention {
   border-color: var(--rp-warn-bd) !important;
   box-shadow:
     0 0 0 1px var(--rp-warn-bd),
@@ -1184,9 +1205,7 @@
   color: var(--rp-muted) !important;
 }
 
-.rapago-driver-page
-  ion-card.rapago-home-quick-card
-  .rapago-home-quick-icon,
+.rapago-driver-page ion-card.rapago-home-quick-card .rapago-home-quick-icon,
 .rapago-driver-page
   ion-card.rapago-home-quick-card
   .rapago-home-quick-icon
@@ -1632,9 +1651,7 @@
    fuera cual fuera el tema. Se repone aquí con más fuerza: clases explícitas
    en vez de solo custom properties, para que gane tanto sobre las variables
    Ionic como sobre las propiedades `background`/`color` en crudo. */
-.rapago-driver-page
-  ion-card.rapago-driver-card
-  ion-item.rapago-profile-field {
+.rapago-driver-page ion-card.rapago-driver-card ion-item.rapago-profile-field {
   --background: var(--rp-field-bg) !important;
   --color: var(--rp-field-fg) !important;
   background: var(--rp-field-bg) !important;
@@ -1736,10 +1753,7 @@
 }
 
 .rapago-driver-page.rapago-driver-page .rapago-profile-danger-slot ion-card p,
-.rapago-driver-page.rapago-driver-page
-  .rapago-profile-danger-slot
-  ion-card
-  div,
+.rapago-driver-page.rapago-driver-page .rapago-profile-danger-slot ion-card div,
 .rapago-driver-page.rapago-driver-page
   .rapago-profile-danger-slot
   ion-card
@@ -2226,7 +2240,7 @@
   flex-direction: column;
   min-height: 100%;
   background: #0f1115;
-  overflow: hidden;           /* evita el scroll-x del margin:-16px */
+  overflow: hidden; /* evita el scroll-x del margin:-16px */
 }
 
 /* El mapa puede crecer para llenar el espacio libre */
@@ -2253,7 +2267,7 @@
   white-space: normal !important;
   overflow: visible !important;
   text-overflow: clip !important;
-  font-size: .76rem !important;
+  font-size: 0.76rem !important;
   line-height: 1.35 !important;
   padding: 8px 12px !important;
   border-radius: 14px !important;
@@ -2273,7 +2287,7 @@
   border-radius: 18px !important;
   background: var(--rp-warn-bg) !important;
   border: 1.5px solid var(--rp-warn-bd) !important;
-  box-shadow: 0 4px 14px rgba(210,164,58,.18);
+  box-shadow: 0 4px 14px rgba(210, 164, 58, 0.18);
 }
 
 .rapago-driver-page .driver-location-error-card .card-content-md,
@@ -2287,9 +2301,9 @@
 
 /* Dirección del punto de recogida: subir contraste WCAG */
 .rapago-driver-page .active-ride-pickup-address {
-  font-size: .88rem !important;
+  font-size: 0.88rem !important;
   font-weight: 700 !important;
-  color: rgba(246,242,236,.88) !important;
+  color: rgba(246, 242, 236, 0.88) !important;
   overflow-wrap: anywhere;
   line-height: 1.4;
 }
@@ -2330,7 +2344,9 @@
 .rapago-driver-page .driver-noshow-card {
   padding: 12px 13px;
   border-radius: 18px;
-  transition: background 0.4s ease, border-color 0.4s ease;
+  transition:
+    background 0.4s ease,
+    border-color 0.4s ease;
 }
 
 .rapago-driver-page .driver-noshow-track {
@@ -2349,7 +2365,7 @@
 /* Caption legible: sin opacity < 1 */
 .rapago-driver-page .driver-noshow-caption {
   margin-top: 8px;
-  font-size: var(--rp-fs-sub, .80rem) !important;
+  font-size: var(--rp-fs-sub, 0.8rem) !important;
   font-weight: 750 !important;
   opacity: 1 !important;
   color: var(--rp-muted) !important;
@@ -2360,7 +2376,7 @@
    El botón ya existe en driver.css; solo añadimos el min-width y el texto.
    ─────────────────────────────────────────────────────────────────────────── */
 .rapago-driver-page .rapago-driver-rest__save {
-  min-width: 96px !important;  /* espacio para texto "Guardar" */
+  min-width: 96px !important; /* espacio para texto "Guardar" */
   font-size: var(--rp-fs-body) !important;
   font-weight: 800 !important;
   letter-spacing: 0.01em !important;
@@ -2720,7 +2736,9 @@
 .rapago-driver-page .rapago-driver-sheet-status--enroute {
   border-color: color-mix(in srgb, var(--rp-accent) 38%, transparent);
 }
-.rapago-driver-page .rapago-driver-sheet-status--enroute .rapago-driver-sheet-status__icon {
+.rapago-driver-page
+  .rapago-driver-sheet-status--enroute
+  .rapago-driver-sheet-status__icon {
   background: color-mix(in srgb, var(--rp-accent) 18%, transparent);
   color: var(--rp-accent);
 }
@@ -2728,7 +2746,9 @@
 .rapago-driver-page .rapago-driver-sheet-status--waiting {
   border-color: color-mix(in srgb, var(--rp-gold) 42%, transparent);
 }
-.rapago-driver-page .rapago-driver-sheet-status--waiting .rapago-driver-sheet-status__icon {
+.rapago-driver-page
+  .rapago-driver-sheet-status--waiting
+  .rapago-driver-sheet-status__icon {
   background: color-mix(in srgb, var(--rp-gold) 20%, transparent);
   color: var(--rp-gold);
 }
@@ -2736,7 +2756,9 @@
 .rapago-driver-page .rapago-driver-sheet-status--riding {
   border-color: color-mix(in srgb, var(--rp-lagoon, #1f9d63) 40%, transparent);
 }
-.rapago-driver-page .rapago-driver-sheet-status--riding .rapago-driver-sheet-status__icon {
+.rapago-driver-page
+  .rapago-driver-sheet-status--riding
+  .rapago-driver-sheet-status__icon {
   background: color-mix(in srgb, var(--rp-lagoon, #1f9d63) 20%, transparent);
   color: var(--rp-lagoon, #1f9d63);
 }
@@ -2828,7 +2850,9 @@
   border-color: color-mix(in srgb, var(--rp-gold) 42%, transparent);
   background: color-mix(in srgb, var(--rp-gold) 12%, var(--rp-field-bg));
 }
-.rapago-driver-page .rapago-driver-sheet-note--queued .rapago-driver-sheet-note__icon {
+.rapago-driver-page
+  .rapago-driver-sheet-note--queued
+  .rapago-driver-sheet-note__icon {
   background: color-mix(in srgb, var(--rp-gold) 22%, transparent);
   color: var(--rp-gold);
 }
@@ -2837,7 +2861,9 @@
   border-color: color-mix(in srgb, var(--rp-accent) 46%, transparent);
   background: color-mix(in srgb, var(--rp-accent) 12%, var(--rp-field-bg));
 }
-.rapago-driver-page .rapago-driver-sheet-note--offer .rapago-driver-sheet-note__icon {
+.rapago-driver-page
+  .rapago-driver-sheet-note--offer
+  .rapago-driver-sheet-note__icon {
   background: color-mix(in srgb, var(--rp-accent) 22%, transparent);
   color: var(--rp-accent);
 }
@@ -2877,7 +2903,8 @@
   --border-radius: 999px;
   --background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--rp-gold) 34%, var(--rp-field-bg)) 0 var(--rp-noshow-progress, 0%),
+    color-mix(in srgb, var(--rp-gold) 34%, var(--rp-field-bg)) 0
+      var(--rp-noshow-progress, 0%),
     var(--rp-field-bg) var(--rp-noshow-progress, 0%)
   );
   --background-activated: var(--rp-field-bg);
@@ -2995,11 +3022,17 @@
   height: 5px;
   border-radius: 999px;
   background: var(--rp-border-c);
-  transition: background 180ms ease, width 180ms ease;
+  transition:
+    background 180ms ease,
+    width 180ms ease;
 }
 
-.rapago-driver-page .rapago-driver-nav-sheet[data-snap="collapsed"] .rapago-driver-nav-grip,
-.rapago-driver-page .rapago-driver-nav-sheet[data-snap="half"] .rapago-driver-nav-grip {
+.rapago-driver-page
+  .rapago-driver-nav-sheet[data-snap="collapsed"]
+  .rapago-driver-nav-grip,
+.rapago-driver-page
+  .rapago-driver-nav-sheet[data-snap="half"]
+  .rapago-driver-nav-grip {
   background: var(--rp-gold);
   width: 52px;
 }
@@ -3088,6 +3121,77 @@
   }
 
   .rapago-driver-page .rapago-driver-nav-sheet__confirm ion-icon {
+    font-size: 0.9rem;
+  }
+}
+
+/* Botón cancelar: espejo del __confirm pero en la esquina izquierda, estilo
+   contorno neutro para no competir con el SOS. */
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill {
+  position: absolute;
+  top: 8px;
+  left: 14px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 130px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1.5px solid var(--rp-border-c);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rp-text);
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill ion-icon {
+  flex: 0 0 auto;
+  font-size: 1rem;
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill:hover {
+  background: var(--rp-field-bg);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill:active {
+  transform: translateY(1px) scale(0.97);
+  background: var(--rp-field-bg);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill:focus-visible {
+  outline: 2px solid var(--rp-border-c);
+  outline-offset: 2px;
+}
+
+@media (max-width: 360px) {
+  .rapago-driver-page .rapago-driver-nav-sheet__cancel-pill {
+    top: 6px;
+    left: 10px;
+    max-width: 100px;
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 0.74rem;
+    gap: 4px;
+  }
+
+  .rapago-driver-page .rapago-driver-nav-sheet__cancel-pill ion-icon {
     font-size: 0.9rem;
   }
 }
@@ -3187,14 +3291,19 @@
   text-transform: uppercase;
   white-space: nowrap;
   background: color-mix(in srgb, var(--rp-lagoon, #2e7d5b) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--rp-lagoon, #2e7d5b) 42%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--rp-lagoon, #2e7d5b) 42%, transparent);
   color: var(--rp-text);
 }
 
 .rapago-driver-page .rapago-trip-card--cancelled .rapago-trip-card__state,
 .rapago-section-page .rapago-trip-card--cancelled .rapago-trip-card__state {
   background: color-mix(in srgb, var(--rp-danger-fg, #b03a1c) 16%, transparent);
-  border-color: color-mix(in srgb, var(--rp-danger-fg, #b03a1c) 45%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--rp-danger-fg, #b03a1c) 45%,
+    transparent
+  );
 }
 
 /* Rejilla de datos. Dos columnas en móvil: cabe «Precio» y «Pago» en la misma
@@ -3299,22 +3408,36 @@
    ganarle a un !important anterior sin tener que tocar la regla original (que
    sigue siendo correcta para el tema claro).
    ========================================================================== */
-.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-item {
+.rapago-driver-page[data-rapago-theme="dark"]
+  ion-card:not(.rapago-driver-card)
+  ion-item {
   --background: var(--rp-field-bg) !important;
   --color: var(--rp-field-fg) !important;
   border-color: var(--rp-border-c) !important;
 }
 
-.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-item ion-label,
-.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-item ion-label.label-stacked {
+.rapago-driver-page[data-rapago-theme="dark"]
+  ion-card:not(.rapago-driver-card)
+  ion-item
+  ion-label,
+.rapago-driver-page[data-rapago-theme="dark"]
+  ion-card:not(.rapago-driver-card)
+  ion-item
+  ion-label.label-stacked {
   color: var(--rp-label) !important;
 }
 
-.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-item ion-label :is(h1, h2, h3, p) {
+.rapago-driver-page[data-rapago-theme="dark"]
+  ion-card:not(.rapago-driver-card)
+  ion-item
+  ion-label
+  :is(h1, h2, h3, p) {
   color: var(--rp-text) !important;
 }
 
-.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) :is(ion-input, ion-textarea, ion-select) {
+.rapago-driver-page[data-rapago-theme="dark"]
+  ion-card:not(.rapago-driver-card)
+  :is(ion-input, ion-textarea, ion-select) {
   --color: var(--rp-field-fg) !important;
   --placeholder-color: var(--rp-field-ph) !important;
   color: var(--rp-field-fg) !important;
@@ -3322,8 +3445,13 @@
 
 /* El icono de limpiar (clearInput) heredaba el color oscuro pensado para fondo
    blanco y desaparecía sobre el campo oscuro. */
-.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-input::part(clear-button),
-.rapago-driver-page[data-rapago-theme="dark"] ion-card:not(.rapago-driver-card) ion-input .input-clear-icon {
+.rapago-driver-page[data-rapago-theme="dark"]
+  ion-card:not(.rapago-driver-card)
+  ion-input::part(clear-button),
+.rapago-driver-page[data-rapago-theme="dark"]
+  ion-card:not(.rapago-driver-card)
+  ion-input
+  .input-clear-icon {
   color: var(--rp-muted) !important;
   opacity: 1;
 }
@@ -3506,7 +3634,8 @@
 
 /* El indicador del selector nativo hereda un color pensado para fondo claro y
    se perdía sobre el campo oscuro. */
-.rapago-driver-page .rapago-rest-schedule__input::-webkit-calendar-picker-indicator {
+.rapago-driver-page
+  .rapago-rest-schedule__input::-webkit-calendar-picker-indicator {
   filter: invert(0.6) sepia(1) saturate(3) hue-rotate(3deg);
   cursor: pointer;
 }
@@ -3635,30 +3764,38 @@
 }
 
 .rapago-driver-page .driver-home-metric--network.is-online {
-  border-color: rgba(22, 163, 74, .42);
-  background: rgba(220, 252, 231, .72);
+  border-color: rgba(22, 163, 74, 0.42);
+  background: rgba(220, 252, 231, 0.72);
 }
 
-.rapago-driver-page .driver-home-metric--network.is-online .driver-home-metric__value {
+.rapago-driver-page
+  .driver-home-metric--network.is-online
+  .driver-home-metric__value {
   color: #166534;
 }
 
 .rapago-driver-page .driver-home-metric--network.is-checking,
 .rapago-driver-page .driver-home-metric--network.is-poor {
-  border-color: rgba(217, 119, 6, .42);
-  background: rgba(254, 243, 199, .72);
+  border-color: rgba(217, 119, 6, 0.42);
+  background: rgba(254, 243, 199, 0.72);
 }
 
-.rapago-driver-page .driver-home-metric--network.is-checking .driver-home-metric__value,
-.rapago-driver-page .driver-home-metric--network.is-poor .driver-home-metric__value {
+.rapago-driver-page
+  .driver-home-metric--network.is-checking
+  .driver-home-metric__value,
+.rapago-driver-page
+  .driver-home-metric--network.is-poor
+  .driver-home-metric__value {
   color: #92400e;
 }
 
 .rapago-driver-page .driver-home-metric--network.is-offline {
-  border-color: rgba(220, 38, 38, .42);
-  background: rgba(254, 226, 226, .76);
+  border-color: rgba(220, 38, 38, 0.42);
+  background: rgba(254, 226, 226, 0.76);
 }
 
-.rapago-driver-page .driver-home-metric--network.is-offline .driver-home-metric__value {
+.rapago-driver-page
+  .driver-home-metric--network.is-offline
+  .driver-home-metric__value {
   color: #991b1b;
 }
