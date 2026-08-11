@@ -13,6 +13,12 @@ export const ROUTES = {
   WELCOME: "/welcome",
   NOT_FOUND: "/404",
 
+  /* Fuera de todo prefijo de rol a propósito: la usan pasajero, conductor y
+     administración con el mismo componente. Estaba escrita a mano como
+     "/notifications" en cuatro sitios; se centraliza aquí como manda la regla
+     de cabecera de este archivo. */
+  NOTIFICATIONS: "/notifications",
+
   SUPPORT: {
     CENTER: "/support-center",
   },

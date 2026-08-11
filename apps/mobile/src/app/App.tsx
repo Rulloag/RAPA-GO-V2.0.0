@@ -27,6 +27,10 @@ import "../theme/driver.css";
 import "../theme/admin.css";
 import "../theme/request-ride.css";
 import "../theme/request.css";
+/* Va después de sections.css: la pantalla de notificaciones reutiliza .rp-card
+   del kit y necesita anularle el padding para que el área táctil la ocupe el
+   botón interior. Misma especificidad, así que decide el orden de cascada. */
+import "../theme/notifications.css";
 /* Va al final: la barra superior debe poder pisar los restos de cabecera de
    cualquier ámbito (sections, driver, request-ride) sin recurrir a !important. */
 import "../theme/appbar.css";

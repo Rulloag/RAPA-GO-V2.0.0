@@ -4,6 +4,7 @@ import { notificationsOutline } from "ionicons/icons";
 import { notificationsService, type NotificationData } from "../features/notifications/notifications.service.js";
 import { useAuth } from "../features/auth/index.js";
 import { useHistory } from "react-router-dom";
+import { ROUTES } from "../navigation/routes.js";
 
 export function NotificationBell(): React.ReactElement {
   const { session }        = useAuth();
@@ -92,7 +93,7 @@ export function NotificationBell(): React.ReactElement {
           expand="full"
           onClick={() => {
             setPopoverOpen(false);
-            history.push("/notifications");
+            history.push(ROUTES.NOTIFICATIONS);
           }}
         >
           Ver todas

@@ -30,6 +30,11 @@ import { AdminFareSettingsPage } from "../pages/admin/fare/index.js";
 import { AdminReferralsPage } from "../pages/admin/referrals/index.js";
 import { AdminSupportPage } from "../pages/admin/support/index.js";
 import { AdminMorePage } from "../pages/admin/more/index.js";
+/* Notificaciones vive en /notifications, fuera del prefijo /admin, pero la
+   campana y el menú de cuenta del panel llevan ahí. Se monta dentro de este
+   layout para que no pierda la barra inferior al entrar (ver el caso especial
+   en AppRouter). */
+import { NotificationPage } from "../pages/notifications/NotificationPage.js";
 import {
   DISABLED_ADMIN_PATHS,
   RELEASE_FEATURES,
@@ -120,6 +125,7 @@ export function AdminLayout(): JSX.Element {
       <Route exact path={ROUTES.ADMIN.FARE_SETTINGS} component={AdminFareSettingsPage} />
       <Route exact path={ROUTES.ADMIN.REFERRALS} component={AdminReferralsPage} />
       <Route exact path={ROUTES.ADMIN.SUPPORT} component={AdminSupportPage} />
+      <Route exact path={ROUTES.NOTIFICATIONS} component={NotificationPage} />
 
       {DISABLED_ADMIN_PATHS.length > 0 && (
         <Route

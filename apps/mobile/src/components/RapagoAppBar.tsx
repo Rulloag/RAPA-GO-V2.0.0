@@ -254,7 +254,7 @@ export function RapagoAppBar({
               className="rp-account-menu__item"
               onClick={() => {
                 setMenuOpen(false);
-                history.push("/notifications");
+                history.push(ROUTES.NOTIFICATIONS);
               }}
             >
               <IonIcon icon={notificationsOutline} aria-hidden="true" />
@@ -467,7 +467,7 @@ export function RapagoAppBar({
                     ? `Notificaciones, ${unreadCount} sin leer`
                     : "Notificaciones"
                 }
-                onClick={() => history.push("/notifications")}
+                onClick={() => history.push(ROUTES.NOTIFICATIONS)}
               >
                 <IonIcon icon={notificationsOutline} aria-hidden="true" />
                 {unreadCount > 0 && (

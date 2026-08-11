@@ -34,6 +34,15 @@ const SupportCenterPage = lazy(() =>
     default: module.SupportCenterPage,
   })),
 );
+/* Notificaciones: mismo caso que el centro de ayuda. La campana y el menú de
+   cuenta llevan a /notifications, que está fuera del prefijo /passenger; se
+   monta aquí dentro para que la barra inferior no desaparezca al entrar y el
+   pasajero no quede atrapado (ver el caso especial en AppRouter). */
+const NotificationPage = lazy(() =>
+  import("../pages/notifications/NotificationPage.js").then((module) => ({
+    default: module.NotificationPage,
+  })),
+);
 const GuidesPage = lazy(() => import("../pages/passenger/pages/GuidesPage.js"));
 const RentalsPage = lazy(() => import("../pages/passenger/pages/RentalsPage.js"));
 const PassengerEventsPage = lazy(() =>
@@ -144,6 +153,11 @@ export function PassengerLayout(): JSX.Element {
           exact
           path={ROUTES.SUPPORT.CENTER}
           render={() => <PageSuspense><SupportCenterPage /></PageSuspense>}
+        />
+        <Route
+          exact
+          path={ROUTES.NOTIFICATIONS}
+          render={() => <PageSuspense><NotificationPage /></PageSuspense>}
         />
 
         {RELEASE_FEATURES.tourism && (
