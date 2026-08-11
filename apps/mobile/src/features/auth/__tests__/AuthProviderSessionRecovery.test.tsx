@@ -56,6 +56,13 @@ vi.mock("@capacitor/app", () => ({
   },
 }));
 
+vi.mock("@capacitor/network", () => ({
+  Network: {
+    getStatus: vi.fn().mockResolvedValue({ connected: true }),
+    addListener: vi.fn().mockResolvedValue({ remove: vi.fn() }),
+  },
+}));
+
 /**
  * El objeto de historial tiene que ser ESTABLE entre renders: `useHistory` de
  * react-router lo es, y AuthProvider se apoya en ello (si cambiara de
@@ -65,9 +72,10 @@ vi.mock("@capacitor/app", () => ({
 const mockHistory = { replace: mockReplace, push: vi.fn() };
 
 vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual<typeof import("react-router-dom")>(
-    "react-router-dom",
-  );
+  const actual =
+    await vi.importActual<typeof import("react-router-dom")>(
+      "react-router-dom",
+    );
 
   return {
     ...actual,
@@ -130,7 +138,7 @@ describe("recuperación de sesión al volver de otra aplicación", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLoadSession.mockResolvedValue(null);
-    mockLoadRefreshToken.mockResolvedValue(null);
+    mockLoadRefreshToken.mockResolvedValue({ status: "absent" });
     mockClearSession.mockResolvedValue(undefined);
     mockSaveSession.mockResolvedValue(undefined);
   });
@@ -139,7 +147,10 @@ describe("recuperación de sesión al volver de otra aplicación", () => {
     const nextSession = renewedSession();
 
     mockLoadSession.mockResolvedValue(expiredPersistedSession());
-    mockLoadRefreshToken.mockResolvedValue("refresh-valido");
+    mockLoadRefreshToken.mockResolvedValue({
+      status: "present",
+      token: "refresh-valido",
+    });
     mockRefresh.mockResolvedValue({
       ok: true,
       session: nextSession,
@@ -152,13 +163,53 @@ describe("recuperación de sesión al volver de otra aplicación", () => {
 
     expect(mockRefresh).toHaveBeenCalledWith("refresh-valido");
     // El token rotado se persiste: sin esto, la siguiente renovación fallaría.
-    expect(mockSaveSession).toHaveBeenCalledWith(
-      nextSession,
-      "refresh-rotado",
-    );
+    expect(mockSaveSession).toHaveBeenCalledWith(nextSession, "refresh-rotado");
     // El usuario sigue presente → el avatar nunca se dibuja como "?".
     expect(result.current.user?.name).toBe("Tere Haoa");
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("NO cierra la sesión si la lectura del refresh token falla (llavero bloqueado)", async () => {
+    // Regresión de la causa raíz: una lectura FALLIDA del llavero (dispositivo
+    // bloqueado, app saliendo de segundo plano) devolvía null y se trataba como
+    // "no hay credenciales" → cierre de sesión, pese a tener un refresh token de
+    // 30 días intacto. Ahora es "no disponible" → transitorio → se conserva.
+    mockLoadSession.mockResolvedValue(expiredPersistedSession());
+    mockLoadRefreshToken.mockResolvedValue({ status: "unavailable" });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.status).toBe("authenticated"));
+
+    expect(mockClearSession).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(result.current.user?.name).toBe("Tere Haoa");
+    // No se intenta refrescar con un token inexistente.
+    expect(mockRefresh).not.toHaveBeenCalled();
+  });
+
+  it("revalida la sesión en segundo plano al recuperar la conexión", async () => {
+    // Con la app abierta y sin red, al volver la señal la app debe reconectar
+    // sola: el evento "auth:network-restored" dispara una revalidación.
+    mockLoadSession.mockResolvedValue(livePersistedSession());
+    mockMe.mockResolvedValue({ ok: true, session: renewedSession() });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.status).toBe("authenticated"));
+
+    const callsBefore = mockMe.mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new Event("auth:network-restored"));
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(mockMe.mock.calls.length).toBeGreaterThan(callsBefore),
+    );
+    // Reconectar nunca cierra la sesión.
+    expect(mockClearSession).not.toHaveBeenCalled();
   });
 
   it("NO destruye la sesión por un error de servidor al verificarla", async () => {
@@ -198,7 +249,10 @@ describe("recuperación de sesión al volver de otra aplicación", () => {
 
   it("cierra sesión Y navega al login cuando el refresh token ya no vale", async () => {
     mockLoadSession.mockResolvedValue(expiredPersistedSession());
-    mockLoadRefreshToken.mockResolvedValue("refresh-muerto");
+    mockLoadRefreshToken.mockResolvedValue({
+      status: "present",
+      token: "refresh-muerto",
+    });
     mockRefresh.mockResolvedValue({
       ok: false,
       code: "AUTH_REFRESH_TOKEN_INVALID",
@@ -212,7 +266,9 @@ describe("recuperación de sesión al volver de otra aplicación", () => {
     expect(mockClearSession).toHaveBeenCalled();
     // Lo esencial: no basta con borrar. Si no se navega, el usuario se queda
     // en la pantalla protegida sin sesión — el estado del "?".
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/auth/login"));
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith("/auth/login"),
+    );
     expect(result.current.user).toBeNull();
   });
 
@@ -227,17 +283,21 @@ describe("recuperación de sesión al volver de otra aplicación", () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await waitFor(() => expect(result.current.status).toBe("unauthenticated"));
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/auth/login"));
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith("/auth/login"),
+    );
   });
 
   it("cierra sesión y navega cuando ya no queda refresh token guardado", async () => {
     mockLoadSession.mockResolvedValue(expiredPersistedSession());
-    mockLoadRefreshToken.mockResolvedValue(null);
+    mockLoadRefreshToken.mockResolvedValue({ status: "absent" });
 
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await waitFor(() => expect(result.current.status).toBe("unauthenticated"));
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/auth/login"));
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith("/auth/login"),
+    );
   });
 
   it("no lanza una tormenta de renovaciones cuando el backend falla en cadena", async () => {
@@ -245,7 +305,10 @@ describe("recuperación de sesión al volver de otra aplicación", () => {
     // nueva. Se agotaba el límite del endpoint y todo pasaba a 429 con la
     // sesión viva pero inservible. El retardo creciente corta ese bucle.
     mockLoadSession.mockResolvedValue(expiredPersistedSession());
-    mockLoadRefreshToken.mockResolvedValue("refresh-valido");
+    mockLoadRefreshToken.mockResolvedValue({
+      status: "present",
+      token: "refresh-valido",
+    });
     mockRefresh.mockResolvedValue({
       ok: false,
       code: "INTERNAL_SERVER_ERROR",

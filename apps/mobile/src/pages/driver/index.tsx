@@ -813,7 +813,7 @@ function getRapaGoConnectivityMessage(
 
   if (role === "driver") {
     if (status === "offline") {
-      return "Sin internet. Para proteger tus viajes quedaste No disponible. Busca una zona con conexión y luego vuelve a activar Disponible.";
+      return "Sin internet. Para proteger tus viajes quedaste No disponible. Busca una zona con conexión y luego vuelve a activar Disponible. Tu sesión sigue activa: al volver la señal te reconectamos automáticamente.";
     }
 
     return "Señal baja. Para evitar viajes fallidos quedaste No disponible. Busca una zona con mejor internet y vuelve a activar Disponible.";

@@ -23,6 +23,17 @@ export interface PersistedSession {
   isVerified: boolean;
 }
 
+/**
+ * Resultado de leer el refresh token, con "no hay token" y "no se pudo leer"
+ * como estados DISTINTOS. Colapsar ambos en `null` hacía que un fallo pasajero
+ * del llavero (dispositivo bloqueado, app saliendo de segundo plano) se tratara
+ * como "sin credenciales" y cerrara una sesión perfectamente válida.
+ */
+export type RefreshTokenLoad =
+  | { status: "present"; token: string }
+  | { status: "absent" }
+  | { status: "unavailable" };
+
 function isPersistedSession(value: unknown): value is PersistedSession {
   if (!value || typeof value !== "object") return false;
 
@@ -46,7 +57,10 @@ function isPersistedSession(value: unknown): value is PersistedSession {
 }
 
 class SessionStorageService {
-  async saveSession(session: AuthSession, refreshToken?: string): Promise<void> {
+  async saveSession(
+    session: AuthSession,
+    refreshToken?: string,
+  ): Promise<void> {
     const persisted: PersistedSession = {
       accessToken: session.accessToken,
       expiresAt: session.expiresAt,
@@ -122,13 +136,25 @@ class SessionStorageService {
     }
   }
 
-  async loadRefreshToken(): Promise<string | null> {
+  async loadRefreshToken(): Promise<RefreshTokenLoad> {
+    let raw: unknown;
+
     try {
-      const raw = await SecureStorage.get(REFRESH_KEY);
-      return raw ? (raw as string) : null;
+      raw = await SecureStorage.get(REFRESH_KEY);
     } catch {
-      return null;
+      /**
+       * Igual que en `loadSession`: un error AL LEER no significa que no haya
+       * refresh token. El llavero (`whenUnlocked`) lanza en situaciones
+       * pasajeras y normales —leer con el dispositivo bloqueado o mientras la
+       * app despierta en segundo plano—. Se informa como "no disponible" para
+       * que quien renueva conserve la sesión y reintente, en vez de cerrarla.
+       */
+      return { status: "unavailable" };
     }
+
+    if (!raw) return { status: "absent" };
+
+    return { status: "present", token: String(raw) };
   }
 
   async clearSession(): Promise<void> {
