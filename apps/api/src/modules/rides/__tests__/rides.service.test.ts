@@ -28,6 +28,7 @@ const mockFindSuccessfulPaymentByRideId = vi.fn();
 const mockFindApprovedByRideId = vi.fn();
 const mockFindPaymentByRideId = vi.fn();
 const mockCaptureAuthorizedKlapPayment = vi.fn();
+const mockRefundCardPaymentForCancelledRide = vi.fn();
 const mockFareFindByType = vi.fn();
 const mockFareFindZoneByRoute = vi.fn();
 const mockFindReferralUse = vi.fn();
@@ -121,6 +122,7 @@ vi.mock("../../payments/payments.repository.js", () => ({
 vi.mock("../../payments/payments.service.js", () => ({
   PaymentsService: vi.fn().mockImplementation(() => ({
     captureAuthorizedKlapPayment: mockCaptureAuthorizedKlapPayment,
+    refundCardPaymentForCancelledRide: mockRefundCardPaymentForCancelledRide,
   })),
 }));
 
@@ -251,6 +253,11 @@ describe("RidesService - contrato actual", () => {
     mockFindApprovedByRideId.mockResolvedValue(null);
     mockFindPaymentByRideId.mockResolvedValue(null);
     mockCaptureAuthorizedKlapPayment.mockResolvedValue({ ok: true, status: "success" });
+    mockRefundCardPaymentForCancelledRide.mockResolvedValue({
+      ok: true,
+      processed: false,
+      refunded: false,
+    });
     mockFindByPassengerIdWithDriver.mockResolvedValue([]);
     mockFindByDriverId.mockResolvedValue([]);
     mockFindAvailable.mockResolvedValue([]);
@@ -688,7 +695,14 @@ describe("RidesService - contrato actual", () => {
       const result = await service.completeRide("token", "ride-1");
 
       expect(result.ok).toBe(true);
-      expect(mockCaptureAuthorizedKlapPayment).toHaveBeenCalledWith("payment-1");
+      expect(mockCaptureAuthorizedKlapPayment).toHaveBeenCalledWith(
+        "payment-1",
+        {
+          outcome: "completed",
+          finalRideAmountClp: 5000,
+          authorizationExpired: false,
+        },
+      );
     });
 
     it("nunca dispara la captura Klap al completar un viaje en efectivo", async () => {
@@ -932,6 +946,58 @@ describe("RidesService - contrato actual", () => {
           feeCapClp: 5000,
           calculatedAmountClp: 5000,
         }),
+      );
+    });
+
+    it("NO SHOW con Klap autorizado captura solo 50% con tope 5000", async () => {
+      mockFindUserById.mockResolvedValue({
+        id: "driver-1",
+        role: "driver",
+      });
+
+      const existing = makeRide({
+        status: "driver_arrived",
+        driverUserId: "driver-1",
+        arrivedAt: new Date(Date.now() - 6 * 60 * 1000),
+        estimatedFareClp: 12000,
+        notes: "PaymentMethod: card\nPaymentProvider: klap",
+        paymentMethod: "card",
+        paymentProvider: "klap",
+      });
+
+      mockFindById.mockResolvedValue(existing);
+      mockMarkNoShow.mockResolvedValue(
+        makeRide({
+          ...existing,
+          status: "no_show",
+          cancelledAt: NOW,
+        }),
+      );
+      mockCreatePolicyCharge.mockResolvedValue(
+        makeNoShowCharge({ paymentMethod: "card" }),
+      );
+      mockFindPaymentByRideId.mockResolvedValue({
+        id: "payment-no-show",
+        provider: "klap",
+        status: "authorized",
+        authorizedAmountClp: 12000,
+        amountClp: 12000,
+      });
+      mockCaptureAuthorizedKlapPayment.mockResolvedValue({
+        ok: true,
+        status: "success",
+      });
+
+      const result = await service.declareNoShow("token", "ride-1");
+
+      expect(result.ok).toBe(true);
+      expect(mockCaptureAuthorizedKlapPayment).toHaveBeenCalledWith(
+        "payment-no-show",
+        {
+          outcome: "no_show",
+          noShowFeeClp: 5000,
+          authorizationExpired: false,
+        },
       );
     });
   });

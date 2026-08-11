@@ -19,6 +19,10 @@ import {
   isKlapDeferredCaptureEnabled,
   verifyKlapWebhookApikey,
 } from "./klap.provider.js";
+import {
+  resolveKlapFinancialOutcome,
+  type KlapTripFinancialOutcome,
+} from "./klapFinancialResolution.js";
 
 const tokenService = new TokenService();
 const sessionService = new SessionService();
@@ -29,6 +33,14 @@ const auditService = new AuditService();
 type Ok<T> = { ok: true } & T;
 type Fail = { ok: false; code: string; message: string; statusCode: number };
 type Result<T> = Ok<T> | Fail;
+
+type KlapCaptureFinancialInput = {
+  outcome?: KlapTripFinancialOutcome;
+  finalRideAmountClp?: number | null;
+  cancellationFeeClp?: number | null;
+  noShowFeeClp?: number | null;
+  authorizationExpired?: boolean;
+};
 
 type PaymentAuthUser = {
   id: string;
@@ -2649,6 +2661,7 @@ export class PaymentsService {
    */
   async captureAuthorizedKlapPayment(
     paymentId: string,
+    financialInput: KlapCaptureFinancialInput = {},
   ): Promise<Result<{ status: string }>> {
     const payment = await paymentsRepo.findById(paymentId);
 
@@ -2714,17 +2727,11 @@ export class PaymentsService {
       };
     }
 
-    // FASE 7: no existe todavía en el modelo una tarifa final autoritativa
-    // distinta del monto autorizado al crear la orden — se usa
-    // authorizedAmountClp como primera implementación (nunca amountClp del
-    // request, nunca un valor enviado por el cliente). Limitación conocida,
-    // documentada en el informe de esta fase; una tarifa final real (p.ej.
-    // ajustada por distancia/tiempo real recorrido) requeriría revisar el
-    // modelo completo de tarifas antes de capturarla aquí.
+    // V2: el motor financiero puro decide el monto y la operación a partir
+    // de datos autoritativos del backend. Nunca acepta un monto enviado por
+    // la app móvil para decidir la captura.
     const authorizedAmountClp = payment.authorizedAmountClp ?? payment.amountClp;
-    const captureAmountClp = authorizedAmountClp;
-
-    if (!Number.isInteger(captureAmountClp) || captureAmountClp <= 0) {
+    if (!Number.isInteger(authorizedAmountClp) || authorizedAmountClp <= 0) {
       return {
         ok: false,
         code: "PAYMENT_INVALID_AMOUNT",
@@ -2733,19 +2740,106 @@ export class PaymentsService {
       };
     }
 
-    if (captureAmountClp > authorizedAmountClp) {
+    const outcome = financialInput.outcome ?? "completed";
+    const resolution = resolveKlapFinancialOutcome({
+      paymentId: payment.id,
+      tripId: payment.rideRequestId,
+      outcome,
+      authorizedAmountClp,
+      finalRideAmountClp:
+        outcome === "completed"
+          ? (financialInput.finalRideAmountClp ?? payment.amountClp)
+          : null,
+      cancellationFeeClp:
+        outcome === "cancelled"
+          ? (financialInput.cancellationFeeClp ?? 0)
+          : null,
+      noShowFeeClp:
+        outcome === "no_show"
+          ? (financialInput.noShowFeeClp ?? 0)
+          : null,
+      authorizationExpired: financialInput.authorizationExpired === true,
+    });
+
+    if (resolution.action === "expired") {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_authorization_expired",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          resolutionKey: resolution.resolutionKey,
+        },
+      });
+
       return {
         ok: false,
-        code: "CAPTURE_EXCEEDS_AUTHORIZATION",
-        message: "Capture amount cannot exceed the authorized amount.",
+        code: "KLAP_AUTHORIZATION_EXPIRED",
+        message: "Klap authorization is expired and cannot be captured.",
         statusCode: 409,
       };
     }
 
-    const captureAttemptKey = crypto
-      .createHash("sha256")
-      .update(`klap-capture:${payment.id}`)
-      .digest("hex");
+    if (resolution.action === "void") {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_void_required",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          resolutionKey: resolution.resolutionKey,
+          remainingAuthorizedAmountClp:
+            resolution.remainingAuthorizedAmountClp,
+        },
+      });
+
+      return {
+        ok: false,
+        code: "KLAP_VOID_REQUIRED",
+        message:
+          "The authorization must be released without capture. Remote Klap VOID remains fail-closed until its Checkout contract is confirmed.",
+        statusCode: 409,
+      };
+    }
+
+    if (resolution.action === "manual_review") {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_financial_manual_review",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          reason: resolution.reason,
+          resolutionKey: resolution.resolutionKey,
+          authorizedAmountClp: resolution.authorizedAmountClp,
+        },
+      });
+
+      return {
+        ok: false,
+        code: "KLAP_FINANCIAL_MANUAL_REVIEW",
+        message: `Klap financial resolution blocked capture: ${resolution.reason}.`,
+        statusCode: 409,
+      };
+    }
+
+    const captureAmountClp = resolution.amountClp;
+    if (!Number.isInteger(captureAmountClp) || captureAmountClp <= 0) {
+      return {
+        ok: false,
+        code: "PAYMENT_INVALID_AMOUNT",
+        message: "Resolved capture amount is invalid.",
+        statusCode: 409,
+      };
+    }
+
+    const captureAttemptKey = resolution.resolutionKey;
 
     const claimed = await paymentsRepo.claimCapture({
       id: payment.id,
@@ -2780,6 +2874,11 @@ export class PaymentsService {
           rideId: payment.rideRequestId,
           capturedAmountClp: captureAmountClp,
           provider: "klap",
+          financialReason: resolution.reason,
+          resolutionKey: resolution.resolutionKey,
+          remainingAuthorizedAmountClp:
+            resolution.remainingAuthorizedAmountClp,
+          remainderReleaseRequired: resolution.requiresRemainderRelease,
         },
       });
 
@@ -3174,12 +3273,16 @@ export class PaymentsService {
     cancelledByUserId: string;
     cancelledByRole: string;
     reason?: string | null;
+    /** Multa calculada por el backend; nunca viene directamente del móvil. */
+    cancellationFeeClp?: number | null;
   }): Promise<Result<{
     processed: boolean;
     refunded: boolean;
     skippedReason?: string;
     paymentId?: string;
     mercadoPagoPaymentId?: string;
+    capturedCancellationFeeClp?: number;
+    remainderReleaseRequired?: boolean;
     refund?: unknown;
   }>> {
     const payment = await paymentsRepo.findRefundableByRideId(
@@ -3201,34 +3304,175 @@ export class PaymentsService {
 
       if (
         activeKlapAuthorization &&
-        normalizePaymentText(activeKlapAuthorization.provider) === "klap" &&
-        ["authorized", "capture_pending", "capture_unknown"].includes(
-          activeKlapAuthorization.status,
-        )
+        normalizePaymentText(activeKlapAuthorization.provider) === "klap"
       ) {
-        auditService.recordSafe({
-          actorUserId: input.cancelledByUserId,
-          eventType: "payment.klap_void_required",
-          entityType: "payment",
-          entityId: activeKlapAuthorization.id,
-          metadata: {
-            rideId: input.rideRequestId,
-            provider: "klap",
-            paymentStatus: activeKlapAuthorization.status,
-            cancelledByRole: input.cancelledByRole,
-          },
-        });
+        const paymentStatus = normalizePaymentText(
+          activeKlapAuthorization.status,
+        );
 
-        return {
-          ok: true,
-          processed: false,
-          refunded: false,
-          skippedReason:
-            "Existe una autorización Klap sin capturar para este viaje cancelado. " +
-            "Klap todavía no documentó un endpoint de anulación/liberación — requiere " +
-            "conciliación manual antes de producción.",
-          paymentId: activeKlapAuthorization.id,
-        };
+        // Si una captura ya está en curso o quedó incierta, nunca se envía
+        // otra operación financiera automática durante la cancelación.
+        if (
+          ["capture_pending", "capture_unknown", "capture_failed"].includes(
+            paymentStatus,
+          )
+        ) {
+          auditService.recordSafe({
+            actorUserId: input.cancelledByUserId,
+            eventType: "payment.klap_cancellation_requires_attention",
+            entityType: "payment",
+            entityId: activeKlapAuthorization.id,
+            metadata: {
+              rideId: input.rideRequestId,
+              provider: "klap",
+              paymentStatus,
+              cancelledByRole: input.cancelledByRole,
+            },
+          });
+
+          return {
+            ok: true,
+            processed: false,
+            refunded: false,
+            skippedReason:
+              "La autorización Klap tiene una captura pendiente, incierta o fallida. " +
+              "No se enviará una segunda operación automática.",
+            paymentId: activeKlapAuthorization.id,
+          };
+        }
+
+        if (paymentStatus === "authorized") {
+          const cancellationFeeClp = Math.max(
+            0,
+            Math.round(Number(input.cancellationFeeClp ?? 0)),
+          );
+
+          const authorizedAmountClp =
+            activeKlapAuthorization.authorizedAmountClp ??
+            activeKlapAuthorization.amountClp;
+
+          const resolution = resolveKlapFinancialOutcome({
+            paymentId: activeKlapAuthorization.id,
+            tripId: input.rideRequestId,
+            outcome: "cancelled",
+            authorizedAmountClp,
+            cancellationFeeClp,
+            authorizationExpired: false,
+          });
+
+          if (resolution.action === "void") {
+            auditService.recordSafe({
+              actorUserId: input.cancelledByUserId,
+              eventType: "payment.klap_void_required",
+              entityType: "payment",
+              entityId: activeKlapAuthorization.id,
+              metadata: {
+                rideId: input.rideRequestId,
+                provider: "klap",
+                paymentStatus,
+                cancelledByRole: input.cancelledByRole,
+                resolutionKey: resolution.resolutionKey,
+                remainingAuthorizedAmountClp:
+                  resolution.remainingAuthorizedAmountClp,
+              },
+            });
+
+            return {
+              ok: true,
+              processed: false,
+              refunded: false,
+              skippedReason:
+                "Cancelación sin cobro: RAPA GO no hará CAPTURE por 0. " +
+                "La autorización queda marcada para liberación/VOID cuando el contrato " +
+                "Checkout de Klap esté confirmado.",
+              paymentId: activeKlapAuthorization.id,
+              remainderReleaseRequired: true,
+            };
+          }
+
+          if (resolution.action === "capture_partial") {
+            const captureResult = await this.captureAuthorizedKlapPayment(
+              activeKlapAuthorization.id,
+              {
+                outcome: "cancelled",
+                cancellationFeeClp,
+                authorizationExpired: false,
+              },
+            );
+
+            if (!captureResult.ok) {
+              return captureResult;
+            }
+
+            if (captureResult.status !== "success") {
+              return {
+                ok: true,
+                processed: false,
+                refunded: false,
+                skippedReason:
+                  `La captura de multa quedó en estado ${captureResult.status}; ` +
+                  "no se enviará otra operación automática.",
+                paymentId: activeKlapAuthorization.id,
+              };
+            }
+
+            auditService.recordSafe({
+              actorUserId: input.cancelledByUserId,
+              eventType: "payment.klap_cancellation_fee_captured",
+              entityType: "payment",
+              entityId: activeKlapAuthorization.id,
+              metadata: {
+                rideId: input.rideRequestId,
+                provider: "klap",
+                cancellationFeeClp: resolution.amountClp,
+                remainingAuthorizedAmountClp:
+                  resolution.remainingAuthorizedAmountClp,
+                remainderReleaseRequired:
+                  resolution.requiresRemainderRelease,
+                resolutionKey: resolution.resolutionKey,
+              },
+            });
+
+            return {
+              ok: true,
+              processed: true,
+              refunded: false,
+              paymentId: activeKlapAuthorization.id,
+              capturedCancellationFeeClp: resolution.amountClp,
+              remainderReleaseRequired:
+                resolution.requiresRemainderRelease,
+              ...(resolution.requiresRemainderRelease
+                ? {
+                    skippedReason:
+                      "Se capturó únicamente la multa. El saldo autorizado restante debe " +
+                      "liberarse según el contrato Checkout de Klap.",
+                  }
+                : {}),
+            };
+          }
+
+          auditService.recordSafe({
+            actorUserId: input.cancelledByUserId,
+            eventType: "payment.klap_financial_manual_review",
+            entityType: "payment",
+            entityId: activeKlapAuthorization.id,
+            metadata: {
+              rideId: input.rideRequestId,
+              provider: "klap",
+              reason: resolution.reason,
+              resolutionKey: resolution.resolutionKey,
+            },
+          });
+
+          return {
+            ok: true,
+            processed: false,
+            refunded: false,
+            skippedReason:
+              `La resolución financiera Klap quedó bloqueada: ${resolution.reason}.`,
+            paymentId: activeKlapAuthorization.id,
+          };
+        }
       }
 
       return {

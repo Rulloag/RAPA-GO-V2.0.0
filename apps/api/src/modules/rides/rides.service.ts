@@ -430,6 +430,7 @@ async function refundCardPaymentForCancelledRide(input: {
   cancelledByUserId: string;
   cancelledByRole: string;
   reason: string | null;
+  cancellationFeeClp?: number | null;
 }): Promise<Record<string, unknown> | null> {
   try {
     const { PaymentsService } = await import(
@@ -442,6 +443,7 @@ async function refundCardPaymentForCancelledRide(input: {
         cancelledByUserId: input.cancelledByUserId,
         cancelledByRole: input.cancelledByRole,
         reason: input.reason,
+        cancellationFeeClp: input.cancellationFeeClp ?? 0,
       });
 
     if (refundResult.ok) {
@@ -452,6 +454,10 @@ async function refundCardPaymentForCancelledRide(input: {
         paymentId: refundResult.paymentId ?? null,
         mercadoPagoPaymentId:
           refundResult.mercadoPagoPaymentId ?? null,
+        capturedCancellationFeeClp:
+          refundResult.capturedCancellationFeeClp ?? null,
+        remainderReleaseRequired:
+          refundResult.remainderReleaseRequired ?? false,
       };
     }
 
@@ -1195,6 +1201,8 @@ export class RidesService {
         cancelledByUserId: auth.userId,
         cancelledByRole: "passenger",
         reason: cancellationReason,
+        cancellationFeeClp:
+          policyCharge?.calculatedAmountClp ?? 0,
       });
 
     const response = toResponse(cancelled) as RideRequestResponse &
@@ -1451,8 +1459,27 @@ export class RidesService {
           const { PaymentsService } = await import(
             "../payments/payments.service.js"
           );
+          const finalRideAmountClp = Math.max(
+            0,
+            Math.round(
+              Number(
+                completed.estimatedFareClp ??
+                  payment.authorizedAmountClp ??
+                  payment.amountClp ??
+                  0,
+              ),
+            ),
+          );
+
           const captureResult =
-            await new PaymentsService().captureAuthorizedKlapPayment(payment.id);
+            await new PaymentsService().captureAuthorizedKlapPayment(
+              payment.id,
+              {
+                outcome: "completed",
+                finalRideAmountClp,
+                authorizationExpired: false,
+              },
+            );
 
           if (!captureResult.ok) {
             const { AuditService } = await import(
@@ -1831,6 +1858,8 @@ export class RidesService {
             cancelledByUserId: auth.userId,
             cancelledByRole: cancellationActorRole,
             reason: input.reason ?? null,
+            cancellationFeeClp:
+              policyCharge?.calculatedAmountClp ?? 0,
           })
         : null;
 
@@ -2301,12 +2330,93 @@ export class RidesService {
         ? await ridesRepo.createPolicyCharge(chargeData)
         : null;
 
+    // NO SHOW + Klap diferido: el cargo se calcula exclusivamente en backend
+    // (50% con tope vigente en buildPolicyChargeData). Si existe una
+    // autorización Klap viva, se captura SOLO el cargo NO SHOW. Nunca se usa
+    // un monto enviado por la app y cualquier falla financiera no reabre el
+    // viaje ya cerrado como no_show.
+    let noShowPaymentResolution: Record<string, unknown> | null = null;
+
+    try {
+      const { isKlapDeferredCaptureEnabled } = await import(
+        "../payments/klap.provider.js"
+      );
+
+      if (
+        isKlapDeferredCaptureEnabled() &&
+        chargeData.calculatedAmountClp > 0
+      ) {
+        const { PaymentsRepository } = await import(
+          "../payments/payments.repository.js"
+        );
+        const payment = await new PaymentsRepository().findByRideId(closed.id);
+
+        if (
+          payment &&
+          String(payment.provider ?? "").trim().toLowerCase() === "klap" &&
+          payment.status === "authorized"
+        ) {
+          const { PaymentsService } = await import(
+            "../payments/payments.service.js"
+          );
+
+          const captureResult =
+            await new PaymentsService().captureAuthorizedKlapPayment(
+              payment.id,
+              {
+                outcome: "no_show",
+                noShowFeeClp: chargeData.calculatedAmountClp,
+                authorizationExpired: false,
+              },
+            );
+
+          noShowPaymentResolution = captureResult.ok
+            ? {
+                processed: true,
+                paymentId: payment.id,
+                status: captureResult.status,
+                capturedNoShowFeeClp: chargeData.calculatedAmountClp,
+              }
+            : {
+                processed: false,
+                paymentId: payment.id,
+                requiresAttention: true,
+                code: captureResult.code,
+              };
+
+          if (!captureResult.ok) {
+            const { AuditService } = await import(
+              "../audit/audit.service.js"
+            );
+            new AuditService().recordSafe({
+              actorUserId: closed.passengerUserId,
+              eventType: "payment.klap_no_show_capture_requires_attention",
+              entityType: "payment",
+              entityId: payment.id,
+              metadata: {
+                rideId: closed.id,
+                noShowFeeClp: chargeData.calculatedAmountClp,
+                code: captureResult.code,
+              },
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        `[RAPA GO] Falló la resolución financiera Klap NO SHOW ${closed.id}: ${
+          error instanceof Error ? error.message.slice(0, 300) : "unknown"
+        }`,
+      );
+    }
+
     const response = toResponse(closed) as RideRequestResponse &
       Record<string, unknown>;
 
     response["policyCharge"] = charge
       ? toPolicyChargeResponse(charge)
       : null;
+    response["paymentResolution"] = noShowPaymentResolution;
 
     queueReceiptWithoutBlocking(
       rideReceiptsService.queueNoShowRide(
