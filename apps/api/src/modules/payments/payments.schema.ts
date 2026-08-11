@@ -93,25 +93,25 @@ const KLAP_SHORT_FIELD_MAX_LENGTH = 64;
 const KLAP_MESSAGE_INPUT_MAX_LENGTH = 2000;
 
 const klapNonEmptyId = z.string().trim().min(1).max(KLAP_ID_MAX_LENGTH);
-const klapOptionalShortField = z.string().trim().max(KLAP_SHORT_FIELD_MAX_LENGTH).optional();
+const klapNullableOptionalShortField = z.string().trim().max(KLAP_SHORT_FIELD_MAX_LENGTH).nullable().optional();
 
 export const klapConfirmWebhookSchema = z.object({
   order_id: klapNonEmptyId,
   reference_id: klapNonEmptyId,
-  payment_method: z.string().trim().min(1).max(KLAP_SHORT_FIELD_MAX_LENGTH),
+  payment_method: klapNullableOptionalShortField,
   amount: z.union([z.string(), z.number()]),
-  transaction_type: z.string().trim().min(1).max(KLAP_SHORT_FIELD_MAX_LENGTH),
+  transaction_type: klapNullableOptionalShortField,
   // Optional fields per the confirmed payload — bounded, never used to decide
   // success, never logged verbatim. token_id is intentionally NOT declared
   // here at all: this integration does not use it in this phase.
-  mc_code: klapOptionalShortField,
-  card_type: klapOptionalShortField,
-  brand: klapOptionalShortField,
-  bin: z.string().trim().max(8).optional(),
-  last_digits: z.string().trim().regex(/^\d{1,4}$/, "last_digits must be up to 4 digits.").optional(),
-  quotas_number: klapOptionalShortField,
-  quotas_type: klapOptionalShortField,
-  wallet: klapOptionalShortField,
+  mc_code: klapNullableOptionalShortField,
+  card_type: klapNullableOptionalShortField,
+  brand: klapNullableOptionalShortField,
+  bin: z.string().trim().max(8).nullable().optional(),
+  last_digits: z.string().trim().regex(/^\d{1,4}$/, "last_digits must be up to 4 digits.").nullable().optional(),
+  quotas_number: klapNullableOptionalShortField,
+  quotas_type: klapNullableOptionalShortField,
+  wallet: klapNullableOptionalShortField,
 });
 
 export type KlapConfirmWebhookBody = z.infer<typeof klapConfirmWebhookSchema>;

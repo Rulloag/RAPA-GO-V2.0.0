@@ -220,6 +220,53 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
 
     expect(claim?.eventKey?.length).toBeLessThanOrEqual(128);
   });
+  it("16a-real. acepta payload real de produccion sin payment_method ni transaction_type y con nulls", async () => {
+    const previousDeferred = process.env["KLAP_DEFERRED_CAPTURE_ENABLED"];
+
+    process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
+
+    try {
+      const body = confirmBody({
+        mc_code: null,
+        card_type: "DEBIT",
+        brand: "VISA",
+        bin: "12345678",
+        last_digits: "6467",
+        quotas_number: null,
+        quotas_type: null,
+        wallet: null,
+
+        // Campos reales adicionales observados en Klap.
+        // El schema los descarta y nunca deben persistirse.
+        token_id: "TEST_TOKEN_NO_REAL",
+        url: "https://backend.rapago.cl/api/webhooks/klap/confirm",
+      });
+
+      delete body["payment_method"];
+      delete body["transaction_type"];
+
+      const result = await service.handleKlapConfirmWebhook(
+        body,
+        { apikey: validApikeyHeader() },
+      );
+
+      expect(result.ok).toBe(true);
+      expect(mockClaimWebhookEvent).toHaveBeenCalledTimes(1);
+
+      const claim = mockClaimWebhookEvent.mock.calls[0]?.[0] as
+        | { payload?: Record<string, unknown> }
+        | undefined;
+
+      expect(claim?.payload).not.toHaveProperty("token_id");
+      expect(claim?.payload).not.toHaveProperty("bin");
+    } finally {
+      if (previousDeferred === undefined) {
+        delete process.env["KLAP_DEFERRED_CAPTURE_ENABLED"];
+      } else {
+        process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = previousDeferred;
+      }
+    }
+  });
   it("16b. a transaction_type distinto de authorization no marca success/authorized (Fase 4)", async () => {
     const result = await service.handleKlapConfirmWebhook(
       confirmBody({ transaction_type: "sale" }),
