@@ -980,7 +980,7 @@
   gap: 9px;
   border: 1px solid rgba(34, 197, 94, 0.34);
   background: rgba(34, 197, 94, 0.1);
-  color: var(--rp-success-fg);
+  color: var(--rp-ok-fg);
   font-weight: 900;
 }
 
@@ -1118,4 +1118,48 @@
   .rapago-profile-page .rapago-profile-legal-card--attention {
     animation: rapago-legal-attention-glow 1.15s ease-in-out 2;
   }
+}
+
+/* ==========================================================================
+   Tarjeta "Ayuda y legal" bajo modo noche
+
+   global.css:3170 declara `ion-card { background: rgba(246,242,236,.98)
+   !important; color: #111111 !important }` y `ion-card * { color: #111111
+   !important }`. Las otras tarjetas de este perfil son <section>, así que esa
+   regla no las alcanza y siguen sus tokens con normalidad; la de Ayuda y legal
+   es un <ion-card> real, y quedaba color crema con texto negro encima de la
+   página oscura — el único bloque del perfil que no acompañaba al tema.
+
+   La regla global no se puede quitar: decenas de tarjetas de Admin, Wallet y
+   Guías dependen de su fondo claro fijo. Se re-afirman los tokens con
+   !important solo para esta tarjeta y se devuelve su tono propio a los hijos
+   que lo tenían. Mismo recurso que .rapago-trip-theme-panel (sections.css:269).
+   ========================================================================== */
+ion-card.rapago-profile-card {
+  background: var(--rp-surface) !important;
+  color: var(--rp-text) !important;
+}
+
+ion-card.rapago-profile-card * {
+  color: var(--rp-text) !important;
+}
+
+/* Acento dorado: título de la tarjeta, iconos de cada documento y el "Abrir". */
+ion-card.rapago-profile-card .rapago-profile-card-title,
+ion-card.rapago-profile-card .rapago-profile-legal-link-icon,
+ion-card.rapago-profile-card .rapago-profile-legal-open,
+ion-card.rapago-profile-card .rapago-profile-legal-blocked ion-icon {
+  color: var(--rp-accent) !important;
+}
+
+/* Texto secundario: subtítulo y la versión/estado bajo cada documento. */
+ion-card.rapago-profile-card .rapago-profile-card-sub,
+ion-card.rapago-profile-card .rapago-profile-legal-link small,
+ion-card.rapago-profile-card .rapago-profile-legal-consent ion-label small {
+  color: var(--rp-muted) !important;
+}
+
+ion-card.rapago-profile-card .rapago-profile-legal-ok,
+ion-card.rapago-profile-card .rapago-profile-legal-ok * {
+  color: var(--rp-ok-fg) !important;
 }

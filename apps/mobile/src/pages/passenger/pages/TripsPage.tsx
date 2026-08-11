@@ -8148,15 +8148,29 @@ function PassengerCashPaymentAfterRideCard({
   }
 
   return (
+    /* global.css:3170 fuerza `color:#111111 !important` en TODO descendiente
+       de un ion-card, y este bloque vive dentro del recibo del viaje. Con el
+       fondo oscuro fijo que tenía antes, el título y el detalle quedaban negro
+       sobre negro: ilegible en modo día Y en modo noche. La clase
+       `rapago-trip-theme-panel` lo saca de esa regla —el mismo recurso que ya
+       usan los paneles hermanos de esta página— y el fondo pasa a tokens para
+       que siga el tema en vez de ser siempre oscuro. */
     <div
+      className="rapago-trip-theme-panel"
       style={{
         marginTop: 12,
         borderRadius: 22,
         padding: "14px",
-        background: "linear-gradient(135deg,#111111,#3b2a12)",
-        color: "#ffffff",
-        border: "1px solid rgba(210,164,58,.65)",
-        boxShadow: "0 12px 28px rgba(0,0,0,.18)",
+        /* Opaco a propósito, no var(--rp-warn-bg): ese token es un tinte al
+           13% y la tarjeta que hay detrás la pinta global.css de color crema
+           fijo, así que en modo noche el marfil de var(--rp-text) habría
+           quedado sobre crema. var(--rp-surface) trae su propio fondo del
+           tema —igual que el recibo hermano— y el borde cálido conserva el
+           carácter de aviso. */
+        background: "var(--rp-surface)",
+        color: "var(--rp-text)",
+        border: "1px solid var(--rp-warn-bd)",
+        boxShadow: "var(--rp-shadow)",
       }}
     >
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -8165,7 +8179,7 @@ function PassengerCashPaymentAfterRideCard({
           <div style={{ fontWeight: 950, fontSize: ".95rem" }}>
             ¿Pagaste de más en efectivo?
           </div>
-          <div style={{ marginTop: 4, color: "rgba(255,255,255,.78)", fontSize: ".78rem", lineHeight: 1.35, fontWeight: 800 }}>
+          <div className="rp-tone-muted" style={{ marginTop: 4, color: "var(--rp-muted)", fontSize: ".78rem", lineHeight: 1.35, fontWeight: 800 }}>
             Precio del viaje: <strong>{formatClp(displayFareClp)}</strong>. Si pagaste de más, te diremos cuánto es la diferencia.
           </div>
         </div>
@@ -8173,18 +8187,36 @@ function PassengerCashPaymentAfterRideCard({
 
       {!showOverpaidForm && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+          {/* color="success"/"warning" de Ionic son fijos: no siguen
+              data-rapago-theme, así que en modo día quedaban con el mismo tono
+              que en noche. Se pasan a tokens --rp-*. `rp-tone-*` es necesario
+              porque el panel fuerza color:var(--rp-text) !important sobre todo
+              descendiente (sections.css:269) y taparía el color del botón. */}
           <IonButton
             size="small"
-            color="success"
-            style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
+            fill="outline"
+            className="rp-tone-ok"
+            style={{
+              "--border-radius": "999px",
+              "--background": "var(--rp-surface)",
+              "--color": "var(--rp-ok-fg)",
+              "--border-color": "var(--rp-ok-bd)",
+              "--border-width": "1.5px",
+              fontWeight: 950,
+            } as React.CSSProperties}
             onClick={markPaidExact}
           >
             No, pagué justo
           </IonButton>
           <IonButton
             size="small"
-            color="warning"
-            style={{ "--border-radius": "999px", fontWeight: 950 } as React.CSSProperties}
+            className="rp-tone-btn-primary-fg"
+            style={{
+              "--border-radius": "999px",
+              "--background": "var(--rp-btn-primary)",
+              "--color": "var(--rp-btn-primary-fg)",
+              fontWeight: 950,
+            } as React.CSSProperties}
             onClick={() => setShowOverpaidForm(true)}
           >
             Sí, pagué de más
