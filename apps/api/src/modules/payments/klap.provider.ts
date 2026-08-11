@@ -101,10 +101,39 @@ function parseBooleanEnv(value: string | undefined, defaultValue: boolean): bool
   return defaultValue;
 }
 
+/**
+ * Modo authorization: la orden se crea como retención aunque el contrato exacto
+ * de respuesta de /capture todavía no esté confirmado.
+ */
+export function isKlapAuthorizationModeEnabled(): boolean {
+  return parseBooleanEnv(process.env["KLAP_DEFERRED_CAPTURE_ENABLED"], false);
+}
+
+/** Captura normal: solo cuando el contrato remoto ya fue confirmado. */
 export function isKlapDeferredCaptureEnabled(): boolean {
   return (
-    parseBooleanEnv(process.env["KLAP_DEFERRED_CAPTURE_ENABLED"], false) &&
+    isKlapAuthorizationModeEnabled() &&
     parseBooleanEnv(process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"], false)
+  );
+}
+
+/**
+ * Discovery productivo: permite observar una respuesta REAL de /capture sin
+ * declararla exitosa. Requiere activación explícita y contrato aún no confirmado.
+ */
+export function isKlapCaptureDiscoveryModeEnabled(): boolean {
+  return (
+    isKlapAuthorizationModeEnabled() &&
+    !parseBooleanEnv(process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"], false) &&
+    parseBooleanEnv(process.env["KLAP_CAPTURE_DISCOVERY_MODE"], false)
+  );
+}
+
+/** Se usa únicamente para decidir si completeRide puede disparar una captura. */
+export function isKlapCaptureExecutionEnabled(): boolean {
+  return (
+    isKlapDeferredCaptureEnabled() ||
+    isKlapCaptureDiscoveryModeEnabled()
   );
 }
 
@@ -195,7 +224,7 @@ function getKlapConfig(): KlapConfig {
     process.env["KLAP_SEND_IDEMPOTENCY_HEADER"],
     false,
   );
-  const deferredCaptureRequested = parseBooleanEnv(
+  const authorizationModeEnabled = parseBooleanEnv(
     process.env["KLAP_DEFERRED_CAPTURE_ENABLED"],
     false,
   );
@@ -203,24 +232,55 @@ function getKlapConfig(): KlapConfig {
     process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"],
     false,
   );
-  const deferredCaptureEnabled =
-    deferredCaptureRequested && captureContractConfirmed;
+  const captureDiscoveryMode = parseBooleanEnv(
+    process.env["KLAP_CAPTURE_DISCOVERY_MODE"],
+    false,
+  );
+  const captureDiscoveryMaxAmountClp = Number(
+    process.env["KLAP_CAPTURE_DISCOVERY_MAX_AMOUNT_CLP"] ?? 0,
+  );
   const captureSuccessStatuses = parseCaptureSuccessStatuses(
     process.env["KLAP_CAPTURE_SUCCESS_STATUSES"],
   );
 
-  if (deferredCaptureRequested && !captureContractConfirmed) {
+  if (!authorizationModeEnabled && (captureContractConfirmed || captureDiscoveryMode)) {
     throw new KlapProviderError(
       "config",
-      "Klap deferred capture is blocked until KLAP_CAPTURE_CONTRACT_CONFIRMED=true.",
+      "Klap capture cannot be enabled unless KLAP_DEFERRED_CAPTURE_ENABLED=true.",
     );
   }
 
-  if (deferredCaptureEnabled && captureSuccessStatuses.length === 0) {
+  if (captureContractConfirmed && captureDiscoveryMode) {
+    throw new KlapProviderError(
+      "config",
+      "KLAP_CAPTURE_DISCOVERY_MODE must be false once KLAP_CAPTURE_CONTRACT_CONFIRMED=true.",
+    );
+  }
+
+  if (authorizationModeEnabled && captureContractConfirmed && captureSuccessStatuses.length === 0) {
     throw new KlapProviderError(
       "config",
       "KLAP_CAPTURE_SUCCESS_STATUSES must list the final capture statuses confirmed by Klap.",
     );
+  }
+
+  if (captureDiscoveryMode) {
+    if (environment !== "production") {
+      throw new KlapProviderError(
+        "config",
+        "KLAP_CAPTURE_DISCOVERY_MODE is reserved for an explicit production observation.",
+      );
+    }
+    if (
+      !Number.isSafeInteger(captureDiscoveryMaxAmountClp) ||
+      captureDiscoveryMaxAmountClp < MIN_AMOUNT_CLP ||
+      captureDiscoveryMaxAmountClp > MAX_AMOUNT_CLP
+    ) {
+      throw new KlapProviderError(
+        "config",
+        `KLAP_CAPTURE_DISCOVERY_MAX_AMOUNT_CLP must be an integer between ${MIN_AMOUNT_CLP} and ${MAX_AMOUNT_CLP}.`,
+      );
+    }
   }
 
   if (!apiKey) {
@@ -257,7 +317,13 @@ function getKlapConfig(): KlapConfig {
     webhookRejectUrl,
     orderExpirationMinutes,
     sendIdempotencyHeader,
-    deferredCaptureEnabled,
+    authorizationModeEnabled,
+    captureContractConfirmed,
+    captureDiscoveryMode,
+    captureDiscoveryMaxAmountClp:
+      Number.isSafeInteger(captureDiscoveryMaxAmountClp)
+        ? captureDiscoveryMaxAmountClp
+        : 0,
     captureSuccessStatuses,
   };
 }
@@ -535,7 +601,7 @@ export class KlapProvider implements PaymentProvider {
       },
     ];
 
-    if (config.deferredCaptureEnabled) {
+    if (config.authorizationModeEnabled) {
       customs.push({
         key: "transaction_type",
         value: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
@@ -685,10 +751,30 @@ export class KlapProvider implements PaymentProvider {
 
     const config = getKlapConfig();
 
-    if (!config.deferredCaptureEnabled) {
+    if (!config.authorizationModeEnabled) {
       throw new KlapProviderError(
         "config",
-        "Klap deferred capture is disabled until the official contract is confirmed.",
+        "Klap authorization mode is disabled.",
+      );
+    }
+
+    const normalCapture = config.captureContractConfirmed;
+    const discoveryCapture = !normalCapture && config.captureDiscoveryMode;
+
+    if (!normalCapture && !discoveryCapture) {
+      throw new KlapProviderError(
+        "config",
+        "Klap capture remains fail-closed until the contract is confirmed or production discovery is explicitly enabled.",
+      );
+    }
+
+    if (
+      discoveryCapture &&
+      params.amountClp > config.captureDiscoveryMaxAmountClp
+    ) {
+      throw new KlapProviderError(
+        "config",
+        `Discovery capture amount ${params.amountClp} exceeds KLAP_CAPTURE_DISCOVERY_MAX_AMOUNT_CLP=${config.captureDiscoveryMaxAmountClp}.`,
       );
     }
 
@@ -728,13 +814,30 @@ export class KlapProvider implements PaymentProvider {
     }
 
     if (!response.ok) {
-      // Cuerpo leído solo para clasificar el error de forma más precisa en
-      // los logs de auditoría; nunca se persiste ni se registra completo.
       throw new KlapProviderError(
         "http_rejected",
         `Klap order capture was rejected with HTTP ${response.status}.`,
         response.status,
       );
+    }
+
+    const sanitizedResponse = await readCaptureResponseBodySafely(response);
+    const rawProviderStatus = String(sanitizedResponse?.["status"] ?? "").trim();
+    const providerStatus = rawProviderStatus
+      ? rawProviderStatus.toLowerCase()
+      : null;
+
+    // Discovery productivo: la petición es REAL, pero la respuesta se conserva
+    // únicamente como evidencia sanitizada. Nunca se marca success ni se
+    // reintenta automáticamente, aun cuando HTTP sea 2xx y parezca aprobada.
+    if (discoveryCapture) {
+      return {
+        httpStatus: response.status,
+        sanitizedResponse,
+        providerStatus,
+        confirmedFinalState: false,
+        discoveryMode: true,
+      };
     }
 
     if (response.status === 202 || response.status === 204) {
@@ -745,12 +848,10 @@ export class KlapProvider implements PaymentProvider {
       );
     }
 
-    const sanitizedResponse = await readCaptureResponseBodySafely(response);
-    const providerStatus = String(sanitizedResponse?.["status"] ?? "")
-      .trim()
-      .toLowerCase();
-
-    if (!providerStatus || !config.captureSuccessStatuses.includes(providerStatus)) {
+    if (
+      !providerStatus ||
+      !config.captureSuccessStatuses.includes(providerStatus)
+    ) {
       throw new KlapProviderError(
         "invalid_response",
         "Klap capture did not return an explicitly allowed final success status.",
@@ -761,6 +862,9 @@ export class KlapProvider implements PaymentProvider {
     return {
       httpStatus: response.status,
       sanitizedResponse,
+      providerStatus,
+      confirmedFinalState: true,
+      discoveryMode: false,
     };
   }
 }

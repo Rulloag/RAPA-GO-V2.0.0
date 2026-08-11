@@ -64,6 +64,8 @@ beforeEach(() => {
   process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
   process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "true";
   process.env["KLAP_CAPTURE_SUCCESS_STATUSES"] = "captured,success,approved";
+  process.env["KLAP_CAPTURE_DISCOVERY_MODE"] = "false";
+  process.env["KLAP_CAPTURE_DISCOVERY_MAX_AMOUNT_CLP"] = "5000";
   delete process.env["KLAP_SANDBOX_ORDERS_URL"];
   delete process.env["KLAP_PRODUCTION_ORDERS_URL"];
   delete process.env["KLAP_ALLOWED_SANDBOX_CHECKOUT_HOSTS"];
@@ -349,6 +351,37 @@ describe("KlapProvider safe deferred-capture gate", () => {
     ).rejects.toMatchObject({ kind: "config" });
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  it("puede crear authorization con contrato de capture aún no confirmado", async () => {
+    process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "false";
+    process.env["KLAP_CAPTURE_DISCOVERY_MODE"] = "false";
+    process.env["KLAP_CAPTURE_SUCCESS_STATUSES"] = "";
+
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(params());
+
+    const body = JSON.parse(String(request()[1].body)) as {
+      customs: Array<{ key: string; value: string }>;
+    };
+    expect(body.customs).toContainEqual({
+      key: "transaction_type",
+      value: "authorization",
+    });
+
+    global.fetch = vi.fn();
+    await expect(
+      new KlapProvider().captureOrder({
+        orderId: "test-order-123",
+        amountClp: 5000,
+      }),
+    ).rejects.toMatchObject({ kind: "config" });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("KlapProvider.captureOrder", () => {
@@ -378,6 +411,9 @@ describe("KlapProvider.captureOrder", () => {
     expect(result).toEqual({
       httpStatus: 200,
       sanitizedResponse: { status: "captured" },
+      providerStatus: "captured",
+      confirmedFinalState: true,
+      discoveryMode: false,
     });
   });
 
@@ -458,6 +494,65 @@ describe("KlapProvider.captureOrder", () => {
     ).rejects.toMatchObject({ kind: "network" });
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("discovery productivo observa un 2xx real sin declararlo captura confirmada", async () => {
+    process.env["KLAP_ENVIRONMENT"] = "production";
+    process.env["KLAP_API_KEY"] = "production-secret";
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "false";
+    process.env["KLAP_CAPTURE_DISCOVERY_MODE"] = "true";
+    process.env["KLAP_CAPTURE_DISCOVERY_MAX_AMOUNT_CLP"] = "5000";
+    process.env["KLAP_CAPTURE_SUCCESS_STATUSES"] = "";
+
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(JSON.stringify({
+        status: "captured-live",
+        transaction_id: "tx-real-redacted",
+        card_number: "4000000000000000",
+      })),
+    } as unknown as Response);
+
+    const result = await new KlapProvider().captureOrder({
+      orderId: "test-order-production",
+      amountClp: 5000,
+    });
+
+    expect(request()[0]).toBe(
+      `${PRODUCTION_ORDERS_URL}/test-order-production/capture`,
+    );
+    expect(result).toEqual({
+      httpStatus: 200,
+      sanitizedResponse: {
+        status: "captured-live",
+        transaction_id: "tx-real-redacted",
+      },
+      providerStatus: "captured-live",
+      confirmedFinalState: false,
+      discoveryMode: true,
+    });
+    expect(JSON.stringify(result.sanitizedResponse)).not.toContain(
+      "4000000000000000",
+    );
+  });
+
+  it("discovery productivo bloquea cualquier monto superior al tope explícito", async () => {
+    process.env["KLAP_ENVIRONMENT"] = "production";
+    process.env["KLAP_API_KEY"] = "production-secret";
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "false";
+    process.env["KLAP_CAPTURE_DISCOVERY_MODE"] = "true";
+    process.env["KLAP_CAPTURE_DISCOVERY_MAX_AMOUNT_CLP"] = "3000";
+    process.env["KLAP_CAPTURE_SUCCESS_STATUSES"] = "";
+    global.fetch = vi.fn();
+
+    await expect(
+      new KlapProvider().captureOrder({
+        orderId: "test-order-production",
+        amountClp: 5000,
+      }),
+    ).rejects.toMatchObject({ kind: "config" });
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("rechaza montos inválidos antes de llamar a Klap", async () => {

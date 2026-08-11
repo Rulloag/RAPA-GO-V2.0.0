@@ -66,6 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
   process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "true";
+  process.env["KLAP_CAPTURE_DISCOVERY_MODE"] = "false";
   mockFindRefundableByRideId.mockResolvedValue(null);
   mockFindActiveByRideIdAndPurpose.mockResolvedValue(null);
 });
@@ -158,6 +159,9 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
     mockCaptureOrder.mockResolvedValue({
       httpStatus: 200,
       sanitizedResponse: { status: "captured" },
+      providerStatus: "captured",
+      confirmedFinalState: true,
+      discoveryMode: false,
     });
 
     const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID);
@@ -188,6 +192,9 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
     mockCaptureOrder.mockResolvedValue({
       httpStatus: 200,
       sanitizedResponse: { status: "captured" },
+      providerStatus: "captured",
+      confirmedFinalState: true,
+      discoveryMode: false,
     });
 
     const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID, {
@@ -232,6 +239,9 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
     mockCaptureOrder.mockResolvedValue({
       httpStatus: 200,
       sanitizedResponse: { status: "captured" },
+      providerStatus: "captured",
+      confirmedFinalState: true,
+      discoveryMode: false,
     });
 
     const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID, {
@@ -261,6 +271,9 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
     mockCaptureOrder.mockResolvedValue({
       httpStatus: 200,
       sanitizedResponse: { status: "captured" },
+      providerStatus: "captured",
+      confirmedFinalState: true,
+      discoveryMode: false,
     });
 
     const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID, {
@@ -305,6 +318,87 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("KLAP_FINANCIAL_MANUAL_REVIEW");
+    expect(mockClaimCapture).not.toHaveBeenCalled();
+    expect(mockCaptureOrder).not.toHaveBeenCalled();
+  });
+
+  it("V3 production discovery observa respuesta real pero nunca marca success", async () => {
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "false";
+    process.env["KLAP_CAPTURE_DISCOVERY_MODE"] = "true";
+
+    mockFindById.mockResolvedValue(paymentFixture());
+    mockClaimCapture.mockResolvedValue(
+      paymentFixture({ status: "capture_pending" }),
+    );
+    mockCaptureOrder.mockResolvedValue({
+      httpStatus: 200,
+      sanitizedResponse: {
+        status: "captured-live",
+        transaction_id: "tx-redacted",
+      },
+      providerStatus: "captured-live",
+      confirmedFinalState: false,
+      discoveryMode: true,
+    });
+
+    const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID, {
+      outcome: "completed",
+      finalRideAmountClp: 5000,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("CAPTURE_CONTRACT_OBSERVED");
+    expect(mockMarkCapturedSuccess).not.toHaveBeenCalled();
+    expect(mockMarkCaptureUnknown).toHaveBeenCalledOnce();
+    expect(mockCaptureOrder).toHaveBeenCalledOnce();
+    expect(mockRecordSafe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "payment.klap_capture_contract_observed",
+      }),
+    );
+  });
+
+  it("V3 discovery bloquea una captura parcial incluso si el viaje termino", async () => {
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "false";
+    process.env["KLAP_CAPTURE_DISCOVERY_MODE"] = "true";
+    mockFindById.mockResolvedValue(paymentFixture());
+
+    const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID, {
+      outcome: "completed",
+      finalRideAmountClp: 3500,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("KLAP_CAPTURE_DISCOVERY_FULL_AMOUNT_ONLY");
+    }
+    expect(mockClaimCapture).not.toHaveBeenCalled();
+    expect(mockCaptureOrder).not.toHaveBeenCalled();
+  });
+
+  it("V3 discovery nunca prueba captura parcial de cancelacion o NO SHOW", async () => {
+    process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "false";
+    process.env["KLAP_CAPTURE_DISCOVERY_MODE"] = "true";
+    mockFindById.mockResolvedValue(paymentFixture());
+
+    const cancelResult = await service.captureAuthorizedKlapPayment(PAYMENT_ID, {
+      outcome: "cancelled",
+      cancellationFeeClp: 3000,
+    });
+    expect(cancelResult.ok).toBe(false);
+    if (!cancelResult.ok) {
+      expect(cancelResult.code).toBe("KLAP_CAPTURE_DISCOVERY_COMPLETED_ONLY");
+    }
+
+    const noShowResult = await service.captureAuthorizedKlapPayment(PAYMENT_ID, {
+      outcome: "no_show",
+      noShowFeeClp: 3000,
+    });
+    expect(noShowResult.ok).toBe(false);
+    if (!noShowResult.ok) {
+      expect(noShowResult.code).toBe("KLAP_CAPTURE_DISCOVERY_COMPLETED_ONLY");
+    }
+
     expect(mockClaimCapture).not.toHaveBeenCalled();
     expect(mockCaptureOrder).not.toHaveBeenCalled();
   });
@@ -415,6 +509,9 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
     mockCaptureOrder.mockResolvedValue({
       httpStatus: 200,
       sanitizedResponse: { status: "captured" },
+      providerStatus: "captured",
+      confirmedFinalState: true,
+      discoveryMode: false,
     });
 
     const result = await service.refundCardPaymentForCancelledRide({

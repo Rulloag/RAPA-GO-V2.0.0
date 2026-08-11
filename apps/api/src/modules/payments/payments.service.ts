@@ -16,7 +16,9 @@ import type {
 import type { NormalizedWebhook } from "./payment.provider.js";
 import { KlapProviderError, KLAP_TRANSACTION_TYPE_AUTHORIZATION } from "./klap.types.js";
 import {
-  isKlapDeferredCaptureEnabled,
+  isKlapAuthorizationModeEnabled,
+  isKlapCaptureDiscoveryModeEnabled,
+  isKlapCaptureExecutionEnabled,
   verifyKlapWebhookApikey,
 } from "./klap.provider.js";
 import {
@@ -1492,7 +1494,7 @@ export class PaymentsService {
     // con un error controlado, sin construir eventKey ni reclamar idempotencia,
     // igual que amount_mismatch, para que una entrega corregida se revalide
     // desde cero.
-    const deferredCaptureEnabled = isKlapDeferredCaptureEnabled();
+    const deferredCaptureEnabled = isKlapAuthorizationModeEnabled();
 
     if (
       deferredCaptureEnabled &&
@@ -2258,28 +2260,40 @@ export class PaymentsService {
           });
 
           if (remoteStatus === "success") {
-            // Captura diferida: el estado "success" de la consulta oficial de
-            // Klap para un checkout de tarjetas significa que la tarjeta
-            // quedó autorizada, no que el dinero ya fue cobrado â€” el cobro
-            // solo ocurre al completar el viaje (ver captureAuthorizedKlapPayment).
             const remoteAmountClp =
               remoteOrder.amount?.total != null
                 ? Math.round(remoteOrder.amount.total)
                 : active.amountClp;
 
-            await paymentsRepo.markAuthorizedAndActivateRide({
+            if (isKlapAuthorizationModeEnabled()) {
+              await paymentsRepo.markAuthorizedAndActivateRide({
+                id: active.id,
+                rideRequestId: active.rideRequestId,
+                authorizedAmountClp: remoteAmountClp,
+                transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+                providerPayload: safePayload,
+              });
+
+              return {
+                ok: false,
+                code: "PAYMENT_ALREADY_PAID",
+                message:
+                  "Klap ya autorizó la tarjeta para este viaje. Revisa Mis Viajes.",
+                statusCode: 409,
+              };
+            }
+
+            await paymentsRepo.markSuccessAndActivateRide({
               id: active.id,
               rideRequestId: active.rideRequestId,
-              authorizedAmountClp: remoteAmountClp,
-              transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+              externalId: remoteOrder.transaction_id ?? remoteOrder.order_id,
               providerPayload: safePayload,
             });
 
             return {
               ok: false,
               code: "PAYMENT_ALREADY_PAID",
-              message:
-                "Klap ya autorizÃ³ la tarjeta para este viaje. Revisa Mis Viajes.",
+              message: "Klap ya confirmó el pago para este viaje. Revisa Mis Viajes.",
               statusCode: 409,
             };
           }
@@ -2618,7 +2632,7 @@ export class PaymentsService {
     });
 
     if (normalizedStatus === "success") {
-      if (isKlapDeferredCaptureEnabled()) {
+      if (isKlapAuthorizationModeEnabled()) {
         await paymentsRepo.markAuthorizedAndActivateRide({
           id: payment.id,
           rideRequestId: payment.rideRequestId,
@@ -2683,12 +2697,12 @@ export class PaymentsService {
       };
     }
 
-    if (!isKlapDeferredCaptureEnabled()) {
+    if (!isKlapCaptureExecutionEnabled()) {
       return {
         ok: false,
         code: "KLAP_DEFERRED_CAPTURE_DISABLED",
         message:
-          "Klap deferred capture is disabled until the official contract is confirmed.",
+          "Klap capture is fail-closed until the contract is confirmed or production discovery is explicitly enabled.",
         statusCode: 409,
       };
     }
@@ -2741,6 +2755,22 @@ export class PaymentsService {
     }
 
     const outcome = financialInput.outcome ?? "completed";
+    const discoveryMode = isKlapCaptureDiscoveryModeEnabled();
+
+    // La primera observación real de /capture se permite únicamente para un
+    // viaje completado controlado. Cancelaciones y NO SHOW permanecen
+    // fail-closed hasta confirmar el contrato, porque implican captura parcial
+    // y eventual liberación del saldo restante.
+    if (discoveryMode && outcome !== "completed") {
+      return {
+        ok: false,
+        code: "KLAP_CAPTURE_DISCOVERY_COMPLETED_ONLY",
+        message:
+          "Production discovery only permits a controlled completed-ride capture.",
+        statusCode: 409,
+      };
+    }
+
     const resolution = resolveKlapFinancialOutcome({
       paymentId: payment.id,
       tripId: payment.rideRequestId,
@@ -2760,6 +2790,33 @@ export class PaymentsService {
           : null,
       authorizationExpired: financialInput.authorizationExpired === true,
     });
+
+    if (
+      discoveryMode &&
+      resolution.action !== "capture"
+    ) {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_capture_discovery_blocked",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          financialReason: resolution.reason,
+          financialAction: resolution.action,
+          resolutionKey: resolution.resolutionKey,
+        },
+      });
+
+      return {
+        ok: false,
+        code: "KLAP_CAPTURE_DISCOVERY_FULL_AMOUNT_ONLY",
+        message:
+          "Production discovery only permits a full capture equal to the authorized amount.",
+        statusCode: 409,
+      };
+    }
 
     if (resolution.action === "expired") {
       auditService.recordSafe({
@@ -2859,6 +2916,47 @@ export class PaymentsService {
         amountClp: captureAmountClp,
       });
 
+      if (!result.confirmedFinalState) {
+        const observedFields = result.sanitizedResponse
+          ? Object.keys(result.sanitizedResponse).slice(0, 20)
+          : [];
+        const observedReason =
+          `Klap production discovery observed HTTP ${result.httpStatus}` +
+          `${result.providerStatus ? ` status=${result.providerStatus}` : ""}. ` +
+          "The capture may have been processed, so automatic retry is blocked.";
+
+        await paymentsRepo.markCaptureUnknown({
+          id: payment.id,
+          reason: observedReason,
+        });
+
+        auditService.recordSafe({
+          actorUserId: payment.passengerUserId,
+          eventType: "payment.klap_capture_contract_observed",
+          entityType: "payment",
+          entityId: payment.id,
+          metadata: {
+            rideId: payment.rideRequestId,
+            provider: "klap",
+            httpStatus: result.httpStatus,
+            providerStatus: result.providerStatus,
+            observedFields,
+            capturedAmountClp: captureAmountClp,
+            financialReason: resolution.reason,
+            resolutionKey: resolution.resolutionKey,
+            discoveryMode: result.discoveryMode,
+          },
+        });
+
+        return {
+          ok: false,
+          code: "CAPTURE_CONTRACT_OBSERVED",
+          message:
+            "Klap returned a real production capture response, but RAPA GO intentionally did not mark it as paid until that contract is reviewed.",
+          statusCode: 502,
+        };
+      }
+
       await paymentsRepo.markCapturedSuccess({
         id: payment.id,
         capturedAmountClp: captureAmountClp,
@@ -2874,6 +2972,8 @@ export class PaymentsService {
           rideId: payment.rideRequestId,
           capturedAmountClp: captureAmountClp,
           provider: "klap",
+          providerStatus: result.providerStatus,
+          httpStatus: result.httpStatus,
           financialReason: resolution.reason,
           resolutionKey: resolution.resolutionKey,
           remainingAuthorizedAmountClp:

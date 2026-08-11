@@ -1441,11 +1441,11 @@ export class RidesService {
     // dejando el viaje completed con el pago en
     // capture_pending/capture_unknown/capture_failed para conciliación.
     try {
-      const { isKlapDeferredCaptureEnabled } = await import(
+      const { isKlapCaptureExecutionEnabled } = await import(
         "../payments/klap.provider.js"
       );
 
-      if (isKlapDeferredCaptureEnabled()) {
+      if (isKlapCaptureExecutionEnabled()) {
         const { PaymentsRepository } = await import(
           "../payments/payments.repository.js"
         );

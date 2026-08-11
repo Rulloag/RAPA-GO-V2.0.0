@@ -34,8 +34,17 @@ export interface KlapConfig {
   orderExpirationMinutes: number;
   /** Header no documentado por Swagger; por seguridad se desactiva por defecto. */
   sendIdempotencyHeader: boolean;
-  /** Captura diferida solicitada y contrato remoto confirmado explícitamente. */
-  deferredCaptureEnabled: boolean;
+  /** Crea la orden como authorization (retención) aunque capture aún esté fail-closed. */
+  authorizationModeEnabled: boolean;
+  /** Permite captura normal únicamente con contrato de respuesta confirmado. */
+  captureContractConfirmed: boolean;
+  /**
+   * Modo de observación productiva: permite UNA captura real controlada para
+   * conocer la respuesta exacta de Klap, pero nunca la considera confirmada.
+   */
+  captureDiscoveryMode: boolean;
+  /** Tope explícito para una captura real en modo discovery. */
+  captureDiscoveryMaxAmountClp: number;
   /** Estados finales que Klap confirmó oficialmente como captura exitosa. */
   captureSuccessStatuses: readonly string[];
 }
@@ -100,6 +109,13 @@ export interface KlapCaptureOrderParams {
 export interface KlapCaptureOrderResult {
   httpStatus: number;
   sanitizedResponse: Record<string, unknown> | null;
+  providerStatus: string | null;
+  /**
+   * true solo cuando el contrato normal está confirmado y el status recibido
+   * pertenece a KLAP_CAPTURE_SUCCESS_STATUSES. En discovery siempre es false.
+   */
+  confirmedFinalState: boolean;
+  discoveryMode: boolean;
 }
 
 export interface KlapOrderStatusValidatedResponse {
