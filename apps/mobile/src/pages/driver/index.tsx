@@ -1812,6 +1812,14 @@ const RAPAGO_NAV_SHEET_HEIGHT = 94;
    táctil. Nunca se pliega entera, porque entonces no quedaría de dónde
    agarrarla para volver a subirla. */
 const RAPAGO_NAV_SHEET_GRIP_H = 34;
+/* "Cancelar" y "Llegué al punto" flotan con position:absolute (top:8px,
+   min-height 38px → borde inferior en 46px) por ENCIMA del flujo normal, así
+   que el asa (34px de alto en el flujo) no reserva suficiente espacio para
+   ellos: el ETA, que arranca justo debajo del asa, quedaba tapado por la
+   cola de los botones en pantallas reales. Este colchón cubre esos 12px de
+   diferencia (46 - 34) más margen, sin importar el ancho del dispositivo —el
+   problema era vertical, no de una pantalla en particular. */
+const RAPAGO_NAV_SHEET_ACTIONS_CLEARANCE = 20;
 
 /* Reposos de la hoja de navegación, como fracción del recorrido total.
    `expanded` = 0 (hoja arriba del todo, se ve todo el contenido);
@@ -3729,7 +3737,9 @@ function UberDriverNavigationMap({
             Los 152px que ocupaban se los queda el ETA. */}
         <div
           style={{
-            paddingTop: isCompactPreview ? 14 : 0,
+            paddingTop: isCompactPreview
+              ? 14
+              : RAPAGO_NAV_SHEET_ACTIONS_CLEARANCE,
           }}>
           <div
             className="rapago-driver-nav-eta"

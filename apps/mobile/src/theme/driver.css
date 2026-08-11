@@ -3125,8 +3125,10 @@
   }
 }
 
-/* Botón cancelar: espejo del __confirm pero en la esquina izquierda, estilo
-   contorno neutro para no competir con el SOS. */
+/* Botón cancelar: espejo del __confirm pero en la esquina izquierda. En rojo
+   (mismos tokens --rp-danger-* que ya usa el SOS) porque es una acción
+   destructiva: el contorno neutro anterior no la distinguía de una acción
+   cualquiera y el conductor podía tocarla sin registrar qué estaba haciendo. */
 .rapago-driver-page .rapago-driver-nav-sheet__cancel-pill {
   position: absolute;
   top: 8px;
@@ -3139,10 +3141,10 @@
   max-width: 130px;
   min-height: 38px;
   padding: 0 14px;
-  border: 1.5px solid var(--rp-border-c);
+  border: 1.5px solid var(--rp-danger-bd, rgba(220, 38, 38, 0.55));
   border-radius: 999px;
-  background: transparent;
-  color: var(--rp-text);
+  background: var(--rp-surface);
+  color: var(--rp-danger-fg, #dc2626);
   font-size: 0.8rem;
   font-weight: 900;
   letter-spacing: 0.01em;
@@ -3167,16 +3169,24 @@
 }
 
 .rapago-driver-page .rapago-driver-nav-sheet__cancel-pill:hover {
-  background: var(--rp-field-bg);
+  background: color-mix(
+    in srgb,
+    var(--rp-danger-fg, #dc2626) 12%,
+    var(--rp-surface)
+  );
 }
 
 .rapago-driver-page .rapago-driver-nav-sheet__cancel-pill:active {
   transform: translateY(1px) scale(0.97);
-  background: var(--rp-field-bg);
+  background: color-mix(
+    in srgb,
+    var(--rp-danger-fg, #dc2626) 12%,
+    var(--rp-surface)
+  );
 }
 
 .rapago-driver-page .rapago-driver-nav-sheet__cancel-pill:focus-visible {
-  outline: 2px solid var(--rp-border-c);
+  outline: 2px solid var(--rp-danger-fg, #dc2626);
   outline-offset: 2px;
 }
 
