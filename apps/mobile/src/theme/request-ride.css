@@ -1231,6 +1231,20 @@
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
 }
 
+/* El texto que se escribe en este campo no seguía el tema: variables.css fija
+   `ion-input { --color: #ffffff }` a nivel global (blanco fijo, sin variante
+   de tema), y esta regla nunca lo sobrescribía para el ion-input de dentro.
+   En modo noche, `--rp-field-bg` es un blanco casi transparente (6%) que deja
+   ver el mapa/fondo oscuro por debajo, así que el texto —también blanco— se
+   fundía con su propio fondo: la letra desaparecía al escribir. Se resuelve
+   con los mismos tokens que ya usa el resto del picker (claros en
+   `.request-map-page`, oscuros en `[data-rapago-theme="dark"]`), igual que el
+   icono de lupa de al lado, que ya tomaba `--rp-icon-fg` en línea. */
+.rapago-request-page .rp-request-search-field ion-input {
+  --color: var(--rp-text);
+  --placeholder-color: var(--rp-muted);
+}
+
 /* ── Controles flotantes sobre el mapa ───────────────────────────────────── */
 /* Una única columna alineada al borde derecho, con todos los botones del mismo
    tamaño y separación. Antes el zoom lo pintaba Google donde él decidía y el
