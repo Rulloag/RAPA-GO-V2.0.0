@@ -8364,7 +8364,7 @@ export default function RequestRidePage(): JSX.Element {
   }
 
   function getSelectedWalletBenefitDiscount(method: PaymentMethod = paymentMethod): number {
-    if (method !== "cash") return 0;
+    if (!method) return 0;
     return getWalletBenefitDiscountForAmount(
       getSelectedFareAmountBeforeWallet(method),
     );
@@ -8387,12 +8387,16 @@ export default function RequestRidePage(): JSX.Element {
   const cashWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(
     cashPaymentAmountBeforeWallet,
   );
-  const cardWalletBenefitDiscountClp = 0;
+  const cardWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(
+    cardPaymentAmountBeforeWallet,
+  );
   const cashPaymentAmount = applyWalletBenefitDiscount(
     cashPaymentAmountBeforeWallet,
   );
-  // Beneficios jamás modifica un cobro con tarjeta.
-  const cardPaymentAmount = cardPaymentAmountBeforeWallet;
+  // El Beneficio se descuenta antes de enviar cualquier saldo restante a Klap.
+  const cardPaymentAmount = applyWalletBenefitDiscount(
+    cardPaymentAmountBeforeWallet,
+  );
 
   function getPaymentLabel(method: PaymentMethod): string {
     if (method === "cash") {
@@ -8446,9 +8450,7 @@ export default function RequestRidePage(): JSX.Element {
 
   function getSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
     const beforeBenefit = getSelectedFareAmountBeforeWallet(method);
-    return method === "cash"
-      ? applyWalletBenefitDiscount(beforeBenefit)
-      : beforeBenefit;
+    return applyWalletBenefitDiscount(beforeBenefit);
   }
 
   function getSelectedDriverEarning(method: PaymentMethod = paymentMethod): number | null {
@@ -8762,8 +8764,7 @@ export default function RequestRidePage(): JSX.Element {
         // Do not send passengerPendingChargeClp or finalFareWithPendingChargesClp from frontend.
         // El frontend solo expresa la decisión. El backend bloquea la cuenta,
         // verifica el saldo y calcula el monto real a consumir.
-        input.useWalletBenefit =
-          activePaymentMethod === "cash" && useWalletBenefit === true;
+        input.useWalletBenefit = useWalletBenefit === true;
         (input as CreateRideInput & { tripFareMode?: TripFareMode }).tripFareMode = effectiveTripFareMode;
         (input as CreateRideInput & { tripType?: string }).tripType = effectiveTripFareMode;
         (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
@@ -10828,7 +10829,13 @@ return (
                     } as CSSProperties
                   }
                 >
-                  {paymentMethod === "cash" ? "Efectivo seleccionado · continuar" : paymentMethod === "card" ? "Tarjeta seleccionada · Klap" : "Elegir forma de pago"}
+                  {paymentMethod === "cash"
+                    ? "Efectivo seleccionado · continuar"
+                    : paymentMethod === "card"
+                      ? useWalletBenefit === true && activePaymentAmountAfterWallet === 0
+                        ? "Tarjeta + Beneficio · sin cobro Klap"
+                        : "Tarjeta seleccionada · Klap"
+                      : "Elegir forma de pago"}
                 </IonButton>
               </div>
 
@@ -10942,7 +10949,7 @@ return (
               )}
             </div>
 
-            {hasAvailableWalletBenefit && paymentMethod === "cash" && activePaymentAmountBeforeWallet != null && (
+            {hasAvailableWalletBenefit && paymentMethod !== null && activePaymentAmountBeforeWallet != null && (
               <IonCard
                 style={{
                   margin: "0 0 14px",
@@ -10965,7 +10972,9 @@ return (
                       <div style={{ marginTop: 5, color: "#36543B", fontSize: ".78rem", fontWeight: 820, lineHeight: 1.35 }}>
                         {walletBenefitLoading
                           ? "Sincronizando tu saldo aprobado…"
-                          : `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta el monto real del total de este viaje en efectivo.`}
+                          : paymentMethod === "card"
+                            ? `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta primero el Beneficio y Klap cobra solo el saldo restante.`
+                            : `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta el monto real del total de este viaje.`}
                       </div>
                     </div>
                     <IonBadge color="success" style={{ fontWeight: 950, flexShrink: 0 }}>
@@ -11080,11 +11089,22 @@ return (
                 ) : paymentMethod === null ? (
                   "ELIGE FORMA DE PAGO"
                 ) : selectedRoundTripPromotion ? (
-                  "RESERVAR EXPERIENCIA Y PAGAR"
+                  paymentMethod === "card" &&
+                  useWalletBenefit === true &&
+                  activePaymentAmountAfterWallet === 0
+                    ? "RESERVAR EXPERIENCIA CON BENEFICIO"
+                    : "RESERVAR EXPERIENCIA Y PAGAR"
                 ) : rideMode === "scheduled" ? (
-                  "RESERVAR Y PAGAR CON TARJETA"
+                  paymentMethod === "card" &&
+                  useWalletBenefit === true &&
+                  activePaymentAmountAfterWallet === 0
+                    ? "RESERVAR CON BENEFICIO"
+                    : "RESERVAR Y PAGAR SALDO CON TARJETA"
                 ) : paymentMethod === "card" ? (
-                  "PAGAR CON TARJETA"
+                  useWalletBenefit === true &&
+                  activePaymentAmountAfterWallet === 0
+                    ? "SOLICITAR CON BENEFICIO"
+                    : "PAGAR SALDO CON TARJETA"
                 ) : (
                   "SOLICITAR VIAJE"
                 )}

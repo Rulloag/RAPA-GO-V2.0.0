@@ -48,10 +48,7 @@ async function restoreAppliedWalletBenefit(
     appliedClp - alreadyReversedClp,
   );
 
-  if (
-    amountToRestoreClp <= 0 ||
-    ride.paymentMethod !== "cash"
-  ) {
+  if (amountToRestoreClp <= 0) {
     return ride;
   }
 
@@ -112,7 +109,8 @@ async function restoreAppliedWalletBenefit(
     metadata: {
       source: "cash_overpayment_benefit",
       exclusiveToOwner: true,
-      cashRideOnly: true,
+      usableWithPaymentMethods: ["cash", "card"],
+      selectedPaymentMethod: ride.paymentMethod ?? null,
       reversalReason: reason,
       appliedClp,
       previouslyReversedClp: alreadyReversedClp,
@@ -421,15 +419,6 @@ export class RidesRepository {
 
         const walletBenefitRequested = options.useWalletBenefit === true;
 
-        if (
-          walletBenefitRequested &&
-          options.paymentMethod !== "cash"
-        ) {
-          throw AppError.internal(
-            "Wallet benefits can only be used on cash rides.",
-          );
-        }
-
         let walletBenefitAppliedClp = 0;
         let walletBenefitRemainingClp = 0;
         let walletId: string | null = null;
@@ -469,6 +458,20 @@ export class RidesRepository {
           fareBeforeWalletBenefitClp - walletBenefitAppliedClp,
         );
 
+        // Si el pasajero eligió tarjeta pero el Beneficio cubre el 100%,
+        // no existe saldo que enviar a Klap. El viaje puede publicarse sin
+        // quedar atrapado en pending_payment.
+        const effectiveInitialStatus =
+          initialStatus === "pending_payment" &&
+          finalEstimatedFareClp <= 0
+            ? "requested"
+            : initialStatus;
+
+        const effectivePaymentProvider =
+          finalEstimatedFareClp <= 0
+            ? null
+            : options.paymentProvider ?? null;
+
         const [ride] = await tx
           .insert(rideRequests)
           .values({
@@ -478,11 +481,11 @@ export class RidesRepository {
             notes,
             estimatedFareClp: finalEstimatedFareClp,
             paymentMethod: options.paymentMethod ?? null,
-            paymentProvider: options.paymentProvider ?? null,
+            paymentProvider: effectivePaymentProvider,
             walletBenefitRequested,
             walletBenefitAppliedClp,
             fareBeforeWalletBenefitClp,
-            status: initialStatus,
+            status: effectiveInitialStatus,
           })
           .returning();
 
@@ -519,11 +522,12 @@ export class RidesRepository {
             provider: "rapago",
             providerTransactionId: `benefit-use:${ride.id}`,
             description:
-              "Beneficio aplicado al viaje en efectivo de la misma cuenta",
+              "Beneficio aplicado al viaje de la misma cuenta",
             metadata: {
               source: "cash_overpayment_benefit",
               exclusiveToOwner: true,
-              cashRideOnly: true,
+              usableWithPaymentMethods: ["cash", "card"],
+              selectedPaymentMethod: options.paymentMethod ?? null,
               balanceBeforeClp: walletBalanceBeforeClp,
               appliedClp: walletBenefitAppliedClp,
               balanceAfterClp: walletBenefitRemainingClp,
@@ -1080,25 +1084,36 @@ export class RidesRepository {
     cancellationReason: string,
   ): Promise<RideRequest | null> {
     try {
-      const now = new Date();
-      const [row] = await db
-        .update(rideRequests)
-        .set({
-          status: "cancelled",
-          cancelledAt: now,
-          cancelledByRole: "payment",
-          cancellationReason,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(rideRequests.id, id),
-            eq(rideRequests.status, "pending_payment"),
-          ),
-        )
-        .returning();
+      return await db.transaction(async (tx) => {
+        const now = new Date();
+        const [row] = await tx
+          .update(rideRequests)
+          .set({
+            status: "cancelled",
+            cancelledAt: now,
+            cancelledByRole: "payment",
+            cancellationReason,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(rideRequests.id, id),
+              eq(rideRequests.status, "pending_payment"),
+            ),
+          )
+          .returning();
 
-      return row ?? null;
+        if (!row) return null;
+
+        // Si Klap rechazó/expiró la parte pendiente, el Beneficio que ya fue
+        // reservado para este viaje vuelve a la misma cuenta exactamente una vez.
+        return restoreAppliedWalletBenefit(
+          tx,
+          row,
+          now,
+          "ride_cancelled",
+        );
+      });
     } catch (err) {
       throw AppError.internal(
         `Failed to cancel pending-payment ride: ${String(err)}`,

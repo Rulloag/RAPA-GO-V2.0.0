@@ -966,16 +966,6 @@ export class RidesService {
       };
     }
 
-    if (input.useWalletBenefit === true && input.paymentMethod !== "cash") {
-      return {
-        ok: false,
-        code: "WALLET_BENEFIT_CASH_ONLY",
-        message:
-          "El Beneficio solo puede utilizarse en un viaje pagado en efectivo.",
-        statusCode: 422,
-      };
-    }
-
     const scheduleMeta = buildScheduleMeta(input, auth.role);
 
     const isScheduledRide =

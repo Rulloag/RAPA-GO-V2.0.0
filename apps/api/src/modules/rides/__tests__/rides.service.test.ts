@@ -418,23 +418,34 @@ describe("RidesService - contrato actual", () => {
       );
     });
 
-    it("rechaza usar Beneficio en un viaje con tarjeta", async () => {
+    it("permite usar Beneficio en un viaje con tarjeta", async () => {
       const result = await service.createRideRequest("token", {
         originText: "Hanga Roa",
         destinationText: "Anakena",
         paymentMethod: "card",
-        paymentProvider: "mercadopago",
+        paymentProvider: "klap",
         useWalletBenefit: true,
       });
 
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.code).toBe("WALLET_BENEFIT_CASH_ONLY");
-      expect(result.statusCode).toBe(422);
-      expect(mockCreateWithApprovedPolicyCharges).not.toHaveBeenCalled();
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.ride.walletBenefitRequested).toBe(true);
+      expect(mockCreateWithApprovedPolicyCharges).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        expect.any(Number),
+        "pending_payment",
+        expect.objectContaining({
+          paymentMethod: "card",
+          paymentProvider: "klap",
+          useWalletBenefit: true,
+        }),
+      );
     });
 
-    it("permite solicitar Beneficio solamente con efectivo", async () => {
+    it("permite solicitar Beneficio con efectivo", async () => {
       const result = await service.createRideRequest("token", {
         ...IMMEDIATE_CASH_INPUT,
         useWalletBenefit: true,

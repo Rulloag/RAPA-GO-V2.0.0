@@ -2199,6 +2199,8 @@ export function AdminHomePage(): JSX.Element {
   const [manualBenefitAmount, setManualBenefitAmount] = useState("");
   const [manualBenefitReason, setManualBenefitReason] = useState("");
   const [manualBenefitSubmitting, setManualBenefitSubmitting] = useState(false);
+  const [manualBenefitUserPickerOpen, setManualBenefitUserPickerOpen] = useState(false);
+  const [manualBenefitUserSearch, setManualBenefitUserSearch] = useState("");
   const [adminCashToast, setAdminCashToast] = useState<string | null>(null);
   const [showAdminChargesModal, setShowAdminChargesModal] = useState(false);
   const [showAdminNoShowModal, setShowAdminNoShowModal] = useState(false);
@@ -4046,23 +4048,68 @@ export function AdminHomePage(): JSX.Element {
                 </IonCardHeader>
                 <IonCardContent>
                   <div style={{ display: "grid", gap: 10 }}>
-                    <IonItem lines="none" style={{ "--background": "var(--rp-surface)", borderRadius: 14 } as CSSProperties}>
-                      <IonSelect
-                        label="Usuario"
-                        labelPlacement="stacked"
-                        value={manualBenefitUserId}
-                        placeholder="Selecciona pasajero/conductor"
-                        onIonChange={(event) => setManualBenefitUserId(String(event.detail.value ?? ""))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualBenefitUserSearch("");
+                        setManualBenefitUserPickerOpen(true);
+                      }}
+                      style={{
+                        width: "100%",
+                        border: "1px solid rgba(180,129,20,.42)",
+                        borderRadius: 14,
+                        background: "#fffdf7",
+                        color: "#111827",
+                        textAlign: "left",
+                        padding: "12px 14px",
+                        cursor: "pointer",
+                        boxShadow: "0 4px 14px rgba(92,64,16,.06)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: ".72rem",
+                          fontWeight: 900,
+                          color: "#7c5a12",
+                          marginBottom: 4,
+                        }}
                       >
-                        {adminUsers
-                          .filter((user) => ["passenger", "pasajero", "driver", "conductor"].includes(String((user as { role?: string }).role ?? "").toLowerCase()))
-                          .map((user) => (
-                            <IonSelectOption key={String((user as { id?: string }).id ?? "")} value={String((user as { id?: string }).id ?? "")}>
-                              {String((user as { name?: string | null }).name ?? "Usuario")} · {String((user as { email?: string | null }).email ?? "sin correo")}
-                            </IonSelectOption>
-                          ))}
-                      </IonSelect>
-                    </IonItem>
+                        Usuario
+                      </span>
+                      {(() => {
+                        const selectedUser = adminUsers.find(
+                          (user) => String((user as { id?: string }).id ?? "") === manualBenefitUserId,
+                        );
+
+                        if (!selectedUser) {
+                          return (
+                            <span style={{ display: "block", color: "#4b5563", fontWeight: 800 }}>
+                              Selecciona pasajero/conductor
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <>
+                            <span style={{ display: "block", color: "#111827", fontWeight: 950 }}>
+                              {String((selectedUser as { name?: string | null }).name ?? "Usuario")}
+                            </span>
+                            <span
+                              style={{
+                                display: "block",
+                                marginTop: 2,
+                                color: "#6b7280",
+                                fontSize: ".72rem",
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {String((selectedUser as { email?: string | null }).email ?? "sin correo")}
+                            </span>
+                          </>
+                        );
+                      })()}
+                    </button>
 
                     <IonItem lines="none" style={{ "--background": "var(--rp-surface)", borderRadius: 14 } as CSSProperties}>
                       <IonInput
@@ -4132,6 +4179,164 @@ export function AdminHomePage(): JSX.Element {
                   </div>
                 </IonCardContent>
               </IonCard>
+
+              <IonModal
+                isOpen={manualBenefitUserPickerOpen}
+                onDidDismiss={() => {
+                  setManualBenefitUserPickerOpen(false);
+                  setManualBenefitUserSearch("");
+                }}
+                style={{
+                  "--width": "min(94vw, 620px)",
+                  "--height": "min(84vh, 720px)",
+                  "--border-radius": "24px",
+                  "--background": "#fffaf0",
+                  "--box-shadow": "0 24px 70px rgba(17,24,39,.28)",
+                } as CSSProperties}
+              >
+                <IonHeader>
+                  <IonToolbar
+                    style={{
+                      "--background": "#fffaf0",
+                      "--color": "#111827",
+                      "--border-color": "rgba(180,129,20,.18)",
+                    } as CSSProperties}
+                  >
+                    <IonTitle style={{ fontWeight: 950 }}>Seleccionar usuario</IonTitle>
+                    <IonButton
+                      slot="end"
+                      fill="clear"
+                      onClick={() => setManualBenefitUserPickerOpen(false)}
+                      style={{ "--color": "#8a6415", fontWeight: 900 } as CSSProperties}
+                    >
+                      Cerrar
+                    </IonButton>
+                  </IonToolbar>
+                </IonHeader>
+
+                <IonContent
+                  style={{
+                    "--background": "#fffaf0",
+                    "--color": "#111827",
+                  } as CSSProperties}
+                >
+                  <div style={{ padding: 16 }}>
+                    <IonItem
+                      lines="none"
+                      style={{
+                        "--background": "#ffffff",
+                        "--color": "#111827",
+                        "--placeholder-color": "#6b7280",
+                        border: "1px solid rgba(180,129,20,.30)",
+                        borderRadius: 14,
+                        marginBottom: 12,
+                      } as CSSProperties}
+                    >
+                      <IonInput
+                        label="Buscar usuario"
+                        labelPlacement="stacked"
+                        value={manualBenefitUserSearch}
+                        placeholder="Nombre o correo"
+                        onIonInput={(event) =>
+                          setManualBenefitUserSearch(String(event.detail.value ?? ""))
+                        }
+                      />
+                    </IonItem>
+
+                    <div
+                      style={{
+                        marginBottom: 10,
+                        color: "#6b7280",
+                        fontSize: ".75rem",
+                        fontWeight: 800,
+                      }}
+                    >
+                      Selecciona la cuenta que recibirá el Beneficio.
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {adminUsers
+                        .filter((user) =>
+                          ["passenger", "pasajero", "driver", "conductor"].includes(
+                            String((user as { role?: string }).role ?? "").toLowerCase(),
+                          ),
+                        )
+                        .filter((user) => {
+                          const search = manualBenefitUserSearch.trim().toLowerCase();
+                          if (!search) return true;
+
+                          const name = String(
+                            (user as { name?: string | null }).name ?? "",
+                          ).toLowerCase();
+                          const email = String(
+                            (user as { email?: string | null }).email ?? "",
+                          ).toLowerCase();
+
+                          return name.includes(search) || email.includes(search);
+                        })
+                        .map((user) => {
+                          const userId = String((user as { id?: string }).id ?? "");
+                          const name = String(
+                            (user as { name?: string | null }).name ?? "Usuario",
+                          );
+                          const email = String(
+                            (user as { email?: string | null }).email ?? "sin correo",
+                          );
+                          const selected = userId === manualBenefitUserId;
+
+                          return (
+                            <button
+                              key={userId}
+                              type="button"
+                              onClick={() => {
+                                setManualBenefitUserId(userId);
+                                setManualBenefitUserPickerOpen(false);
+                                setManualBenefitUserSearch("");
+                              }}
+                              style={{
+                                width: "100%",
+                                border: selected
+                                  ? "2px solid #b78114"
+                                  : "1px solid rgba(180,129,20,.28)",
+                                borderRadius: 14,
+                                background: selected ? "#fff1bd" : "#ffffff",
+                                color: "#111827",
+                                padding: "11px 12px",
+                                textAlign: "left",
+                                cursor: "pointer",
+                                boxShadow: selected
+                                  ? "0 7px 18px rgba(183,129,20,.16)"
+                                  : "0 3px 10px rgba(17,24,39,.04)",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: "block",
+                                  fontWeight: 950,
+                                  fontSize: ".84rem",
+                                  color: "#111827",
+                                }}
+                              >
+                                {name}
+                              </span>
+                              <span
+                                style={{
+                                  display: "block",
+                                  marginTop: 3,
+                                  color: "#4b5563",
+                                  fontSize: ".71rem",
+                                  overflowWrap: "anywhere",
+                                }}
+                              >
+                                {email}
+                              </span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </IonContent>
+              </IonModal>
 
               {cashPaymentReviews.length > 0 && (
                 <IonCard
