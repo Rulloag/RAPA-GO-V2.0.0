@@ -7,7 +7,8 @@ import {
   type ReactNode,
 } from "react";
 import { useHistory } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { authService } from "./auth.service.js";
 import {
   sessionStorageService,
@@ -59,13 +60,30 @@ async function verifySessionWithTimeout(accessToken: string): Promise<AuthRespon
 const ACCESS_TOKEN_REFRESH_SKEW_MS = 60_000;
 const ACCESS_TOKEN_FOCUS_REFRESH_WINDOW_MS = 2 * 60_000;
 
-const TRANSIENT_AUTH_CODES = new Set([
-  "NETWORK_ERROR",
-  "TIMEOUT",
-  "INVALID_RESPONSE",
-  "AUTH_RESTORE_TIMEOUT",
-]);
+/**
+ * Tope de `setTimeout`: por encima de 2^31-1 ms el navegador desborda el valor
+ * y ejecuta el callback de inmediato.
+ */
+const MAX_TIMEOUT_DELAY_MS = 2_147_483_647;
 
+/** Retardo inicial y tope entre reintentos de renovación tras un fallo. */
+const REFRESH_BACKOFF_BASE_MS = 5_000;
+const REFRESH_BACKOFF_MAX_MS = 5 * 60_000;
+
+/**
+ * Códigos que SÍ significan "esta sesión ya no existe".
+ *
+ * Es deliberadamente una lista de denegación, no de permisos. Antes el flujo
+ * inverso (una lista blanca de códigos "transitorios" y borrar la sesión ante
+ * cualquier otro) borraba la sesión —y con ella el refresh token de 30 días—
+ * por un 500 puntual, un 429 de rate limit o cualquier código nuevo que el
+ * backend añadiera. Un fallo pasajero del servidor dejaba al usuario obligado
+ * a iniciar sesión a mano.
+ *
+ * Con la lista de denegación, lo desconocido se trata como transitorio: la
+ * sesión se conserva y el siguiente intento decide. Solo estos códigos, que
+ * son afirmaciones explícitas del backend, cierran la sesión.
+ */
 const TERMINAL_REFRESH_CODES = new Set([
   "AUTH_REFRESH_TOKEN_INVALID",
   "AUTH_SESSION_REVOKED",
@@ -73,6 +91,10 @@ const TERMINAL_REFRESH_CODES = new Set([
   "AUTH_ACCOUNT_SUSPENDED",
   "UNAUTHORIZED",
 ]);
+
+function isTerminalAuthCode(code: string): boolean {
+  return TERMINAL_REFRESH_CODES.has(code);
+}
 
 type SessionRefreshOutcome =
   | { kind: "success"; session: AuthSession }
@@ -118,6 +140,10 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   const sessionRef = useRef<AuthSession | null>(null);
   const refreshInFlightRef =
     useRef<Promise<SessionRefreshOutcome> | null>(null);
+  /** Fallos transitorios seguidos, para el retardo creciente entre intentos. */
+  const refreshFailureStreakRef = useRef(0);
+  /** Marca de tiempo hasta la que no se vuelve a intentar renovar. */
+  const refreshBackoffUntilRef = useRef(0);
 
   useEffect(() => {
     sessionRef.current = session;
@@ -131,6 +157,23 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     setUser(null);
     setStatus("unauthenticated");
   }, []);
+
+  /**
+   * Punto ÚNICO de cierre de sesión por pérdida de credenciales.
+   *
+   * Antes, borrar la sesión y navegar a login eran dos pasos sueltos, y había
+   * cuatro caminos en `restore()` que hacían lo primero y no lo segundo. Como
+   * el router no tiene ningún guard (RouteGuard es un passthrough), el usuario
+   * se quedaba en la pantalla protegida con `user === null`: de ahí el avatar
+   * con "?" y que ninguna acción funcionara.
+   *
+   * Aquí van siempre juntos. `history.replace` en vez de `push` para que el
+   * botón atrás no devuelva a una pantalla sin sesión.
+   */
+  const forceSignOut = useCallback(async (): Promise<void> => {
+    await clearLocalSession();
+    history.replace(ROUTES.AUTH.LOGIN);
+  }, [clearLocalSession, history]);
 
   const applyAuthenticatedSession = useCallback(
     async (
@@ -154,6 +197,28 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       const existing = refreshInFlightRef.current;
       if (existing) return existing;
 
+      /**
+       * Freno de reintentos.
+       *
+       * `refreshInFlightRef` solo une las llamadas SIMULTÁNEAS. Las pantallas
+       * con sondeo (los viajes del pasajero refrescan cada 2,5 s) generan un
+       * 401 por ciclo, y cada 401 pedía una renovación nueva — secuencial, no
+       * simultánea, así que el deduplicador no la frenaba. Eso agotaba el
+       * límite del endpoint en poco más de un minuto y, a partir de ahí, todo
+       * devolvía 429 sin que la sesión llegara a cerrarse: la app se quedaba
+       * "conectada" pero sin poder hacer nada.
+       *
+       * Tras un fallo transitorio se espera un tiempo creciente antes de
+       * volver a intentarlo. Un fallo terminal no llega aquí: cierra sesión.
+       */
+      const now = Date.now();
+      if (now < refreshBackoffUntilRef.current) {
+        return {
+          kind: "transient",
+          code: "AUTH_REFRESH_BACKOFF",
+        };
+      }
+
       const operation = (async (): Promise<SessionRefreshOutcome> => {
         const refreshToken =
           await sessionStorageService.loadRefreshToken();
@@ -165,6 +230,9 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         const response = await authService.refresh(refreshToken);
 
         if (response.ok) {
+          refreshFailureStreakRef.current = 0;
+          refreshBackoffUntilRef.current = 0;
+
           await applyAuthenticatedSession(
             response.session,
             response.refreshToken,
@@ -187,6 +255,15 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
             code: responseCode,
           };
         }
+
+        refreshFailureStreakRef.current += 1;
+        refreshBackoffUntilRef.current =
+          Date.now() +
+          Math.min(
+            REFRESH_BACKOFF_MAX_MS,
+            REFRESH_BACKOFF_BASE_MS *
+              2 ** (refreshFailureStreakRef.current - 1),
+          );
 
         return {
           kind: "transient",
@@ -230,6 +307,25 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         setStatus("authenticated");
       };
 
+      /**
+       * Un fallo de renovación solo cierra la sesión si el backend lo afirma
+       * (terminal) o si ya no queda refresh token con el que reintentar
+       * (missing). Cualquier otra cosa —500, 429, timeout, código nuevo— deja
+       * la sesión persistida en pie para que el siguiente intento la recupere.
+       */
+      const settleRefreshFailure = async (
+        outcome: SessionRefreshOutcome,
+      ): Promise<void> => {
+        if (cancelled) return;
+
+        if (outcome.kind === "terminal" || outcome.kind === "missing") {
+          await forceSignOut();
+          return;
+        }
+
+        keepPersistedSessionDuringTransientFailure();
+      };
+
       if (
         expiresWithin(
           persisted.expiresAt,
@@ -239,15 +335,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         const refreshOutcome = await renewSession();
         if (cancelled || refreshOutcome.kind === "success") return;
 
-        if (
-          refreshOutcome.kind === "terminal" ||
-          refreshOutcome.kind === "missing"
-        ) {
-          await clearLocalSession();
-          return;
-        }
-
-        keepPersistedSessionDuringTransientFailure();
+        await settleRefreshFailure(refreshOutcome);
         return;
       }
 
@@ -268,29 +356,35 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         const refreshOutcome = await renewSession();
         if (cancelled || refreshOutcome.kind === "success") return;
 
-        if (
-          refreshOutcome.kind === "terminal" ||
-          refreshOutcome.kind === "missing"
-        ) {
-          await clearLocalSession();
-          return;
-        }
-
-        keepPersistedSessionDuringTransientFailure();
+        await settleRefreshFailure(refreshOutcome);
         return;
       }
 
-      if (TRANSIENT_AUTH_CODES.has(verifiedCode)) {
-        keepPersistedSessionDuringTransientFailure();
+      /**
+       * Aquí estaba el fallo principal: el código llegaba con una lista blanca
+       * de errores "transitorios" y borraba la sesión ante CUALQUIER otro. Un
+       * 500 del servidor o un 429 de rate limit bastaban para destruir el
+       * refresh token de 30 días y dejar al usuario sin forma de volver.
+       *
+       * Ahora solo cierran la sesión los códigos que el backend usa para decir
+       * explícitamente "esta sesión ya no vale". Lo desconocido se conserva.
+       */
+      if (isTerminalAuthCode(verifiedCode)) {
+        await forceSignOut();
         return;
       }
 
-      await clearLocalSession();
+      keepPersistedSessionDuringTransientFailure();
     }
 
+    /**
+     * Si la restauración se rompe de forma inesperada no basta con marcar
+     * "unauthenticated": sin navegar, el usuario se queda en la pantalla
+     * protegida sin sesión, que es justo el estado con el avatar "?".
+     */
     void restore().catch(() => {
       if (!cancelled) {
-        setStatus("unauthenticated");
+        void forceSignOut();
       }
     });
 
@@ -299,7 +393,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     };
   }, [
     applyAuthenticatedSession,
-    clearLocalSession,
+    forceSignOut,
     renewSession,
   ]);
 
@@ -315,12 +409,19 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     let cancelled = false;
     let checking = false;
 
-    const redirectToLogin = (): void => {
-      if (!cancelled) {
-        history.replace(ROUTES.AUTH.LOGIN);
-      }
-    };
-
+    /**
+     * El cierre de sesión NO se condiciona a `cancelled`.
+     *
+     * Antes sí: `if (!cancelled) history.replace(...)`. El problema es que
+     * `renewSession()` llama internamente a `clearLocalSession()`, que cambia
+     * `status` y `session` — las dependencias de este efecto. React limpia el
+     * efecto anterior y ese cleanup pone `cancelled = true`, así que la
+     * redirección que venía justo después podía quedarse en nada. Resultado:
+     * sesión borrada, usuario en la pantalla protegida, avatar "?".
+     *
+     * `forceSignOut` es idempotente (limpia y navega), así que ejecutarlo de
+     * más es inofensivo; no ejecutarlo es exactamente el bug.
+     */
     const recoverAccessToken = async (): Promise<void> => {
       const outcome = await renewSession();
 
@@ -328,7 +429,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         outcome.kind === "terminal" ||
         outcome.kind === "missing"
       ) {
-        redirectToLogin();
+        await forceSignOut();
       }
     };
 
@@ -368,9 +469,12 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
           return;
         }
 
-        if (TERMINAL_REFRESH_CODES.has(verifiedCode)) {
-          await clearLocalSession();
-          redirectToLogin();
+        /**
+         * Igual que en `restore()`: solo los códigos terminales cierran la
+         * sesión. Un 500 o un 429 aquí no deben tocarla.
+         */
+        if (isTerminalAuthCode(verifiedCode)) {
+          await forceSignOut();
         }
       } finally {
         checking = false;
@@ -397,9 +501,19 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
         )
       : 1_000;
 
+    /**
+     * El temporizador sigue existiendo para la app en primer plano, pero ya no
+     * es el mecanismo principal: en un móvil, `setTimeout` se congela mientras
+     * la app está en segundo plano, así que un temporizador a horas vista no
+     * dispara al volver. Quien cubre ese caso es `appStateChange` de abajo.
+     *
+     * `Math.min` contra el máximo de un entero de 32 bits: por encima de eso
+     * `setTimeout` desborda y dispara de inmediato, convirtiendo una espera
+     * larga en un bucle de renovaciones.
+     */
     const proactiveRefreshTimer = window.setTimeout(
       () => void recoverAccessToken(),
-      proactiveRefreshDelay,
+      Math.min(proactiveRefreshDelay, MAX_TIMEOUT_DELAY_MS),
     );
 
     window.addEventListener("focus", refreshSessionUser);
@@ -416,8 +530,47 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
       handleTokenExpired,
     );
 
+    /**
+     * Reanudación nativa.
+     *
+     * `focus` y `visibilitychange` son la opinión de la WebView, no la del
+     * sistema operativo: en Android en particular no se puede contar con que
+     * lleguen al restaurar la Activity desde segundo plano. Sin esto, volver
+     * de WhatsApp podía no revalidar nada y la app se quedaba con un token
+     * muerto creyendo que seguía autenticada.
+     *
+     * `App.addListener` devuelve una promesa; se guarda para poder quitar el
+     * listener aunque el efecto se limpie antes de que resuelva.
+     */
+    let appStateListener: PluginListenerHandle | null = null;
+    let listenerDetached = false;
+
+    try {
+      void Promise.resolve(
+        App.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) void refreshSessionUser();
+        }),
+      )
+        .then((handle) => {
+          if (listenerDetached) {
+            void handle.remove();
+            return;
+          }
+          appStateListener = handle;
+        })
+        .catch(() => {
+          // En web el plugin no está disponible: `focus`/`visibilitychange` ya
+          // cubren ese caso.
+        });
+    } catch {
+      // Algunas versiones del puente lanzan de forma síncrona si el plugin no
+      // está registrado. No debe impedir el registro del resto de listeners.
+    }
+
     return () => {
       cancelled = true;
+      listenerDetached = true;
+      void appStateListener?.remove();
       window.clearTimeout(proactiveRefreshTimer);
       window.removeEventListener("focus", refreshSessionUser);
       document.removeEventListener(
@@ -435,8 +588,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
     };
   }, [
     applyAuthenticatedSession,
-    clearLocalSession,
-    history,
+    forceSignOut,
     renewSession,
     session?.accessToken,
     session?.expiresAt,

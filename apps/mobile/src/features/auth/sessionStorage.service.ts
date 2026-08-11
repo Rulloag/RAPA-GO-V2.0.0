@@ -58,20 +58,57 @@ class SessionStorageService {
       isVerified: session.user.isVerified,
     };
 
-    await SecureStorage.set(SESSION_KEY, JSON.stringify(persisted));
+    /**
+     * El refresh token se guarda ANTES que la sesión, a propósito.
+     *
+     * Son dos escrituras separadas al almacén nativo y el sistema puede matar
+     * el proceso entre ambas — justo lo que pasa al pasar la app a segundo
+     * plano. El orden decide cuál de los dos estados a medias queda:
+     *
+     *  - Sesión primero (como estaba): queda el access token NUEVO junto al
+     *    refresh token VIEJO, que el servidor ya revocó al rotarlo. Cuando el
+     *    access token caduque no habrá con qué renovar: sesión perdida sin
+     *    remedio.
+     *  - Refresh primero (ahora): queda el refresh token NUEVO junto al access
+     *    token viejo. El viejo falla, se renueva con el nuevo y todo sigue.
+     *
+     * El estado a medias deja de ser terminal y pasa a ser recuperable.
+     */
     if (refreshToken) {
       await SecureStorage.set(REFRESH_KEY, refreshToken);
     }
+    await SecureStorage.set(SESSION_KEY, JSON.stringify(persisted));
   }
 
   async loadSession(): Promise<PersistedSession | null> {
-    try {
-      const raw = await SecureStorage.get(SESSION_KEY);
-      if (!raw) return null;
+    let raw: unknown;
 
+    try {
+      raw = await SecureStorage.get(SESSION_KEY);
+    } catch {
+      /**
+       * Un error AL LEER no es una sesión inválida.
+       *
+       * Antes este catch borraba las dos claves, y con ellas el refresh token
+       * de 30 días. Pero el almacén nativo lanza excepción en situaciones
+       * pasajeras y perfectamente normales — por ejemplo, leer con el
+       * dispositivo bloqueado (el acceso al llavero es `whenUnlocked`), que es
+       * justo lo que ocurre cuando la app despierta en segundo plano. Un fallo
+       * de lectura destruía una sesión que era completamente válida.
+       *
+       * Ahora no se borra nada: se informa de que no se pudo leer y el
+       * siguiente intento lo resuelve.
+       */
+      return null;
+    }
+
+    if (!raw) return null;
+
+    try {
       const parsed = JSON.parse(String(raw)) as unknown;
 
       if (!isPersistedSession(parsed)) {
+        // Contenido corrupto o de un formato antiguo: esto sí es irrecuperable.
         await this.clearSession();
         return null;
       }

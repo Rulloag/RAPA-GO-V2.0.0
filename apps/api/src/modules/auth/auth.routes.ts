@@ -50,11 +50,21 @@ export async function authRoutes(
     { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
     authController.appleLink,
   );
+  /**
+   * El límite era 30 / 15 min y se agotaba en poco más de un minuto: las
+   * pantallas con sondeo (viajes del pasajero cada 2,5 s) disparan un 401 por
+   * ciclo, y cada 401 pedía una renovación. Al agotarse, el backend devolvía
+   * 429 y la sesión quedaba viva pero inservible.
+   *
+   * El límite sigue existiendo —es un endpoint de credenciales— pero se
+   * dimensiona para el peor caso legítimo en vez de para el ideal. El arreglo
+   * de fondo (que el cliente no reintente en bucle) va en AuthProvider.
+   */
   fastify.post(
     "/refresh",
     {
       config: {
-        rateLimit: { max: 30, timeWindow: "15 minutes" },
+        rateLimit: { max: 120, timeWindow: "15 minutes" },
       },
     },
     authController.refresh,

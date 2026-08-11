@@ -117,9 +117,45 @@ function StandaloneRoutes(): JSX.Element {
   );
 }
 
+/**
+ * Áreas que exigen sesión. Todo lo demás (login, registro, legales, postular,
+ * recuperar contraseña) sigue siendo accesible sin autenticar.
+ */
+const SESSION_REQUIRED_BASES = [
+  ROUTES.PASSENGER.BASE,
+  ROUTES.DRIVER.BASE,
+  ROUTES.ADMIN.BASE,
+  ROUTES.GUIDE.BASE,
+  ROUTES.RENTAL.BASE,
+];
+
 export function AppRouter(): JSX.Element {
   const { pathname } = useLocation();
-  const { user } = useAuth();
+  const { user, status } = useAuth();
+
+  /**
+   * GUARD DE SESIÓN (no de rol).
+   *
+   * El "modo de recuperación visual" desactivó TODOS los bloqueos del
+   * frontend, incluida la redirección por sesión. Eso arreglaba las pantallas
+   * en negro, pero dejó un agujero: cuando la sesión se pierde, el usuario se
+   * queda en la pantalla protegida con `user === null`. El avatar entonces se
+   * dibuja como "?" y ninguna petición funciona, porque ya no hay token.
+   *
+   * Se repone SOLO la comprobación de sesión, que es la que faltaba. Las
+   * validaciones por ROL siguen desactivadas a propósito: eran las que
+   * producían las pantallas en negro, y la autorización real vive en la API.
+   *
+   * `status === "loading"` no redirige: durante la restauración todavía no se
+   * sabe si hay sesión, y expulsar ahí devolvería al login en cada arranque.
+   */
+  const requiresSession = SESSION_REQUIRED_BASES.some((base) =>
+    isPathInside(pathname, base),
+  );
+
+  if (requiresSession && status === "unauthenticated") {
+    return <Redirect to={ROUTES.AUTH.LOGIN} />;
+  }
 
   /**
    * Centro de ayuda: vive en /support-center, fuera del prefijo /passenger, y
