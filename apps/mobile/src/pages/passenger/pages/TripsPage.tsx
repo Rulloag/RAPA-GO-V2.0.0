@@ -4840,6 +4840,11 @@ function passengerRideHasAssignedDriver(
 ): boolean {
   return Boolean(
     passengerFirstValue(
+      ride.driverUserId,
+      ride.driverId,
+      ride.assignedDriverId,
+      live?.driverUserId,
+      live?.driverId,
       ride.driverEmail,
       ride.driverName,
       ride.driverFullName,
@@ -4861,6 +4866,7 @@ function passengerRideIsAssignedOrActive(ride: RideRequestData & Record<string, 
     "driver_en_route",
     "driver_arrived",
     "in_progress",
+    "completed",
   ].includes(String(ride.status ?? "").toLowerCase());
 }
 
@@ -5051,10 +5057,10 @@ function passengerReadDriverProfilePhotoForRide(
       if (scoped) return scoped;
     }
 
-    // Compatibilidad de desarrollo: cuando hay exactamente un conductor
-    // publicado en este navegador, se puede recuperar su foto sin mezclarla
-    // con perfiles de terceros.
-    if (profiles.length === 1) {
+    // Nunca usar el único perfil global como sustituto si este viaje ya tiene
+    // conductor identificado. Ese fallback podía mostrar la foto de otro
+    // conductor (por ejemplo, el último perfil guardado en este navegador).
+    if (profiles.length === 1 && ownerCandidates.length === 0) {
       const [mapOwner, profile] = profiles[0]!;
       const direct = passengerGetProfilePhotoFromObject(profile);
       if (direct) return direct;
@@ -8153,10 +8159,10 @@ function PassengerCashPaymentAfterRideCard({
         marginTop: 12,
         borderRadius: 22,
         padding: "14px",
-        background: "linear-gradient(135deg,#111111,#3b2a12)",
-        color: "#ffffff",
-        border: "1px solid rgba(210,164,58,.65)",
-        boxShadow: "0 12px 28px rgba(0,0,0,.18)",
+        background: "var(--rp-surface)",
+        color: "var(--rp-text)",
+        border: "1px solid var(--rp-border)",
+        boxShadow: "0 12px 28px rgba(0,0,0,.10)",
       }}
     >
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -8165,7 +8171,7 @@ function PassengerCashPaymentAfterRideCard({
           <div style={{ fontWeight: 950, fontSize: ".95rem" }}>
             ¿Pagaste de más en efectivo?
           </div>
-          <div style={{ marginTop: 4, color: "rgba(255,255,255,.78)", fontSize: ".78rem", lineHeight: 1.35, fontWeight: 800 }}>
+          <div style={{ marginTop: 4, color: "var(--rp-muted)", fontSize: ".78rem", lineHeight: 1.35, fontWeight: 800 }}>
             Precio del viaje: <strong>{formatClp(displayFareClp)}</strong>. Si pagaste de más, te diremos cuánto es la diferencia.
           </div>
         </div>
@@ -8218,7 +8224,7 @@ function PassengerCashPaymentAfterRideCard({
             />
           </IonItem>
 
-          <div style={{ color: "rgba(255,255,255,.82)", fontSize: ".76rem", lineHeight: 1.35, fontWeight: 800 }}>
+          <div style={{ color: "var(--rp-muted)", fontSize: ".76rem", lineHeight: 1.35, fontWeight: 800 }}>
             {canConfirmOverpay ? (
               <>
                 Has pagado de más: <strong>{formatClp(overpaidClp)}</strong>. ¿Quieres usar ese dinero como saldo a favor o solicitar una devolución a tu cuenta bancaria registrada?
@@ -8273,7 +8279,7 @@ function PassengerCashPaymentAfterRideCard({
             <IonButton
               size="small"
               fill="clear"
-              color="light"
+              color="medium"
               style={{ "--border-radius": "999px", fontWeight: 900 } as React.CSSProperties}
               onClick={() => {
                 setShowOverpaidForm(false);

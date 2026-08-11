@@ -615,6 +615,10 @@ export class RideReceiptsService {
       });
 
       const actualDistance = calculateRouteDistance(points);
+      const receiptDistanceMeters =
+        actualDistance != null && actualDistance >= 25
+          ? actualDistance
+          : ride.distanceMeters ?? actualDistance;
       const amountClp = receiptAmount(
         type,
         ride,
@@ -655,7 +659,7 @@ export class RideReceiptsService {
         completedAt: ride.completedAt ?? null,
         cancelledAt: ride.cancelledAt ?? null,
         arrivedAt: ride.arrivedAt ?? null,
-        distanceMeters: actualDistance ?? ride.distanceMeters ?? null,
+        distanceMeters: receiptDistanceMeters ?? null,
         durationSeconds: calculateRideDuration(ride),
         amountClp,
         paymentMethod:

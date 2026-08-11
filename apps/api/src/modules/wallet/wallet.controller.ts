@@ -3,6 +3,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { sendError, sendOk } from "../../shared/http/apiResponse.js";
 import {
   adminCreateWalletCreditSchema,
+  adminCreateManualWalletBenefitSchema,
   adminReviewCashOverpaymentBenefitSchema,
   createPaymentOrderSchema,
   listCashOverpaymentBenefitsQuerySchema,
@@ -369,6 +370,40 @@ export const walletController = {
       transaction: result.transaction,
       alreadyApproved: result.alreadyApproved,
     });
+  },
+
+  async adminCreateManualWalletBenefit(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = requireToken(request, reply);
+    if (!token) return;
+
+    const parsed = adminCreateManualWalletBenefitSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendValidationError(
+        reply,
+        parsed.error.errors.map((error) => error.message),
+      );
+      return;
+    }
+
+    const result = await service.adminCreateManualWalletBenefit(
+      token,
+      parsed.data,
+    );
+
+    if (!result.ok) {
+      sendServiceError(reply, result);
+      return;
+    }
+
+    sendOk(reply, {
+      wallet: result.wallet,
+      transaction: result.transaction,
+      manualGrant: result.manualGrant,
+      owner: result.owner,
+    }, 201);
   },
 
   async createPaymentOrder(

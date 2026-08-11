@@ -78,6 +78,8 @@ export interface RideRequestResponse {
   driverVehicleYear:    number | null;
   driverVehiclePlate:   string | null;
   driverVehicleColor:   string | null;
+  /** Foto canónica del perfil del conductor asignado a ESTE viaje. */
+  driverProfilePhotoUrl?: string | null;
   discountApplied:      boolean;
   discountPercent:      number | null;
   originalFareClp:      number | null;

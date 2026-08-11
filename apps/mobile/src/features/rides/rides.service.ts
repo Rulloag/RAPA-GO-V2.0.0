@@ -99,6 +99,8 @@ export interface RideRequestData {
   driverVehicleYear:    number | null;
   driverVehiclePlate:   string | null;
   driverVehicleColor:   string | null;
+  /** Foto canónica del conductor devuelta por el backend para este ride. */
+  driverProfilePhotoUrl?: string | null;
   isOfflineBooking?:    boolean;
   discountApplied:      boolean;
   discountPercent:      number | null;

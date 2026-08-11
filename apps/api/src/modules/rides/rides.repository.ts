@@ -160,6 +160,7 @@ export interface RideWithDriverName extends RideRequest {
   driverVehicleYear:   number | null;
   driverVehiclePlate:  string | null;
   driverVehicleColor:  string | null;
+  driverProfilePhotoUrl: string | null;
 }
 
 
@@ -236,6 +237,7 @@ export class RidesRepository {
           driverVehicleYear:  driverProfiles.vehicleYear,
           driverVehiclePlate: driverProfiles.vehiclePlate,
           driverVehicleColor: driverProfiles.vehicleColor,
+          driverProfilePhotoUrl: driverProfiles.profilePhotoUrl,
         })
         .from(rideRequests)
         .leftJoin(driver, eq(rideRequests.driverUserId, driver.id))
@@ -278,6 +280,7 @@ export class RidesRepository {
           driverVehicleYear:   r.driverVehicleYear ?? null,
           driverVehiclePlate:  r.driverVehiclePlate ?? null,
           driverVehicleColor:  r.driverVehicleColor ?? null,
+          driverProfilePhotoUrl: r.driverProfilePhotoUrl ?? null,
         } as RideWithDriverName;
       });
     } catch (err) {

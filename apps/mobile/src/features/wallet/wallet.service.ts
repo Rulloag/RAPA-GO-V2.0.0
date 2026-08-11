@@ -122,6 +122,13 @@ export interface AdminCreateWalletCreditPayload {
   externalReference?: string;
 }
 
+export interface AdminManualBenefitResponse {
+  wallet: WalletData;
+  transaction: TransactionData;
+  manualGrant: true;
+  owner: { id: string; name: string | null; email: string | null };
+}
+
 export interface AdminBenefitReviewPayload {
   approvedAmountClp?: number;
   adminDecisionReason?: string;
@@ -291,6 +298,23 @@ export const walletService = {
       { token: accessToken },
     );
     return unwrap(result, "No se pudo aprobar el Beneficio.");
+  },
+
+  async adminGrantManualBenefit(
+    accessToken: string,
+    payload: {
+      userId: string;
+      amountClp: number;
+      reason: string;
+      externalReference: string;
+    },
+  ): Promise<AdminManualBenefitResponse> {
+    const result = await apiClient.post<Envelope<AdminManualBenefitResponse>>(
+      "/admin/wallet/manual-benefits",
+      payload,
+      { token: accessToken },
+    );
+    return unwrap(result, "No se pudo otorgar el Beneficio manual.");
   },
 
   async getPaymentStatus(

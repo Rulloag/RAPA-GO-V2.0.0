@@ -72,6 +72,14 @@ export const adminCreateWalletCreditSchema = z.object({
   externalReference: z.string().trim().max(120).optional(),
 });
 
+/** Beneficio manual otorgado por Admin para futuros viajes del propietario. */
+export const adminCreateManualWalletBenefitSchema = z.object({
+  userId: z.string().uuid(),
+  amountClp: z.number().int().positive().max(50_000_000),
+  reason: z.string().trim().min(3).max(300),
+  externalReference: z.string().trim().min(8).max(160),
+});
+
 export type CreatePaymentOrderInput = z.infer<
   typeof createPaymentOrderSchema
 >;
@@ -90,4 +98,7 @@ export type AdminReviewCashOverpaymentBenefitInput = z.infer<
 >;
 export type AdminCreateWalletCreditInput = z.infer<
   typeof adminCreateWalletCreditSchema
+>;
+export type AdminCreateManualWalletBenefitInput = z.infer<
+  typeof adminCreateManualWalletBenefitSchema
 >;

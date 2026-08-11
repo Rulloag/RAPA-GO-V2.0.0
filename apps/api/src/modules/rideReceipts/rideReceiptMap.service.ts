@@ -63,6 +63,25 @@ export function normalizeReceiptRoute(
     }
   }
 
+  const capturedDistanceMeters = deduped.reduce((total, point, index) => {
+    const previous = deduped[index - 1];
+    return previous ? total + distanceMeters(previous, point) : total;
+  }, 0);
+
+  // Si el GPS quedó prácticamente inmóvil (pruebas en navegador, permisos o
+  // cierre rápido), no dibujamos una rayita engañosa. Mostramos una referencia
+  // amplia entre recogida y destino, siempre que ambos puntos sean válidos.
+  if (
+    capturedDistanceMeters < 25 &&
+    origin &&
+    destination &&
+    isValidPoint(origin) &&
+    isValidPoint(destination) &&
+    distanceMeters(origin, destination) >= 25
+  ) {
+    return [origin, destination];
+  }
+
   const route = [...deduped];
 
   if (origin && isValidPoint(origin)) {

@@ -48,6 +48,11 @@ export async function walletRoutes(
   );
 
   fastify.post(
+    "/admin/wallet/manual-benefits",
+    walletController.adminCreateManualWalletBenefit,
+  );
+
+  fastify.post(
     "/payments/create-order",
     walletController.createPaymentOrder,
   );

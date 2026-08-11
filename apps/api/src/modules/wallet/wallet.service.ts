@@ -13,6 +13,7 @@ import { WalletRepository } from "./wallet.repository.js";
 import { CashPaymentsRepository } from "../cashPayments/cashPayments.repository.js";
 import type {
   AdminCreateWalletCreditInput,
+  AdminCreateManualWalletBenefitInput,
   AdminReviewCashOverpaymentBenefitInput,
   CreatePaymentOrderInput,
   RequestCashOverpaymentBenefitInput,
@@ -726,6 +727,72 @@ export class WalletService {
       adminDecisionReason:
         input.reason?.trim() || input.description?.trim(),
     });
+  }
+
+  async adminCreateManualWalletBenefit(
+    accessToken: string,
+    input: AdminCreateManualWalletBenefitInput,
+  ) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+
+    if (normalizeRole(auth.role) !== "admin") {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Only admins can grant manual wallet benefits.",
+        statusCode: 403,
+      };
+    }
+
+    const owner = await usersRepo.findById(input.userId);
+    if (!owner) {
+      return {
+        ok: false as const,
+        code: "NOT_FOUND",
+        message: "Usuario no encontrado.",
+        statusCode: 404,
+      };
+    }
+
+    if (!roleCanUseBenefits(owner.role)) {
+      return {
+        ok: false as const,
+        code: "WALLET_BENEFIT_ROLE_NOT_ALLOWED",
+        message: "Solo pasajeros o conductores que también usan la app como usuario pueden recibir Beneficios.",
+        statusCode: 422,
+      };
+    }
+
+    const amountClp = Math.max(0, Math.round(input.amountClp));
+    const reason = input.reason.trim();
+    const externalReference = input.externalReference.trim();
+    const providerTransactionId = `admin-manual-benefit:${externalReference}`;
+
+    const credited = await walletRepo.creditUserWallet({
+      userId: owner.id,
+      rideId: null,
+      amountClp,
+      description: `Beneficio manual Admin: ${reason}`,
+      providerTransactionId,
+      metadata: {
+        source: "admin_manual_benefit",
+        grantedByUserId: auth.userId,
+        reason,
+        ownerUserId: owner.id,
+        exclusiveToOwner: true,
+        transferable: false,
+        rechargeable: false,
+      },
+    });
+
+    return {
+      ok: true as const,
+      wallet: credited.wallet,
+      transaction: credited.transaction,
+      manualGrant: true as const,
+      owner: { id: owner.id, name: owner.name, email: owner.email },
+    };
   }
 
   async createPaymentOrder(

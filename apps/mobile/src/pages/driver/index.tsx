@@ -80,6 +80,7 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
+import { cashPaymentsService } from "../../features/cashPayments/cashPayments.service.js";
 import { rideLocationService } from "../../features/location/rideLocation.service.js";
 import {
   MapFallback,
@@ -7849,6 +7850,11 @@ export function DriverHomePage(): JSX.Element {
     useState<string | null>(null);
 
   useEffect(() => {
+    if (!session?.accessToken) return;
+    void syncStoredDriverCashClosuresToBackend(session.accessToken);
+  }, [session?.accessToken]);
+
+  useEffect(() => {
     setDriverAvailability(readDriverAvailability(driverAvailabilityUser));
   }, [
     driverAvailabilityUser?.id,
@@ -11455,6 +11461,47 @@ function persistDriverCashClosureForAdmin(
   }
 }
 
+async function persistDriverCashClosureInBackend(
+  accessToken: string,
+  rideId: string,
+  closure: DriverCashClosurePayload | null | undefined,
+): Promise<void> {
+  if (!closure) return;
+
+  await cashPaymentsService.close(accessToken, rideId, {
+    paidClp: closure.paidClp,
+    decision: closure.decision === "overpaid" ? "overpaid" : "exact",
+    ...(closure.notes?.trim() ? { note: closure.notes.trim() } : {}),
+  });
+}
+
+async function syncStoredDriverCashClosuresToBackend(accessToken: string): Promise<void> {
+  try {
+    const raw = localStorage.getItem(RAPAGO_DRIVER_CASH_CLOSURES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as DriverCashClosurePayload[]) : [];
+    if (!Array.isArray(parsed) || parsed.length === 0) return;
+
+    const unique = new Map<string, DriverCashClosurePayload>();
+    for (const item of parsed) {
+      const rideId = String(item?.rideId ?? "").trim();
+      if (!rideId || !Number.isFinite(Number(item?.paidClp))) continue;
+      if (!unique.has(rideId)) unique.set(rideId, item);
+      if (unique.size >= 20) break;
+    }
+
+    for (const [rideId, closure] of unique) {
+      try {
+        await persistDriverCashClosureInBackend(accessToken, rideId, closure);
+      } catch {
+        // Se reintentará en la próxima entrada del conductor. El endpoint es
+        // idempotente para el mismo viaje/monto y no duplica el cierre.
+      }
+    }
+  } catch {
+    // Storage local corrupto o no disponible: no bloquea la app.
+  }
+}
+
 function DriverCashCloseRideOverlay({
   ride,
   user,
@@ -14943,7 +14990,17 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       const completedAt = new Date().toISOString();
       const cashPatch = buildDriverCashClosureRidePatch(currentRide, cashClosure);
 
+      let cashBackendWarning: string | null = null;
       if (cashClosure) {
+        try {
+          await persistDriverCashClosureInBackend(session.accessToken, rideId, cashClosure);
+        } catch (cashError) {
+          cashBackendWarning =
+            cashError instanceof Error
+              ? `Viaje completado, pero el efectivo no llegó al backend: ${cashError.message}`
+              : "Viaje completado, pero el efectivo no llegó al backend. Reintenta desde Mis Viajes.";
+        }
+
         persistDriverCashClosureForAdmin(
           { ...(currentRide as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
           cashClosure,
@@ -14971,6 +15028,10 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       const nextActive = promoteDriverNextRideAfterCompletion(rideId, session?.user);
       const currentLocation = driverLocationRef.current ?? driverLocation;
 
+      if (cashBackendWarning) {
+        setError(cashBackendWarning);
+      }
+
       if (nextActive && currentLocation) {
         publishAcceptedDriverVehicleToPassenger(nextActive as unknown as Record<string, unknown>, session?.user);
         publishDriverLiveLocationForPassenger(
@@ -14986,10 +15047,13 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           session?.user,
         );
         setAssignedRides([nextActive]);
-        setError("Viaje cerrado correctamente. Se activó tu próximo servicio aceptado.");
+        setError(
+          cashBackendWarning ??
+            "Viaje cerrado correctamente. Se activó tu próximo servicio aceptado.",
+        );
       } else {
         setAssignedRides((prev) => prev.filter((item) => item.id !== rideId));
-        setError(null);
+        setError(cashBackendWarning);
       }
 
       window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId, status: "completed", cashClosure } }));
@@ -17898,7 +17962,21 @@ function DriverMyRidesPage(): JSX.Element {
       const completedAt = new Date().toISOString();
       const cashPatch = buildDriverCashClosureRidePatch(ride, cashClosure);
 
+      let cashBackendWarning: string | null = null;
       if (cashClosure) {
+        try {
+          await persistDriverCashClosureInBackend(
+            session.accessToken,
+            String(ride.id),
+            cashClosure,
+          );
+        } catch (cashError) {
+          cashBackendWarning =
+            cashError instanceof Error
+              ? `Viaje completado, pero el efectivo no llegó al backend: ${cashError.message}`
+              : "Viaje completado, pero el efectivo no llegó al backend.";
+        }
+
         persistDriverCashClosureForAdmin(
           { ...(ride as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
           cashClosure,
@@ -17937,6 +18015,7 @@ function DriverMyRidesPage(): JSX.Element {
       });
 
       window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId: ride.id, status: "completed", cashClosure } }));
+      if (cashBackendWarning) setLoadError(cashBackendWarning);
       if (!nextActive) await loadRides();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "No se pudo finalizar el viaje.");

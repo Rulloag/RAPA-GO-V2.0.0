@@ -96,6 +96,7 @@ import {
 import { WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { loadRapaGoGoogleMaps } from "../../components/MapFallback";
+import { rideLocationService } from "../../features/location/rideLocation.service.js";
 import { AccountDeletionAdminPanel } from "../../components/accountDeletion/AccountDeletionAdminPanel.js";
 import { CashOverpaymentRefundAdminPanel } from "../../components/payments/CashOverpaymentRefundAdminPanel.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../services/api/apiBaseUrl.js";
@@ -2194,6 +2195,10 @@ export function AdminHomePage(): JSX.Element {
   const [adminUsers, setAdminUsers] = useState<AdminUserData[]>([]);
   const [, setAdminAvailabilityRevision] = useState(0);
   const [cashReviewsRevision, setCashReviewsRevision] = useState(0);
+  const [manualBenefitUserId, setManualBenefitUserId] = useState("");
+  const [manualBenefitAmount, setManualBenefitAmount] = useState("");
+  const [manualBenefitReason, setManualBenefitReason] = useState("");
+  const [manualBenefitSubmitting, setManualBenefitSubmitting] = useState(false);
   const [adminCashToast, setAdminCashToast] = useState<string | null>(null);
   const [showAdminChargesModal, setShowAdminChargesModal] = useState(false);
   const [showAdminNoShowModal, setShowAdminNoShowModal] = useState(false);
@@ -4024,6 +4029,109 @@ export function AdminHomePage(): JSX.Element {
                   </IonCardContent>
                 </IonCard>
               )}
+
+              <IonCard
+                className="admin-section-card"
+                style={{
+                  borderRadius: 22,
+                  border: "1px solid rgba(22,163,74,.28)",
+                  boxShadow: "0 16px 36px rgba(0,0,0,.08)",
+                }}
+              >
+                <IonCardHeader>
+                  <IonCardTitle>Otorgar Beneficio manual</IonCardTitle>
+                  <IonCardSubtitle>
+                    Crédito exclusivo para la cuenta seleccionada y disponible en próximos viajes.
+                  </IonCardSubtitle>
+                </IonCardHeader>
+                <IonCardContent>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <IonItem lines="none" style={{ "--background": "var(--rp-surface)", borderRadius: 14 } as CSSProperties}>
+                      <IonSelect
+                        label="Usuario"
+                        labelPlacement="stacked"
+                        value={manualBenefitUserId}
+                        placeholder="Selecciona pasajero/conductor"
+                        onIonChange={(event) => setManualBenefitUserId(String(event.detail.value ?? ""))}
+                      >
+                        {adminUsers
+                          .filter((user) => ["passenger", "pasajero", "driver", "conductor"].includes(String((user as { role?: string }).role ?? "").toLowerCase()))
+                          .map((user) => (
+                            <IonSelectOption key={String((user as { id?: string }).id ?? "")} value={String((user as { id?: string }).id ?? "")}>
+                              {String((user as { name?: string | null }).name ?? "Usuario")} · {String((user as { email?: string | null }).email ?? "sin correo")}
+                            </IonSelectOption>
+                          ))}
+                      </IonSelect>
+                    </IonItem>
+
+                    <IonItem lines="none" style={{ "--background": "var(--rp-surface)", borderRadius: 14 } as CSSProperties}>
+                      <IonInput
+                        type="number"
+                        inputmode="numeric"
+                        min="1"
+                        label="Monto CLP"
+                        labelPlacement="stacked"
+                        value={manualBenefitAmount}
+                        placeholder="Ej: 5000"
+                        onIonInput={(event) => setManualBenefitAmount(String(event.detail.value ?? ""))}
+                      />
+                    </IonItem>
+
+                    <IonItem lines="none" style={{ "--background": "var(--rp-surface)", borderRadius: 14 } as CSSProperties}>
+                      <IonTextarea
+                        label="Motivo obligatorio"
+                        labelPlacement="stacked"
+                        value={manualBenefitReason}
+                        maxlength={300}
+                        autoGrow
+                        placeholder="Ej: compensación aprobada por atención al usuario"
+                        onIonInput={(event) => setManualBenefitReason(String(event.detail.value ?? ""))}
+                      />
+                    </IonItem>
+
+                    <IonButton
+                      expand="block"
+                      color="success"
+                      disabled={manualBenefitSubmitting || !manualBenefitUserId || !manualBenefitReason.trim() || Number(manualBenefitAmount) <= 0}
+                      onClick={() => {
+                        void (async () => {
+                          if (!session?.accessToken) return;
+                          const amountClp = Math.round(Number(manualBenefitAmount));
+                          if (!Number.isFinite(amountClp) || amountClp <= 0) return;
+
+                          setManualBenefitSubmitting(true);
+                          try {
+                            const reference = `admin-${Date.now()}-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`;
+                            const result = await walletService.adminGrantManualBenefit(
+                              session.accessToken,
+                              {
+                                userId: manualBenefitUserId,
+                                amountClp,
+                                reason: manualBenefitReason.trim(),
+                                externalReference: reference,
+                              },
+                            );
+                            setAdminCashToast(
+                              `Beneficio de ${formatAdminCashClp(amountClp)} otorgado a ${result.owner.name || result.owner.email || "la cuenta"}.`,
+                            );
+                            setManualBenefitAmount("");
+                            setManualBenefitReason("");
+                          } catch (err) {
+                            setAdminCashToast(
+                              err instanceof Error ? err.message : "No se pudo otorgar el Beneficio manual.",
+                            );
+                          } finally {
+                            setManualBenefitSubmitting(false);
+                          }
+                        })();
+                      }}
+                      style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
+                    >
+                      {manualBenefitSubmitting ? <IonSpinner name="dots" /> : "Otorgar Beneficio"}
+                    </IonButton>
+                  </div>
+                </IonCardContent>
+              </IonCard>
 
               {cashPaymentReviews.length > 0 && (
                 <IonCard
@@ -10602,6 +10710,7 @@ function AdminTripLiveRouteMap({
   const completedTraceLineRef = useRef<google.maps.Polyline | null>(null);
   const pointsRef = useRef<AdminTripMapResolvedPoints | null>(null);
   const routeKeyRef = useRef("");
+  const { session } = useAuth();
 
   const [mapMessage, setMapMessage] = useState("Cargando mapa del viaje...");
   const [routeMessage, setRouteMessage] = useState<string | null>(null);
@@ -10755,7 +10864,30 @@ function AdminTripLiveRouteMap({
         const lowerStatus = String(effectiveStatus ?? "").toLowerCase();
         const isCompletedRide = lowerStatus === "completed" || Boolean(getRideUnknownField(ride, "completedAt"));
         const liveDriverPoint = isCompletedRide ? null : readAdminTripLiveDriverPoint(ride);
-        const completedTrace = isCompletedRide ? readAdminTripCompletedDriverTrace(ride) : [];
+        let completedTrace = isCompletedRide ? readAdminTripCompletedDriverTrace(ride) : [];
+
+        // Para viajes completados, la fuente canónica es el backend. El admin
+        // puede estar en otro navegador/dispositivo y no debe depender del
+        // localStorage del conductor para reconstruir la ruta.
+        if (isCompletedRide && session?.accessToken && ride.id) {
+          try {
+            const backendRoute = await rideLocationService.route(
+              session.accessToken,
+              String(ride.id),
+              1000,
+            );
+            const backendTrace = adminTripMapDedupeTrace(
+              backendRoute
+                .map((point) => adminTripMapTracePointFromUnknown(point as unknown))
+                .filter((point): point is AdminTripMapPoint => Boolean(point)),
+            );
+            if (backendTrace.length >= 2) completedTrace = backendTrace;
+          } catch {
+            // Si el backend no tiene puntos suficientes, se conserva el
+            // fallback por origen/destino; el admin nunca queda en blanco.
+          }
+        }
+
         const completedEndPoint = completedTrace.length >= 2 ? completedTrace[completedTrace.length - 1] : null;
         const hasDriverStage = ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(lowerStatus);
         const goingToPickup = ["accepted", "driver_en_route"].includes(lowerStatus);
@@ -10920,7 +11052,7 @@ function AdminTripLiveRouteMap({
       completedTraceLineRef.current?.setMap(null);
       rendererRef.current?.set("directions", null);
     };
-  }, [ride.id, ride.originText, ride.destinationText, ride.notes, ride.status, ride.driverName, getRideUnknownField(ride, "driverEmail"), getRideUnknownField(ride, "completedAt"), height]);
+  }, [ride.id, ride.originText, ride.destinationText, ride.notes, ride.status, ride.driverName, getRideUnknownField(ride, "driverEmail"), getRideUnknownField(ride, "completedAt"), height, session?.accessToken]);
 
   return (
     <div

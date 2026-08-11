@@ -13,6 +13,7 @@ const {
   mockApproveBenefit,
   mockFindCashClosure,
   mockMarkCashResolution,
+  mockCreditUserWallet,
 } = vi.hoisted(() => ({
   mockVerifyAccessToken: vi.fn(),
   mockHashToken: vi.fn().mockReturnValue("hashed-token"),
@@ -26,6 +27,7 @@ const {
   mockApproveBenefit: vi.fn(),
   mockFindCashClosure: vi.fn(),
   mockMarkCashResolution: vi.fn(),
+  mockCreditUserWallet: vi.fn(),
 }));
 
 vi.mock("../../auth/token.service.js", () => ({
@@ -61,6 +63,7 @@ vi.mock("../wallet.repository.js", () => ({
     createCashOverpaymentBenefitRequest: mockCreateBenefitRequest,
     approveCashOverpaymentBenefit: mockApproveBenefit,
     findCashPaymentClosureByRideId: mockFindCashClosure,
+    creditUserWallet: mockCreditUserWallet,
   })),
 }));
 
@@ -291,5 +294,62 @@ describe("WalletService cash overpayment benefits", () => {
         approvedAmountClp: 2_000,
       }),
     );
+  });
+});
+
+
+describe("WalletService manual admin benefits", () => {
+  it("credits only the selected owner and stores a null rideId", async () => {
+    const service = new WalletService();
+    mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+    mockIsSessionValid.mockResolvedValue(true);
+    mockFindUserById.mockImplementation(async (id: string) =>
+      id === ADMIN_ID ? adminUser : passengerUser,
+    );
+    mockCreditUserWallet.mockResolvedValue({
+      wallet: { id: "wallet-1", userId: OWNER_ID, balance: 3500 },
+      transaction: { id: "tx-1", userId: OWNER_ID, amount: 3500 },
+    });
+
+    const result = await service.adminCreateManualWalletBenefit("tok", {
+      userId: OWNER_ID,
+      amountClp: 3500,
+      reason: "Compensación de atención al usuario",
+      externalReference: "manual-test-0001",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockCreditUserWallet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: OWNER_ID,
+        rideId: null,
+        amountClp: 3500,
+        providerTransactionId: "admin-manual-benefit:manual-test-0001",
+        metadata: expect.objectContaining({
+          source: "admin_manual_benefit",
+          exclusiveToOwner: true,
+          transferable: false,
+        }),
+      }),
+    );
+  });
+
+  it("rejects manual benefit for a role that cannot use Benefits", async () => {
+    const service = new WalletService();
+    mockVerifyAccessToken.mockReturnValue({ sub: ADMIN_ID });
+    mockIsSessionValid.mockResolvedValue(true);
+    mockFindUserById.mockImplementation(async (id: string) =>
+      id === ADMIN_ID ? adminUser : { ...passengerUser, role: "admin" },
+    );
+
+    const result = await service.adminCreateManualWalletBenefit("tok", {
+      userId: OWNER_ID,
+      amountClp: 1000,
+      reason: "No corresponde",
+      externalReference: "manual-test-0002",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("WALLET_BENEFIT_ROLE_NOT_ALLOWED");
   });
 });

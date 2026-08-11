@@ -687,6 +687,8 @@ function toResponse(
       ("driverVehiclePlate" in r ? r.driverVehiclePlate : null) ?? null,
     driverVehicleColor:
       ("driverVehicleColor" in r ? r.driverVehicleColor : null) ?? null,
+    driverProfilePhotoUrl:
+      ("driverProfilePhotoUrl" in r ? r.driverProfilePhotoUrl : null) ?? null,
     discountApplied: discountInfo != null,
     discountPercent: discountInfo?.discountPercent ?? null,
     originalFareClp: discountInfo?.originalFare ?? null,

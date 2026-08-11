@@ -187,7 +187,7 @@ export class WalletRepository {
   async creditUserWallet(input: {
     userId: string;
     amountClp: number;
-    rideId: string;
+    rideId?: string | null;
     description: string;
     metadata?: Record<string, unknown>;
     providerTransactionId: string;
@@ -287,7 +287,7 @@ export class WalletRepository {
             .values({
               walletId: wallet.id,
               userId: input.userId,
-              rideId: input.rideId,
+              rideId: input.rideId ?? null,
               type: "benefit_credit",
               amount: amountClp,
               currency: "CLP",
