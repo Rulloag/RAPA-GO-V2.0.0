@@ -1524,7 +1524,11 @@ export class PaymentsService {
     // we build an eventKey and claim idempotency, guarding solely the actual
     // authorization transition against concurrent/duplicate valid deliveries.
     const payloadHash = crypto.createHash("sha256").update(stableJson(body)).digest("hex");
-    const eventKey = `klap:confirm:${body.order_id}:${body.reference_id}:${body.mc_code ?? payloadHash}`;
+    const confirmEventIdentityHash = crypto
+      .createHash("sha256")
+      .update(`${body.order_id}:${body.reference_id}:${body.mc_code ?? "none"}:${payloadHash}`)
+      .digest("hex");
+    const eventKey = `klap:confirm:${confirmEventIdentityHash}`;
 
     const claimed = await paymentsRepo.claimWebhookEvent({
       provider: "klap",
@@ -1725,7 +1729,11 @@ export class PaymentsService {
       .createHash("sha256")
       .update(stableJson({ ...body, code: sanitizedCode, message: sanitizedMessage }))
       .digest("hex");
-    const eventKey = `klap:reject:${body.order_id}:${body.reference_id}:${sanitizedCode ?? "none"}:${payloadHash}`;
+    const rejectEventIdentityHash = crypto
+      .createHash("sha256")
+      .update(`${body.order_id}:${body.reference_id}:${sanitizedCode ?? "none"}:${payloadHash}`)
+      .digest("hex");
+    const eventKey = `klap:reject:${rejectEventIdentityHash}`;
 
     const claimed = await paymentsRepo.claimWebhookEvent({
       provider: "klap",

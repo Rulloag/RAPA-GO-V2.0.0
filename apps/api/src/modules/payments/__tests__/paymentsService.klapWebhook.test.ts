@@ -204,6 +204,22 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
     );
   });
 
+  it("16a. confirm usa eventKey acotada al VARCHAR(128)", async () => {
+    await service.handleKlapConfirmWebhook(
+      confirmBody(),
+      { apikey: validApikeyHeader() },
+    );
+
+    const claim = mockClaimWebhookEvent.mock.calls[0]?.[0] as
+      | { eventKey?: string }
+      | undefined;
+
+    expect(claim?.eventKey).toMatch(
+      /^klap:confirm:[a-f0-9]{64}$/,
+    );
+
+    expect(claim?.eventKey?.length).toBeLessThanOrEqual(128);
+  });
   it("16b. a transaction_type distinto de authorization no marca success/authorized (Fase 4)", async () => {
     const result = await service.handleKlapConfirmWebhook(
       confirmBody({ transaction_type: "sale" }),
@@ -415,6 +431,22 @@ describe("PaymentsService.handleKlapRejectWebhook", () => {
     expect(String(persisted.message).length).toBeLessThanOrEqual(255);
   });
 
+  it("34b. reject usa eventKey acotada al VARCHAR(128)", async () => {
+    await service.handleKlapRejectWebhook(
+      rejectBody(),
+      { apikey: validApikeyHeader() },
+    );
+
+    const claim = mockClaimWebhookEvent.mock.calls[0]?.[0] as
+      | { eventKey?: string }
+      | undefined;
+
+    expect(claim?.eventKey).toMatch(
+      /^klap:reject:[a-f0-9]{64}$/,
+    );
+
+    expect(claim?.eventKey?.length).toBeLessThanOrEqual(128);
+  });
   it("35. processes a pending/processing payment into rejected without deleting the ride", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ status: "processing" }));
     const result = await service.handleKlapRejectWebhook(rejectBody(), { apikey: validApikeyHeader() });
