@@ -70,7 +70,10 @@ import {
   moonOutline,
   sunnyOutline,
 } from "ionicons/icons";
-import { driverProfileService, type DriverProfileData } from "../../features/drivers/driverProfile.service";
+import {
+  driverProfileService,
+  type DriverProfileData,
+} from "../../features/drivers/driverProfile.service";
 import { driverVehiclePhotoService } from "../../features/drivers/driverVehiclePhoto.service";
 import { driverStatusService } from "../../features/drivers/driverStatus.service";
 import { ActionCard } from "../../components/ActionCard";
@@ -114,9 +117,6 @@ type DriverRideData =
   import("../../features/rides/rides.service").DriverRideData;
 type ActiveRideOfferData =
   import("../../features/rides/rides.service").ActiveRideOfferData;
-type DriverRideLocationPoint = Parameters<
-  typeof rideLocationService.publish
->[2];
 
 type RapaGoConnectivityMode = "checking" | "online" | "poor" | "offline";
 type RapaGoConnectivityRole = "driver" | "passenger" | "admin";
@@ -128,47 +128,64 @@ const RAPAGO_DRIVER_NO_SHOW_PERCENT = 50;
 const RAPAGO_DRIVER_NO_SHOW_CAP_CLP = 5000;
 const RAPAGO_DRIVER_NO_SHOW_DRIVER_SHARE_PERCENT = 50;
 const RAPAGO_DRIVER_NO_SHOW_PLATFORM_SHARE_PERCENT = 50;
-const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_DRIVER = "rapago_passenger_pending_charges_v1";
-const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_DRIVER = "rapago:passenger-pending-charge-updated";
+const RAPAGO_PASSENGER_PENDING_CHARGES_KEY_DRIVER =
+  "rapago_passenger_pending_charges_v1";
+const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_DRIVER =
+  "rapago:passenger-pending-charge-updated";
 const RAPAGO_SUPPORT_WHATSAPP_PHONE_DRIVER = "56947964171";
 const RAPAGO_TRIP_SAFETY_REPORTS_KEY_DRIVER = "rapago_trip_safety_reports_v1";
-const RAPAGO_TRIP_SAFETY_REPORT_EVENT_DRIVER = "rapago:trip-safety-reports-updated";
+const RAPAGO_TRIP_SAFETY_REPORT_EVENT_DRIVER =
+  "rapago:trip-safety-reports-updated";
 
-const RAPAGO_DRIVER_NO_SHOW_COMPLETED_RIDES_KEY = "rapago_driver_no_show_completed_rides_v1";
+const RAPAGO_DRIVER_NO_SHOW_COMPLETED_RIDES_KEY =
+  "rapago_driver_no_show_completed_rides_v1";
 
-const RAPAGO_CP1252_SPECIAL_BYTES: Readonly<Record<string, number>> = Object.freeze({
-  "€": 0x80,
-  "‚": 0x82,
-  "ƒ": 0x83,
-  "„": 0x84,
-  "…": 0x85,
-  "†": 0x86,
-  "‡": 0x87,
-  "ˆ": 0x88,
-  "‰": 0x89,
-  "Š": 0x8a,
-  "‹": 0x8b,
-  "Œ": 0x8c,
-  "Ž": 0x8e,
-  "‘": 0x91,
-  "’": 0x92,
-  "“": 0x93,
-  "”": 0x94,
-  "•": 0x95,
-  "–": 0x96,
-  "—": 0x97,
-  "˜": 0x98,
-  "™": 0x99,
-  "š": 0x9a,
-  "›": 0x9b,
-  "œ": 0x9c,
-  "ž": 0x9e,
-  "Ÿ": 0x9f,
-});
+const RAPAGO_CP1252_SPECIAL_BYTES: Readonly<Record<string, number>> =
+  Object.freeze({
+    "€": 0x80,
+    "‚": 0x82,
+    ƒ: 0x83,
+    "„": 0x84,
+    "…": 0x85,
+    "†": 0x86,
+    "‡": 0x87,
+    ˆ: 0x88,
+    "‰": 0x89,
+    Š: 0x8a,
+    "‹": 0x8b,
+    Œ: 0x8c,
+    Ž: 0x8e,
+    "‘": 0x91,
+    "’": 0x92,
+    "“": 0x93,
+    "”": 0x94,
+    "•": 0x95,
+    "–": 0x96,
+    "—": 0x97,
+    "˜": 0x98,
+    "™": 0x99,
+    š: 0x9a,
+    "›": 0x9b,
+    œ: 0x9c,
+    ž: 0x9e,
+    Ÿ: 0x9f,
+  });
 
 const RAPAGO_CORRECT_SPANISH_ACCENTS = new Set([
-  "á", "é", "í", "ó", "ú", "ñ", "ü",
-  "Á", "É", "Í", "Ó", "Ú", "Ñ", "Ü",
+  "á",
+  "é",
+  "í",
+  "ó",
+  "ú",
+  "ñ",
+  "ü",
+  "Á",
+  "É",
+  "Í",
+  "Ó",
+  "Ú",
+  "Ñ",
+  "Ü",
 ]);
 
 function getRapagoCp1252Byte(character: string): number | null {
@@ -232,7 +249,10 @@ function repairDriverMojibakeSegment(value: string): string {
     if (!canEncode) break;
 
     const candidate = decodeDriverUtf8Bytes(bytes);
-    if (candidate == null || getDriverMojibakeScore(candidate) >= currentScore) {
+    if (
+      candidate == null ||
+      getDriverMojibakeScore(candidate) >= currentScore
+    ) {
       break;
     }
 
@@ -256,7 +276,8 @@ function repairDriverDisplayText(value: unknown): string {
   };
 
   for (const character of text) {
-    const isAlreadyCorrectAccent = RAPAGO_CORRECT_SPANISH_ACCENTS.has(character);
+    const isAlreadyCorrectAccent =
+      RAPAGO_CORRECT_SPANISH_ACCENTS.has(character);
     const canEncodeAsCp1252 = getRapagoCp1252Byte(character) != null;
 
     if (isAlreadyCorrectAccent || !canEncodeAsCp1252) {
@@ -270,7 +291,6 @@ function repairDriverDisplayText(value: unknown): string {
   flushSegment();
   return result;
 }
-
 
 type DriverTripSafetyReport = {
   id: string;
@@ -302,25 +322,45 @@ function sanitizeDriverTripSafetyText(value: unknown, maxLength = 220): string {
     .slice(0, maxLength);
 }
 
-function getDriverTripSafetyRideKey(ride: Partial<DriverRideData> & Record<string, unknown>): string {
-  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
+function getDriverTripSafetyRideKey(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+): string {
+  const id = String(
+    ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "",
+  ).trim();
   if (id) return `ride:${id}`;
 
-  return [
-    String(ride.passengerEmail ?? ride.email ?? "").trim().toLowerCase(),
-    String(ride.originText ?? "").trim().toLowerCase(),
-    String(ride.destinationText ?? "").trim().toLowerCase(),
-    String(ride.acceptedAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
-  ].filter(Boolean).join("|") || `driver-local:${Date.now()}`;
+  return (
+    [
+      String(ride.passengerEmail ?? ride.email ?? "")
+        .trim()
+        .toLowerCase(),
+      String(ride.originText ?? "")
+        .trim()
+        .toLowerCase(),
+      String(ride.destinationText ?? "")
+        .trim()
+        .toLowerCase(),
+      String(
+        ride.acceptedAt ?? ride.requestedAt ?? ride.createdAt ?? "",
+      ).trim(),
+    ]
+      .filter(Boolean)
+      .join("|") || `driver-local:${Date.now()}`
+  );
 }
 
 function readDriverTripSafetyReports(): DriverTripSafetyReport[] {
   try {
     const raw = localStorage.getItem(RAPAGO_TRIP_SAFETY_REPORTS_KEY_DRIVER);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.filter((item): item is DriverTripSafetyReport => Boolean(item && typeof item === "object"));
+    return parsed.filter((item): item is DriverTripSafetyReport =>
+      Boolean(item && typeof item === "object"),
+    );
   } catch {
     return [];
   }
@@ -328,36 +368,72 @@ function readDriverTripSafetyReports(): DriverTripSafetyReport[] {
 
 function writeDriverTripSafetyReports(reports: DriverTripSafetyReport[]): void {
   try {
-    localStorage.setItem(RAPAGO_TRIP_SAFETY_REPORTS_KEY_DRIVER, JSON.stringify(reports.slice(0, 300)));
-    window.dispatchEvent(new CustomEvent(RAPAGO_TRIP_SAFETY_REPORT_EVENT_DRIVER, { detail: { reports } }));
-    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { tripSafetyReports: reports } }));
+    localStorage.setItem(
+      RAPAGO_TRIP_SAFETY_REPORTS_KEY_DRIVER,
+      JSON.stringify(reports.slice(0, 300)),
+    );
+    window.dispatchEvent(
+      new CustomEvent(RAPAGO_TRIP_SAFETY_REPORT_EVENT_DRIVER, {
+        detail: { reports },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:admin-rides-updated", {
+        detail: { tripSafetyReports: reports },
+      }),
+    );
   } catch {
     // No bloquea reporte de emergencia.
   }
 }
 
-function saveDriverAccidentTripSafetyReport(ride: DriverRideData, user: unknown): DriverTripSafetyReport {
+function saveDriverAccidentTripSafetyReport(
+  ride: DriverRideData,
+  user: unknown,
+): DriverTripSafetyReport {
   const record = ride as DriverRideData & Record<string, unknown>;
-  const userRecord = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const userRecord =
+    user && typeof user === "object" ? (user as Record<string, unknown>) : {};
   const rideKey = getDriverTripSafetyRideKey(record);
   const now = new Date().toISOString();
-  const driverEmail = sanitizeDriverTripSafetyText(userRecord.email ?? record.driverEmail, 160).toLowerCase() || null;
-  const driverName = sanitizeDriverTripSafetyText(userRecord.name ?? record.driverName ?? record.driverFullName, 120) || null;
+  const driverEmail =
+    sanitizeDriverTripSafetyText(
+      userRecord.email ?? record.driverEmail,
+      160,
+    ).toLowerCase() || null;
+  const driverName =
+    sanitizeDriverTripSafetyText(
+      userRecord.name ?? record.driverName ?? record.driverFullName,
+      120,
+    ) || null;
 
   const report: DriverTripSafetyReport = {
     id: `driver-accident-${rideKey}-${Date.now()}`,
-    rideId: sanitizeDriverTripSafetyText(record.id ?? record.rideId ?? rideKey, 120),
+    rideId: sanitizeDriverTripSafetyText(
+      record.id ?? record.rideId ?? rideKey,
+      120,
+    ),
     rideKey,
     reporterRole: "driver",
     status: "driver_accident_reported",
     title: "Conductor reportó accidente/emergencia",
-    description: "El conductor presionó Reportar accidente / emergencia y fue derivado a WhatsApp soporte.",
-    passengerEmail: sanitizeDriverTripSafetyText(record.passengerEmail ?? record.email, 160).toLowerCase() || null,
-    passengerName: sanitizeDriverTripSafetyText(record.passengerName ?? record.userName, 120) || null,
+    description:
+      "El conductor presionó Reportar accidente / emergencia y fue derivado a WhatsApp soporte.",
+    passengerEmail:
+      sanitizeDriverTripSafetyText(
+        record.passengerEmail ?? record.email,
+        160,
+      ).toLowerCase() || null,
+    passengerName:
+      sanitizeDriverTripSafetyText(
+        record.passengerName ?? record.userName,
+        120,
+      ) || null,
     driverEmail,
     driverName,
     originText: sanitizeDriverTripSafetyText(record.originText, 160) || null,
-    destinationText: sanitizeDriverTripSafetyText(record.destinationText, 160) || null,
+    destinationText:
+      sanitizeDriverTripSafetyText(record.destinationText, 160) || null,
     createdAt: now,
     updatedAt: now,
     source: "driver_app",
@@ -370,15 +446,21 @@ function saveDriverAccidentTripSafetyReport(ride: DriverRideData, user: unknown)
   return report;
 }
 
-function buildDriverAccidentWhatsAppUrl(ride: DriverRideData, user: unknown): string {
+function buildDriverAccidentWhatsAppUrl(
+  ride: DriverRideData,
+  user: unknown,
+): string {
   const record = ride as DriverRideData & Record<string, unknown>;
-  const userRecord = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const userRecord =
+    user && typeof user === "object" ? (user as Record<string, unknown>) : {};
   const lines = [
     "EMERGENCIA RAPA GO: conductor reporta accidente/problema en viaje.",
     `Conductor: ${sanitizeDriverTripSafetyText(userRecord.name ?? record.driverName ?? "Conductor", 80)}`,
     `Correo conductor: ${sanitizeDriverTripSafetyText(userRecord.email ?? record.driverEmail ?? "No informado", 120)}`,
     `Viaje: ${sanitizeDriverTripSafetyText(record.originText, 90) || "Origen"} -> ${sanitizeDriverTripSafetyText(record.destinationText, 90) || "Destino"}`,
-    record.passengerName || record.passengerEmail ? `Pasajero: ${sanitizeDriverTripSafetyText(record.passengerName ?? record.passengerEmail, 90)}` : null,
+    record.passengerName || record.passengerEmail
+      ? `Pasajero: ${sanitizeDriverTripSafetyText(record.passengerName ?? record.passengerEmail, 90)}`
+      : null,
     "Solicito apoyo inmediato. El reporte quedó registrado en Admin.",
   ].filter(Boolean);
 
@@ -397,14 +479,20 @@ function openDriverAccidentWhatsApp(ride: DriverRideData, user: unknown): void {
 function readDriverNoShowCompletedRides(): Array<Record<string, unknown>> {
   try {
     const raw = localStorage.getItem(RAPAGO_DRIVER_NO_SHOW_COMPLETED_RIDES_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === "object") : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => item && typeof item === "object")
+      : [];
   } catch {
     return [];
   }
 }
 
-function saveDriverNoShowCompletedRides(records: Array<Record<string, unknown>>): void {
+function saveDriverNoShowCompletedRides(
+  records: Array<Record<string, unknown>>,
+): void {
   try {
     localStorage.setItem(
       RAPAGO_DRIVER_NO_SHOW_COMPLETED_RIDES_KEY,
@@ -424,7 +512,9 @@ function normalizeDriverNoShowIdentityValue(value: unknown): string {
     .trim();
 }
 
-function getDriverNoShowIdentityValues(ride: Record<string, unknown>): string[] {
+function getDriverNoShowIdentityValues(
+  ride: Record<string, unknown>,
+): string[] {
   return [
     ride.id,
     ride.rideId,
@@ -477,7 +567,9 @@ function wasDriverRideNoShowCompletedLocally(
   );
 }
 
-function clearDriverNoShowActiveStorageEverywhere(closedRide: Record<string, unknown>): void {
+function clearDriverNoShowActiveStorageEverywhere(
+  closedRide: Record<string, unknown>,
+): void {
   const objectKeys = [
     "rapago_last_accepted_ride",
     "rapago_driver_active_ride",
@@ -495,14 +587,19 @@ function clearDriverNoShowActiveStorageEverywhere(closedRide: Record<string, unk
 
       const parsed = JSON.parse(raw) as unknown;
       const record =
-        parsed && typeof parsed === "object" && "ride" in (parsed as Record<string, unknown>)
+        parsed &&
+        typeof parsed === "object" &&
+        "ride" in (parsed as Record<string, unknown>)
           ? (parsed as Record<string, unknown>).ride
           : parsed;
 
       if (
         record &&
         typeof record === "object" &&
-        driverRideNoShowCompletedIdentityMatches(record as Record<string, unknown>, closedRide)
+        driverRideNoShowCompletedIdentityMatches(
+          record as Record<string, unknown>,
+          closedRide,
+        )
       ) {
         localStorage.removeItem(key);
       }
@@ -520,14 +617,19 @@ function clearDriverNoShowActiveStorageEverywhere(closedRide: Record<string, unk
   for (const key of activeListKeys) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
       if (!Array.isArray(parsed)) continue;
 
       localStorage.setItem(
         key,
         JSON.stringify(
           parsed
-            .filter((item) => !driverRideNoShowCompletedIdentityMatches(item, closedRide))
+            .filter(
+              (item) =>
+                !driverRideNoShowCompletedIdentityMatches(item, closedRide),
+            )
             .slice(0, 200),
         ),
       );
@@ -539,12 +641,16 @@ function clearDriverNoShowActiveStorageEverywhere(closedRide: Record<string, unk
   try {
     const historyKey = "rapago_driver_my_rides_v1";
     const raw = localStorage.getItem(historyKey);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
     const safeList = Array.isArray(parsed) ? parsed : [];
 
     const next = [
       closedRide,
-      ...safeList.filter((item) => !driverRideNoShowCompletedIdentityMatches(item, closedRide)),
+      ...safeList.filter(
+        (item) => !driverRideNoShowCompletedIdentityMatches(item, closedRide),
+      ),
     ].slice(0, 200);
 
     localStorage.setItem(historyKey, JSON.stringify(next));
@@ -570,7 +676,8 @@ function markDriverRideNoShowCompletedLocally(
     noShowConfirmedAt: String(ride.noShowConfirmedAt ?? closedAt),
     cancelledByRole: "driver_no_show",
     cancelledBy: "driver_no_show",
-    cancellationReason: "No show: pasajero no se presento tras 5 minutos de espera.",
+    cancellationReason:
+      "No show: pasajero no se presento tras 5 minutos de espera.",
     driverFinalState: "no_show_completed",
   } as DriverRideData & Record<string, unknown>;
 
@@ -586,7 +693,9 @@ function markDriverRideNoShowCompletedLocally(
     ),
   ]);
 
-  clearDriverNoShowActiveStorageEverywhere(closedRide as unknown as Record<string, unknown>);
+  clearDriverNoShowActiveStorageEverywhere(
+    closedRide as unknown as Record<string, unknown>,
+  );
 
   try {
     markDriverRideCancelledLocally(
@@ -605,18 +714,20 @@ function markDriverRideNoShowCompletedLocally(
   return closedRide;
 }
 
-
-
 function getRapaGoConnectivityProbeUrl(): string {
   const env = import.meta.env as Record<string, string | undefined>;
-  const raw = String(env.VITE_API_BASE_URL || env.VITE_API_URL || "/api").trim();
+  const raw = String(
+    env.VITE_API_BASE_URL || env.VITE_API_URL || "/api",
+  ).trim();
 
   if (!raw || raw === "/" || raw === "/api") return "/health";
 
   if (/^https?:\/\//i.test(raw)) {
     try {
       const url = new URL(raw);
-      const cleanPath = url.pathname.replace(/\/api\/?$/i, "").replace(/\/+$/, "");
+      const cleanPath = url.pathname
+        .replace(/\/api\/?$/i, "")
+        .replace(/\/+$/, "");
       url.pathname = `${cleanPath || ""}/health`;
       url.search = "";
       url.hash = "";
@@ -671,7 +782,10 @@ async function detectRapaGoConnectivityMode(): Promise<RapaGoConnectivityMode> {
 
   const browserPoor = browserLooksLikePoorConnection();
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), browserPoor ? 4500 : 7000);
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    browserPoor ? 4500 : 7000,
+  );
 
   try {
     await fetch(getRapaGoConnectivityProbeUrl(), {
@@ -697,7 +811,7 @@ function getRapaGoConnectivityMessage(
 
   if (role === "driver") {
     if (status === "offline") {
-      return "Sin internet. Para proteger tus viajes quedaste No disponible. Busca una zona con conexión y luego vuelve a activar Disponible.";
+      return "Sin internet. Para proteger tus viajes quedaste No disponible. Busca una zona con conexión y luego vuelve a activar Disponible. Tu sesión sigue activa: al volver la señal te reconectamos automáticamente.";
     }
 
     return "Señal baja. Para evitar viajes fallidos quedaste No disponible. Busca una zona con mejor internet y vuelve a activar Disponible.";
@@ -812,8 +926,7 @@ function RapaGoConnectivityBanner({
       }`}
       style={style}
       role="status"
-      aria-live="polite"
-    >
+      aria-live="polite">
       <div className="rapago-connectivity-banner__icon" aria-hidden="true">
         {isChecking ? "…" : isOffline ? "⌁" : "!"}
       </div>
@@ -834,7 +947,6 @@ function RapaGoConnectivityBanner({
   );
 }
 
-
 function StarRatingInput({
   value,
   onChange,
@@ -852,15 +964,13 @@ function StarRatingInput({
             fontSize: "1.6rem",
             cursor: "pointer",
             color: s <= value ? "#f4c430" : "#ccc",
-          }}
-        >
+          }}>
           ★
         </span>
       ))}
     </div>
   );
 }
-
 
 type RapaGoDriverRatingRecord = {
   id: string;
@@ -920,19 +1030,34 @@ function readRapaGoDriverRatings(): RapaGoDriverRatingRecord[] {
     const raw = localStorage.getItem(RAPAGO_DRIVER_RATINGS_KEY);
     const parsed = raw ? (JSON.parse(raw) as RapaGoDriverRatingRecord[]) : [];
     return Array.isArray(parsed)
-      ? parsed.filter((item) => item && typeof item === "object" && Number.isFinite(Number(item.stars)))
+      ? parsed.filter(
+          (item) =>
+            item &&
+            typeof item === "object" &&
+            Number.isFinite(Number(item.stars)),
+        )
       : [];
   } catch {
     return [];
   }
 }
 
-function getDriverRatingIdentityKeys(user: unknown, phone?: string | null): Set<string> {
+function getDriverRatingIdentityKeys(
+  user: unknown,
+  phone?: string | null,
+): Set<string> {
   const keys = new Set<string>();
   const id = getDriverRatingObjectString(user, ["id", "userId", "uid"]);
   const email = getDriverRatingObjectString(user, ["email", "mail"]);
-  const name = getDriverRatingObjectString(user, ["name", "fullName", "displayName"]);
-  const phoneValue = driverRatingString(phone || getDriverRatingObjectString(user, ["phone", "phoneNumber", "mobile"]));
+  const name = getDriverRatingObjectString(user, [
+    "name",
+    "fullName",
+    "displayName",
+  ]);
+  const phoneValue = driverRatingString(
+    phone ||
+      getDriverRatingObjectString(user, ["phone", "phoneNumber", "mobile"]),
+  );
 
   if (id) keys.add(`id:${driverRatingClean(id)}`);
   if (email) keys.add(`email:${driverRatingClean(email)}`);
@@ -962,13 +1087,22 @@ function driverRatingMatchesCurrentDriver(
   return candidates.some((candidate) => keys.has(candidate));
 }
 
-function readDriverRatingSummary(user: unknown, phone?: string | null): DriverRatingSummary {
+function readDriverRatingSummary(
+  user: unknown,
+  phone?: string | null,
+): DriverRatingSummary {
   const ratings = readRapaGoDriverRatings()
     .filter((rating) => driverRatingMatchesCurrentDriver(rating, user, phone))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
 
   const count = ratings.length;
-  const total = ratings.reduce((sum, rating) => sum + Math.min(5, Math.max(1, Number(rating.stars) || 0)), 0);
+  const total = ratings.reduce(
+    (sum, rating) => sum + Math.min(5, Math.max(1, Number(rating.stars) || 0)),
+    0,
+  );
 
   return {
     average: count > 0 ? total / count : 0,
@@ -977,14 +1111,28 @@ function readDriverRatingSummary(user: unknown, phone?: string | null): DriverRa
   };
 }
 
-function DriverRatingStarsDisplay({ summary }: { summary: DriverRatingSummary }): JSX.Element {
+function DriverRatingStarsDisplay({
+  summary,
+}: {
+  summary: DriverRatingSummary;
+}): JSX.Element {
   const rounded = summary.count > 0 ? Math.round(summary.average) : 0;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        flexWrap: "wrap",
+      }}>
       <div style={{ display: "flex", gap: 1, fontSize: "1rem", lineHeight: 1 }}>
         {[1, 2, 3, 4, 5].map((star) => (
-          <span key={star} style={{ color: star <= rounded ? "#f4c430" : "rgba(255,255,255,.42)" }}>
+          <span
+            key={star}
+            style={{
+              color: star <= rounded ? "#f4c430" : "rgba(255,255,255,.42)",
+            }}>
             ★
           </span>
         ))}
@@ -1071,7 +1219,9 @@ function sanitizePassengerRideNoteForDriver(value: unknown): string {
     .slice(0, RAPAGO_PASSENGER_NOTE_MAX_LENGTH_DRIVER);
 }
 
-function extractPassengerRideNoteFromNotes(notes: string | null | undefined): string | null {
+function extractPassengerRideNoteFromNotes(
+  notes: string | null | undefined,
+): string | null {
   if (!notes) return null;
 
   const marked = notes.match(
@@ -1097,7 +1247,10 @@ function extractPassengerRideNoteFromNotes(notes: string | null | undefined): st
     return sanitizePassengerRideNoteForDriver(legacy[1]) || null;
   }
 
-  const looksTechnical = /(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|Categor[ií]a de veh[ií]culo seleccionada:)/i.test(notes);
+  const looksTechnical =
+    /(?:RAPAGO_[A-Z_]+:|Forma de pago seleccionada:|Coordenadas recogida accesible:|Tarifa RAPA GO calculada:|Categor[ií]a de veh[ií]culo seleccionada:)/i.test(
+      notes,
+    );
   if (!looksTechnical) {
     return sanitizePassengerRideNoteForDriver(notes) || null;
   }
@@ -1149,8 +1302,7 @@ function PassengerRideNoteCard({
         boxShadow: "0 8px 20px rgba(0,0,0,.10)",
         overflowWrap: "anywhere",
       }}
-      aria-label="Nota del pasajero"
-    >
+      aria-label="Nota del pasajero">
       <div
         style={{
           color: "#8a6418",
@@ -1158,10 +1310,14 @@ function PassengerRideNoteCard({
           fontWeight: 950,
           letterSpacing: ".04em",
           textTransform: "uppercase",
-        }}
-      >
+        }}>
         {/* Decorativo: el texto de al lado ya dice "Nota del pasajero". */}
-        <IonIcon icon={documentTextOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Nota del pasajero
+        <IonIcon
+          icon={documentTextOutline}
+          aria-hidden="true"
+          style={{ fontSize: "1em", verticalAlign: "-0.125em" }}
+        />{" "}
+        Nota del pasajero
       </div>
       <div
         style={{
@@ -1170,8 +1326,7 @@ function PassengerRideNoteCard({
           lineHeight: 1.4,
           fontWeight: 850,
           whiteSpace: "pre-wrap",
-        }}
-      >
+        }}>
         {passengerNote}
       </div>
     </div>
@@ -1196,10 +1351,13 @@ function openGoogleNavigation(
     // No bloquea la navegaci?n interna.
   }
 
-  console.info("[RAPA GO] Navegaci?n externa bloqueada. Se mantiene mapa interno.", {
-    origin,
-    destination,
-  });
+  console.info(
+    "[RAPA GO] Navegaci?n externa bloqueada. Se mantiene mapa interno.",
+    {
+      origin,
+      destination,
+    },
+  );
 }
 
 function isInsideRapaNui(point: { lat: number; lng: number } | null): boolean {
@@ -1213,8 +1371,6 @@ function isInsideRapaNui(point: { lat: number; lng: number } | null): boolean {
   );
 }
 
-
-
 type RapaNuiZoneReference = {
   zone: string;
   aliases: string[];
@@ -1222,21 +1378,101 @@ type RapaNuiZoneReference = {
 };
 
 const RAPA_NUI_ZONE_REFERENCES: RapaNuiZoneReference[] = [
-  { zone: "Ara Piki", aliases: ["ara piki", "arapiki"], point: { lat: -27.1456, lng: -109.4149 } },
-  { zone: "Orito / Camino a Anakena", aliases: ["orito", "camino anakena", "panaquena", "panakena", "inla", "la inla"], point: { lat: -27.1028, lng: -109.3716 } },
-  { zone: "Hospital / Centro de Hanga Roa", aliases: ["hospital", "hanga roa hospital", "hospital de hanga roa"], point: { lat: -27.1502, lng: -109.4216 } },
-  { zone: "Centro de Hanga Roa", aliases: ["centro", "hanga roa", "caleta", "mercado artesanal", "feria artesanal", "iglesia", "comisaria", "comisaría", "hotel taha tai", "taha tai", "taha-tai", "hanga roa centro"], point: { lat: -27.1505, lng: -109.4325 } },
-  { zone: "Tahai", aliases: ["tahai", "ahu tahai"], point: { lat: -27.1398, lng: -109.4298 } },
-  { zone: "Mataveri / Aeropuerto", aliases: ["mataveri", "aeropuerto", "airport"], point: { lat: -27.1648, lng: -109.4210 } },
-  { zone: "Hanga Piko", aliases: ["hanga piko", "puerto hanga piko"], point: { lat: -27.1561, lng: -109.4440 } },
-  { zone: "Puna Pau", aliases: ["puna pau"], point: { lat: -27.1385, lng: -109.3959 } },
-  { zone: "Ahu Akivi", aliases: ["ahu akivi", "akivi"], point: { lat: -27.1150, lng: -109.3950 } },
-  { zone: "Anakena", aliases: ["anakena"], point: { lat: -27.0732, lng: -109.3233 } },
-  { zone: "Terevaka", aliases: ["terevaka", "tere vaka"], point: { lat: -27.0917, lng: -109.3820 } },
-  { zone: "Orongo / Rano Kau", aliases: ["orongo", "rano kau", "rano kao"], point: { lat: -27.1860, lng: -109.4355 } },
-  { zone: "Rano Raraku", aliases: ["rano raraku"], point: { lat: -27.1210, lng: -109.2880 } },
-  { zone: "Tongariki", aliases: ["tongariki", "ahu tongariki"], point: { lat: -27.1251, lng: -109.2761 } },
-  { zone: "Vaitea", aliases: ["vaitea"], point: { lat: -27.1015, lng: -109.3505 } },
+  {
+    zone: "Ara Piki",
+    aliases: ["ara piki", "arapiki"],
+    point: { lat: -27.1456, lng: -109.4149 },
+  },
+  {
+    zone: "Orito / Camino a Anakena",
+    aliases: [
+      "orito",
+      "camino anakena",
+      "panaquena",
+      "panakena",
+      "inla",
+      "la inla",
+    ],
+    point: { lat: -27.1028, lng: -109.3716 },
+  },
+  {
+    zone: "Hospital / Centro de Hanga Roa",
+    aliases: ["hospital", "hanga roa hospital", "hospital de hanga roa"],
+    point: { lat: -27.1502, lng: -109.4216 },
+  },
+  {
+    zone: "Centro de Hanga Roa",
+    aliases: [
+      "centro",
+      "hanga roa",
+      "caleta",
+      "mercado artesanal",
+      "feria artesanal",
+      "iglesia",
+      "comisaria",
+      "comisaría",
+      "hotel taha tai",
+      "taha tai",
+      "taha-tai",
+      "hanga roa centro",
+    ],
+    point: { lat: -27.1505, lng: -109.4325 },
+  },
+  {
+    zone: "Tahai",
+    aliases: ["tahai", "ahu tahai"],
+    point: { lat: -27.1398, lng: -109.4298 },
+  },
+  {
+    zone: "Mataveri / Aeropuerto",
+    aliases: ["mataveri", "aeropuerto", "airport"],
+    point: { lat: -27.1648, lng: -109.421 },
+  },
+  {
+    zone: "Hanga Piko",
+    aliases: ["hanga piko", "puerto hanga piko"],
+    point: { lat: -27.1561, lng: -109.444 },
+  },
+  {
+    zone: "Puna Pau",
+    aliases: ["puna pau"],
+    point: { lat: -27.1385, lng: -109.3959 },
+  },
+  {
+    zone: "Ahu Akivi",
+    aliases: ["ahu akivi", "akivi"],
+    point: { lat: -27.115, lng: -109.395 },
+  },
+  {
+    zone: "Anakena",
+    aliases: ["anakena"],
+    point: { lat: -27.0732, lng: -109.3233 },
+  },
+  {
+    zone: "Terevaka",
+    aliases: ["terevaka", "tere vaka"],
+    point: { lat: -27.0917, lng: -109.382 },
+  },
+  {
+    zone: "Orongo / Rano Kau",
+    aliases: ["orongo", "rano kau", "rano kao"],
+    point: { lat: -27.186, lng: -109.4355 },
+  },
+  {
+    zone: "Rano Raraku",
+    aliases: ["rano raraku"],
+    point: { lat: -27.121, lng: -109.288 },
+  },
+  {
+    zone: "Tongariki",
+    aliases: ["tongariki", "ahu tongariki"],
+    point: { lat: -27.1251, lng: -109.2761 },
+  },
+  {
+    zone: "Vaitea",
+    aliases: ["vaitea"],
+    point: { lat: -27.1015, lng: -109.3505 },
+  },
 ];
 
 function normalizeRapaNuiZoneText(value: unknown): string {
@@ -1267,15 +1503,21 @@ function pointDistanceMetersForZone(
 function resolveRapaNuiPointFromText(
   textValues: Array<string | null | undefined>,
 ): { lat: number; lng: number } | null {
-  const combinedText = normalizeRapaNuiZoneText(textValues.filter(Boolean).join(" "));
+  const combinedText = normalizeRapaNuiZoneText(
+    textValues.filter(Boolean).join(" "),
+  );
   if (!combinedText) return null;
 
-  const direct = RAPA_NUI_ZONE_REFERENCES.find((reference) =>
-    Boolean(reference.point) &&
-    reference.aliases.some((alias) => {
-      const normalizedAlias = normalizeRapaNuiZoneText(alias);
-      return combinedText.includes(normalizedAlias) || normalizedAlias.includes(combinedText);
-    }),
+  const direct = RAPA_NUI_ZONE_REFERENCES.find(
+    (reference) =>
+      Boolean(reference.point) &&
+      reference.aliases.some((alias) => {
+        const normalizedAlias = normalizeRapaNuiZoneText(alias);
+        return (
+          combinedText.includes(normalizedAlias) ||
+          normalizedAlias.includes(combinedText)
+        );
+      }),
   );
 
   if (direct?.point) return direct.point;
@@ -1313,13 +1555,18 @@ function getRapaNuiZoneName(
   point: { lat: number; lng: number } | null,
   textValues: Array<string | null | undefined>,
 ): string {
-  const combinedText = normalizeRapaNuiZoneText(textValues.filter(Boolean).join(" "));
+  const combinedText = normalizeRapaNuiZoneText(
+    textValues.filter(Boolean).join(" "),
+  );
 
   if (combinedText) {
     const byText = RAPA_NUI_ZONE_REFERENCES.find((reference) =>
       reference.aliases.some((alias) => {
         const normalizedAlias = normalizeRapaNuiZoneText(alias);
-        return combinedText.includes(normalizedAlias) || normalizedAlias.includes(combinedText);
+        return (
+          combinedText.includes(normalizedAlias) ||
+          normalizedAlias.includes(combinedText)
+        );
       }),
     );
 
@@ -1328,8 +1575,9 @@ function getRapaNuiZoneName(
 
   if (!point) return "Zona no identificada";
 
-  const nearest = RAPA_NUI_ZONE_REFERENCES
-    .filter((reference) => reference.point)
+  const nearest = RAPA_NUI_ZONE_REFERENCES.filter(
+    (reference) => reference.point,
+  )
     .map((reference) => ({
       zone: reference.zone,
       meters: pointDistanceMetersForZone(point, reference.point!),
@@ -1347,12 +1595,14 @@ function cleanPointDisplayName(value: unknown, fallback: string): string {
   const raw = repairDriverDisplayText(value).trim();
   if (!raw) return fallback;
 
-  return raw
-    .replace(/,\s*Hanga Roa.*$/i, "")
-    .replace(/,\s*Isla de Pascua.*$/i, "")
-    .replace(/,\s*Valpara[ií]so.*$/i, "")
-    .replace(/,\s*Chile.*$/i, "")
-    .trim() || fallback;
+  return (
+    raw
+      .replace(/,\s*Hanga Roa.*$/i, "")
+      .replace(/,\s*Isla de Pascua.*$/i, "")
+      .replace(/,\s*Valpara[ií]so.*$/i, "")
+      .replace(/,\s*Chile.*$/i, "")
+      .trim() || fallback
+  );
 }
 
 function extractConfirmedRideAddress(
@@ -1362,9 +1612,10 @@ function extractConfirmedRideAddress(
   const text = repairDriverDisplayText(notes);
   if (!text.trim()) return null;
 
-  const pattern = kind === "origin"
-    ? /Direcci[oó]n origen confirmada:\s*(.*?)(?=Direcci[oó]n destino confirmada:|Ubicaci[oó]n real del pasajero:|Coordenadas recogida accesible:|$)/i
-    : /Direcci[oó]n destino confirmada:\s*(.*?)(?=Ubicaci[oó]n real del pasajero:|Coordenadas recogida accesible:|Coordenadas destino accesible:|$)/i;
+  const pattern =
+    kind === "origin"
+      ? /Direcci[oó]n origen confirmada:\s*(.*?)(?=Direcci[oó]n destino confirmada:|Ubicaci[oó]n real del pasajero:|Coordenadas recogida accesible:|$)/i
+      : /Direcci[oó]n destino confirmada:\s*(.*?)(?=Ubicaci[oó]n real del pasajero:|Coordenadas recogida accesible:|Coordenadas destino accesible:|$)/i;
 
   const value = text.match(pattern)?.[1]?.trim();
   return value ? value.replace(/\s+/g, " ") : null;
@@ -1418,7 +1669,9 @@ function buildDriverPlaceStreetTitle(
   addressValue: string | null | undefined,
   fallback: string,
 ): string {
-  const rawPlace = removeDriverGenericLocationPrefix(cleanPointDisplayName(placeValue, ""));
+  const rawPlace = removeDriverGenericLocationPrefix(
+    cleanPointDisplayName(placeValue, ""),
+  );
   const rawStreet = getDriverAddressMainPart(addressValue);
   const fallbackClean = cleanPointDisplayName(fallback, "Punto de ruta");
 
@@ -1429,7 +1682,11 @@ function buildDriverPlaceStreetTitle(
     const placeKey = normalizeDriverPlaceStreetText(place);
     const streetKey = normalizeDriverPlaceStreetText(street);
 
-    if (placeKey === streetKey || placeKey.includes(streetKey) || streetKey.includes(placeKey)) {
+    if (
+      placeKey === streetKey ||
+      placeKey.includes(streetKey) ||
+      streetKey.includes(placeKey)
+    ) {
       return place;
     }
 
@@ -1446,7 +1703,11 @@ function buildDriverPointDisplay(input: {
   point: { lat: number; lng: number } | null;
 }): { name: string; zone: string; detail: string } {
   const zone = getRapaNuiZoneName(input.point, [input.text, input.address]);
-  const name = buildDriverPlaceStreetTitle(input.text, input.address, input.label);
+  const name = buildDriverPlaceStreetTitle(
+    input.text,
+    input.address,
+    input.label,
+  );
   const addressMain = getDriverAddressMainPart(input.address);
   const addressKey = normalizeDriverPlaceStreetText(addressMain);
   const nameKey = normalizeDriverPlaceStreetText(name);
@@ -1463,7 +1724,11 @@ function buildDriverPointDisplay(input: {
 }
 
 function getDriverRidePointDisplayLabel(
-  ride: { originText?: string | null; destinationText?: string | null; notes?: string | null },
+  ride: {
+    originText?: string | null;
+    destinationText?: string | null;
+    notes?: string | null;
+  },
   kind: "origin" | "destination",
 ): string {
   const textValue = kind === "origin" ? ride.originText : ride.destinationText;
@@ -1475,9 +1740,11 @@ function getDriverRidePointDisplayLabel(
   );
 }
 
-function getDriverRideRouteDisplayLabel(
-  ride: { originText?: string | null; destinationText?: string | null; notes?: string | null },
-): string {
+function getDriverRideRouteDisplayLabel(ride: {
+  originText?: string | null;
+  destinationText?: string | null;
+  notes?: string | null;
+}): string {
   return `${getDriverRidePointDisplayLabel(ride, "origin")} → ${getDriverRidePointDisplayLabel(ride, "destination")}`;
 }
 
@@ -1543,6 +1810,18 @@ const RAPAGO_NAV_SHEET_HEIGHT = 94;
    táctil. Nunca se pliega entera, porque entonces no quedaría de dónde
    agarrarla para volver a subirla. */
 const RAPAGO_NAV_SHEET_GRIP_H = 34;
+/* "Cancelar" y "Llegué al punto" flotan con position:absolute (top:8px,
+   min-height 38px → borde inferior en 46px) por ENCIMA del flujo normal, así
+   que el asa (34px de alto en el flujo) no reserva suficiente espacio para
+   ellos: el ETA, que arranca justo debajo del asa, quedaba tapado por la
+   cola de los botones en pantallas reales. Este colchón cubre esos 12px de
+   diferencia (46 - 34) más margen, sin importar el ancho del dispositivo —el
+   problema era vertical, no de una pantalla en particular. */
+/* Respiro sobre el ETA. Antes valía 28 para esquivar las píldoras flotantes de
+   Cancelar y la acción principal, que se superponían a esta franja. Con los
+   botones movidos al dock inferior ya no hay nada encima, así que vuelve a ser
+   un espaciado normal —múltiplo de 4, como el resto de la rejilla. */
+const RAPAGO_NAV_SHEET_ACTIONS_CLEARANCE = 12;
 
 /* Reposos de la hoja de navegación, como fracción del recorrido total.
    `expanded` = 0 (hoja arriba del todo, se ve todo el contenido);
@@ -1587,6 +1866,7 @@ function UberDriverNavigationMap({
   sheetBody = null,
   sheetActions = null,
   sheetPrimaryAction = null,
+  sheetCancelAction = null,
 }: {
   ride: {
     id?: string | null;
@@ -1619,6 +1899,9 @@ function UberDriverNavigationMap({
   // hoja (junto al asa), no dentro de sheetActions: así queda siempre a la
   // vista sin importar cuánto se despliegue o se pliegue la hoja.
   sheetPrimaryAction?: JSX.Element | null;
+  // Acción de cancelar, flotando en la esquina superior izquierda de la hoja,
+  // al mismo nivel que sheetPrimaryAction.
+  sheetCancelAction?: JSX.Element | null;
 }): JSX.Element {
   // Alto en px para los desplazamientos de cámara (panBy). Cuando `height`
   // es "100%" (mapa a pantalla completa) no hay forma barata de conocer el
@@ -1812,10 +2095,7 @@ function UberDriverNavigationMap({
     drag.lastY = event.clientY;
     drag.lastT = event.timeStamp;
 
-    const next = Math.min(
-      sheetMaxShift,
-      Math.max(0, drag.startShift + delta),
-    );
+    const next = Math.min(sheetMaxShift, Math.max(0, drag.startShift + delta));
     drag.shift = next;
     setSheetShift(next);
   }
@@ -1914,7 +2194,9 @@ function UberDriverNavigationMap({
   // Dueño de la ruta dibujada. La polyline sale siempre de aquí (caché local),
   // así que perder la conexión ya no borra nada de la pantalla.
   const routeControllerRef = useRef<RouteController | null>(null);
-  const routeSnapshotHandlerRef = useRef<(snapshot: RouteSnapshot) => void>(() => {});
+  const routeSnapshotHandlerRef = useRef<(snapshot: RouteSnapshot) => void>(
+    () => {},
+  );
 
   const [driverGpsReady, setDriverGpsReady] = useState(false);
   const [driverOutsideRapaNui, setDriverOutsideRapaNui] = useState(false);
@@ -1928,21 +2210,34 @@ function UberDriverNavigationMap({
     maneuver: string | null;
     street?: string | null;
   } | null>(null);
-  const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
+  const [targetDistanceMeters, setTargetDistanceMeters] = useState<
+    number | null
+  >(null);
   // true mientras se navega con la última ruta guardada sin poder revalidarla.
   const [routeOffline, setRouteOffline] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [instructionBannerCollapsed, setInstructionBannerCollapsed] = useState(false);
-  const [isNavigationCameraLocked, setIsNavigationCameraLocked] = useState(true);
+  const [instructionBannerCollapsed, setInstructionBannerCollapsed] =
+    useState(false);
+  const [isNavigationCameraLocked, setIsNavigationCameraLocked] =
+    useState(true);
   const [mapVoiceMuted, setMapVoiceMuted] = useState(true);
   const [speedKmh, setSpeedKmh] = useState<number | null>(null);
-  const [googlePickupPoint, setGooglePickupPoint] = useState<{ lat: number; lng: number } | null>(null);
-  const [googleDestinationPoint, setGoogleDestinationPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const [googlePickupPoint, setGooglePickupPoint] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [googleDestinationPoint, setGoogleDestinationPoint] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
 
   const nav = extractRideNavigationPoints(ride.notes);
   const pickupAddress = extractConfirmedRideAddress(ride.notes, "origin");
-  const destinationAddress = extractConfirmedRideAddress(ride.notes, "destination");
+  const destinationAddress = extractConfirmedRideAddress(
+    ride.notes,
+    "destination",
+  );
 
   const pickup =
     nav.pickupLat != null && nav.pickupLng != null
@@ -1967,7 +2262,9 @@ function UberDriverNavigationMap({
   });
 
   const rideNavigationRecord = ride as unknown as Record<string, unknown>;
-  const rideStatus = String(rideNavigationRecord.status ?? ride.status ?? "").toLowerCase();
+  const rideStatus = String(
+    rideNavigationRecord.status ?? ride.status ?? "",
+  ).toLowerCase();
 
   // Estado efectivo para el mapa:
   // - Antes de iniciar viaje: ruta al punto de recogida.
@@ -1982,8 +2279,10 @@ function UberDriverNavigationMap({
     rideNavigationRecord.driverStartedTrip === true ||
     rideNavigationRecord.tripStarted === true;
 
-  const goingToPickup = !tripAlreadyStarted && ["accepted", "driver_en_route"].includes(rideStatus);
-  const waitingPassenger = !tripAlreadyStarted && rideStatus === "driver_arrived";
+  const goingToPickup =
+    !tripAlreadyStarted && ["accepted", "driver_en_route"].includes(rideStatus);
+  const waitingPassenger =
+    !tripAlreadyStarted && rideStatus === "driver_arrived";
   const goingToDestination = tripAlreadyStarted;
   const [driverNoShowNowMs, setDriverNoShowNowMs] = useState(() => Date.now());
 
@@ -1992,19 +2291,29 @@ function UberDriverNavigationMap({
       return;
     }
 
-    ensureDriverNoShowTimerStartMs(ride as DriverRideData & Record<string, unknown>);
+    ensureDriverNoShowTimerStartMs(
+      ride as DriverRideData & Record<string, unknown>,
+    );
     setDriverNoShowNowMs(Date.now());
 
-    const interval = window.setInterval(() => setDriverNoShowNowMs(Date.now()), 1000);
+    const interval = window.setInterval(
+      () => setDriverNoShowNowMs(Date.now()),
+      1000,
+    );
     return () => window.clearInterval(interval);
   }, [waitingPassenger, ride.id]);
 
   const driverNoShowState = waitingPassenger
-    ? getDriverNoShowState(ride as DriverRideData & Record<string, unknown>, driverNoShowNowMs)
+    ? getDriverNoShowState(
+        ride as DriverRideData & Record<string, unknown>,
+        driverNoShowNowMs,
+      )
     : {
         allowed: false,
         remainingMs: RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS,
-        feeClp: getDriverRideNoShowFeeClp(ride as DriverRideData & Record<string, unknown>),
+        feeClp: getDriverRideNoShowFeeClp(
+          ride as DriverRideData & Record<string, unknown>,
+        ),
       };
 
   const target = goingToDestination
@@ -2136,7 +2445,9 @@ function UberDriverNavigationMap({
     return "↑";
   }
 
-  function arrivalInstructionText(distanceMeters: number | null): string | null {
+  function arrivalInstructionText(
+    distanceMeters: number | null,
+  ): string | null {
     if (distanceMeters == null || !Number.isFinite(distanceMeters)) return null;
 
     const destinationName = goingToDestination
@@ -2146,9 +2457,12 @@ function UberDriverNavigationMap({
         : `${destinationDisplay.name}, zona ${destinationDisplay.zone}`;
 
     if (distanceMeters <= 35) return `Llegaste a ${destinationName}.`;
-    if (distanceMeters <= 100) return `En ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
-    if (distanceMeters <= 200) return `Prepárate, en ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
-    if (distanceMeters <= 500) return `Continúa, en ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
+    if (distanceMeters <= 100)
+      return `En ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
+    if (distanceMeters <= 200)
+      return `Prepárate, en ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
+    if (distanceMeters <= 500)
+      return `Continúa, en ${formatNavigationMeters(distanceMeters)} llegas a ${destinationName}.`;
 
     return null;
   }
@@ -2195,7 +2509,10 @@ function UberDriverNavigationMap({
 
     if (lengthSquared <= 0) return distanceMeters(point, a);
 
-    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared));
+    const t = Math.max(
+      0,
+      Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared),
+    );
     const closest = {
       lat: (ay + t * dy) / latScale,
       lng: (ax + t * dx) / lngScale,
@@ -2204,19 +2521,28 @@ function UberDriverNavigationMap({
     return distanceMeters(point, closest);
   }
 
-  function getDistanceToCurrentRouteMeters(point: { lat: number; lng: number }): number | null {
+  function getDistanceToCurrentRouteMeters(point: {
+    lat: number;
+    lng: number;
+  }): number | null {
     const path = routePathRef.current;
     if (path.length < 2) return null;
 
     let best = Number.POSITIVE_INFINITY;
     for (let index = 0; index < path.length - 1; index += 1) {
-      best = Math.min(best, distancePointToSegmentMeters(point, path[index], path[index + 1]));
+      best = Math.min(
+        best,
+        distancePointToSegmentMeters(point, path[index], path[index + 1]),
+      );
     }
 
     return Number.isFinite(best) ? best : null;
   }
 
-  function getRouteHeadingForPoint(point: { lat: number; lng: number }): number | null {
+  function getRouteHeadingForPoint(point: {
+    lat: number;
+    lng: number;
+  }): number | null {
     const path = routePathRef.current;
     if (path.length < 2) return null;
 
@@ -2224,7 +2550,11 @@ function UberDriverNavigationMap({
     let best = Number.POSITIVE_INFINITY;
 
     for (let index = 0; index < path.length - 1; index += 1) {
-      const meters = distancePointToSegmentMeters(point, path[index], path[index + 1]);
+      const meters = distancePointToSegmentMeters(
+        point,
+        path[index],
+        path[index + 1],
+      );
       if (meters < best) {
         best = meters;
         bestIndex = index;
@@ -2237,7 +2567,6 @@ function UberDriverNavigationMap({
 
     return bearingDegrees(from, to);
   }
-
 
   function focusNavigationCameraInsideApp(force = true): void {
     const map = mapRef.current;
@@ -2258,10 +2587,13 @@ function UberDriverNavigationMap({
     didInitialCameraRef.current = true;
     lastCameraAtRef.current = Date.now();
 
-    const cameraHeading =
-      driverPoint
-        ? routeHeadingRef.current ?? getRouteHeadingForPoint(driverPoint) ?? (targetPoint ? bearingDegrees(driverPoint, targetPoint) : headingRef.current)
-        : headingRef.current;
+    const cameraHeading = driverPoint
+      ? (routeHeadingRef.current ??
+        getRouteHeadingForPoint(driverPoint) ??
+        (targetPoint
+          ? bearingDegrees(driverPoint, targetPoint)
+          : headingRef.current))
+      : headingRef.current;
 
     try {
       map.setZoom(18);
@@ -2359,7 +2691,10 @@ function UberDriverNavigationMap({
     if (!force && !navigationCameraLockedRef.current) {
       // Si el conductor tocó/arrastró el mapa, dejamos revisar unos segundos.
       // Luego se vuelve a centrar solo para que no parezca pegado.
-      if (manualCameraUnlockUntilRef.current && now >= manualCameraUnlockUntilRef.current) {
+      if (
+        manualCameraUnlockUntilRef.current &&
+        now >= manualCameraUnlockUntilRef.current
+      ) {
         updateNavigationCameraLock(true);
       } else {
         return;
@@ -2390,7 +2725,8 @@ function UberDriverNavigationMap({
       }
     }, 70);
 
-    const roadHeading = routeHeadingRef.current ?? getRouteHeadingForPoint(point) ?? heading;
+    const roadHeading =
+      routeHeadingRef.current ?? getRouteHeadingForPoint(point) ?? heading;
 
     try {
       map.setHeading(roadHeading);
@@ -2407,7 +2743,8 @@ function UberDriverNavigationMap({
     const map = mapRef.current;
     if (!map || !window.google?.maps) return;
 
-    const roadHeading = routeHeadingRef.current ?? getRouteHeadingForPoint(point) ?? heading;
+    const roadHeading =
+      routeHeadingRef.current ?? getRouteHeadingForPoint(point) ?? heading;
 
     setMarker(driverMarkerRef, point, {
       title: "Conductor",
@@ -2423,14 +2760,24 @@ function UberDriverNavigationMap({
 
     setMarker(pickupMarkerRef, pickup, {
       title: `Recogida: ${pickupDisplay.name} · Zona ${pickupDisplay.zone}`,
-      label: { text: "R", color: "#ffffff", fontSize: "13px", fontWeight: "900" },
+      label: {
+        text: "R",
+        color: "#ffffff",
+        fontSize: "13px",
+        fontWeight: "900",
+      },
       icon: makeCircleIcon("#22c55e", "#ffffff", 17),
       zIndex: 40,
     });
 
     setMarker(destinationMarkerRef, destination, {
       title: `Destino: ${destinationDisplay.name} · Zona ${destinationDisplay.zone}`,
-      label: { text: "D", color: "#ffffff", fontSize: "13px", fontWeight: "900" },
+      label: {
+        text: "D",
+        color: "#ffffff",
+        fontSize: "13px",
+        fontWeight: "900",
+      },
       icon: makeCircleIcon("#ef4444", "#ffffff", 15),
       zIndex: 35,
     });
@@ -2465,7 +2812,9 @@ function UberDriverNavigationMap({
 
     setTargetDistanceMeters(remaining);
     setRouteInfo({
-      duration: formatNavigationDuration(snapshot.etaSeconds ?? snapshot.route.durationSeconds),
+      duration: formatNavigationDuration(
+        snapshot.etaSeconds ?? snapshot.route.durationSeconds,
+      ),
       distance: formatRouteMeters(remaining),
     });
 
@@ -2518,7 +2867,7 @@ function UberDriverNavigationMap({
       : goingToPickup
         ? pickup
         : waitingPassenger
-          ? destination ?? pickup
+          ? (destination ?? pickup)
           : null;
 
     const driverPoint = driverPointRef.current;
@@ -2528,7 +2877,9 @@ function UberDriverNavigationMap({
       return;
     }
 
-    const phase: RoutePhase = goingToDestination ? "to_destination" : "to_pickup";
+    const phase: RoutePhase = goingToDestination
+      ? "to_destination"
+      : "to_pickup";
 
     controller.setStrokeColor(goingToPickup ? "#06B6D4" : "#4F46E5");
     controller.setTarget(
@@ -2548,7 +2899,10 @@ function UberDriverNavigationMap({
             : resolvePointWithGoogleMaps(ride.originText, pickupAddress),
           nav.destinationLat != null && nav.destinationLng != null
             ? Promise.resolve(null)
-            : resolvePointWithGoogleMaps(ride.destinationText, destinationAddress),
+            : resolvePointWithGoogleMaps(
+                ride.destinationText,
+                destinationAddress,
+              ),
         ]);
 
         if (cancelled) return;
@@ -2559,13 +2913,19 @@ function UberDriverNavigationMap({
         if (!resolvedPickup && nav.pickupLat == null && nav.pickupLng == null) {
           setGooglePickupPoint(null);
         }
-        if (!resolvedDestination && nav.destinationLat == null && nav.destinationLng == null) {
+        if (
+          !resolvedDestination &&
+          nav.destinationLat == null &&
+          nav.destinationLng == null
+        ) {
           setGoogleDestinationPoint(null);
         }
       } catch {
         if (!cancelled) {
-          if (nav.pickupLat == null && nav.pickupLng == null) setGooglePickupPoint(null);
-          if (nav.destinationLat == null && nav.destinationLng == null) setGoogleDestinationPoint(null);
+          if (nav.pickupLat == null && nav.pickupLng == null)
+            setGooglePickupPoint(null);
+          if (nav.destinationLat == null && nav.destinationLng == null)
+            setGoogleDestinationPoint(null);
         }
       }
     }
@@ -2605,7 +2965,12 @@ function UberDriverNavigationMap({
 
         const map = new google.maps.Map(mapElementRef.current, {
           center,
-          zoom: driverPointRef.current ? 18 : 14,
+          /* 16 y no 18 al abrir: 18 es nivel de manzana, pensado para la
+             cámara de navegación (que sigue usándolo, con tilt). Al ENTRAR al
+             panel el conductor todavía se está ubicando, y a 18 no ve ni la
+             calle siguiente. A 16 alcanza a leer por dónde va sin tener que
+             alejar a mano cada vez que abre la pantalla. */
+          zoom: driverPointRef.current ? 16 : 14,
           mapTypeId: google.maps.MapTypeId.ROADMAP,
           disableDefaultUI: true,
           zoomControl: true,
@@ -2735,7 +3100,11 @@ function UberDriverNavigationMap({
         driverPointRef.current = next;
 
         const rawSpeed = Number(position.coords.speed);
-        setSpeedKmh(Number.isFinite(rawSpeed) && rawSpeed >= 0 ? Math.round(rawSpeed * 3.6) : null);
+        setSpeedKmh(
+          Number.isFinite(rawSpeed) && rawSpeed >= 0
+            ? Math.round(rawSpeed * 3.6)
+            : null,
+        );
 
         publishDriverLiveLocationForPassenger(
           ride,
@@ -2772,12 +3141,15 @@ function UberDriverNavigationMap({
           routeControllerRef.current?.updatePosition(next);
 
           const roadHeading =
-            routeHeadingRef.current ?? getRouteHeadingForPoint(next) ?? headingRef.current;
+            routeHeadingRef.current ??
+            getRouteHeadingForPoint(next) ??
+            headingRef.current;
           moveDriverOnly(next, roadHeading);
 
           // Si todavía no hay destino fijado (por ejemplo, el GPS llegó antes
           // que los puntos del viaje), se fija ahora sin forzar red.
-          if (!routeControllerRef.current?.getPath().length) calculateRouteOnce();
+          if (!routeControllerRef.current?.getPath().length)
+            calculateRouteOnce();
         }
       },
       () => {
@@ -2805,8 +3177,7 @@ function UberDriverNavigationMap({
         overflow: "hidden",
         borderRadius: "22px",
         background: "#f3f4ef",
-      }}
-    >
+      }}>
       <div
         ref={(el) => {
           mapElementRef.current = el;
@@ -2828,12 +3199,15 @@ function UberDriverNavigationMap({
           overflow: "hidden",
           zIndex: "var(--rp-z-map-panel)",
           pointerEvents: "none",
-        }}
-      >
+        }}>
         <button
           type="button"
           onClick={() => setInstructionBannerCollapsed((prev) => !prev)}
-          aria-label={instructionBannerCollapsed ? "Expandir indicaciones" : "Minimizar indicaciones"}
+          aria-label={
+            instructionBannerCollapsed
+              ? "Expandir indicaciones"
+              : "Minimizar indicaciones"
+          }
           style={{
             position: "absolute",
             right: 6,
@@ -2851,8 +3225,7 @@ function UberDriverNavigationMap({
             justifyContent: "center",
             zIndex: 13,
             pointerEvents: "auto",
-          }}
-        >
+          }}>
           {instructionBannerCollapsed ? "▾" : "▴"}
         </button>
 
@@ -2866,9 +3239,9 @@ function UberDriverNavigationMap({
             gridTemplateColumns: "48px 1fr",
             gap: 12,
             alignItems: "center",
-            transition: "min-height .2s ease, max-height .2s ease, padding .2s ease",
-          }}
-        >
+            transition:
+              "min-height .2s ease, max-height .2s ease, padding .2s ease",
+          }}>
           {/* Flecha/bandera de maniobra: puramente visual. La misma información
               (hacia dónde va y por qué calle) ya se lee en el bloque de texto
               de al lado, así que para un lector de pantalla es ruido. */}
@@ -2879,9 +3252,12 @@ function UberDriverNavigationMap({
               fontWeight: 950,
               lineHeight: 1,
               textAlign: "center",
-            }}
-          >
-            {nextInstruction?.maneuver === "arrive" ? <IonIcon icon={flagOutline} style={{ fontSize: "1em" }} /> : maneuverArrow(nextInstruction?.maneuver)}
+            }}>
+            {nextInstruction?.maneuver === "arrive" ? (
+              <IonIcon icon={flagOutline} style={{ fontSize: "1em" }} />
+            ) : (
+              maneuverArrow(nextInstruction?.maneuver)
+            )}
           </div>
 
           {/* Región viva del estado de navegación: "hacia dónde vamos" y la
@@ -2896,8 +3272,7 @@ function UberDriverNavigationMap({
                 fontWeight: 850,
                 color: "rgba(255,255,255,.82)",
                 lineHeight: 1.1,
-              }}
-            >
+              }}>
               {goingToPickup
                 ? "en dirección a la recogida"
                 : waitingPassenger
@@ -2914,8 +3289,7 @@ function UberDriverNavigationMap({
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 letterSpacing: "-.02em",
-              }}
-            >
+              }}>
               {nextInstruction?.street || targetLabel || "Punto de ruta"}
             </div>
             {/* Duración/distancia se recalculan con cada punto de GPS: puestas
@@ -2932,9 +3306,10 @@ function UberDriverNavigationMap({
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-              }}
-            >
-              {routeInfo?.duration ? `${routeInfo.duration}` : "Calculando ruta"}
+              }}>
+              {routeInfo?.duration
+                ? `${routeInfo.duration}`
+                : "Calculando ruta"}
               {routeInfo?.distance ? ` · ${routeInfo.distance}` : ""}
               {/* Sin conexión la ruta sigue en pantalla y la distancia sigue
                   bajando; solo se avisa que el tráfico no está actualizado. */}
@@ -2956,40 +3331,52 @@ function UberDriverNavigationMap({
           style={{
             background: "rgba(0, 72, 68, .92)",
             padding:
-              !instructionBannerCollapsed && nextInstruction && nextInstruction.maneuver !== "arrive"
+              !instructionBannerCollapsed &&
+              nextInstruction &&
+              nextInstruction.maneuver !== "arrive"
                 ? "10px 16px"
                 : 0,
             display: "flex",
             alignItems: "center",
             gap: 12,
             minHeight:
-              !instructionBannerCollapsed && nextInstruction && nextInstruction.maneuver !== "arrive"
+              !instructionBannerCollapsed &&
+              nextInstruction &&
+              nextInstruction.maneuver !== "arrive"
                 ? 48
                 : 0,
             overflow: "hidden",
-          }}
-        >
-          {!instructionBannerCollapsed && nextInstruction && nextInstruction.maneuver !== "arrive" && (
-            <>
-              <span style={{ fontSize: "1.42rem", fontWeight: 950, lineHeight: 1 }}>
-                Luego <span aria-hidden="true">{maneuverArrow(nextInstruction.maneuver)}</span>
-              </span>
-              <span
-                style={{
-                  minWidth: 0,
-                  flex: 1,
-                  fontSize: ".86rem",
-                  fontWeight: 800,
-                  color: "rgba(255,255,255,.84)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {nextInstruction.text}
-              </span>
-            </>
-          )}
+          }}>
+          {!instructionBannerCollapsed &&
+            nextInstruction &&
+            nextInstruction.maneuver !== "arrive" && (
+              <>
+                <span
+                  style={{
+                    fontSize: "1.42rem",
+                    fontWeight: 950,
+                    lineHeight: 1,
+                  }}>
+                  Luego{" "}
+                  <span aria-hidden="true">
+                    {maneuverArrow(nextInstruction.maneuver)}
+                  </span>
+                </span>
+                <span
+                  style={{
+                    minWidth: 0,
+                    flex: 1,
+                    fontSize: ".86rem",
+                    fontWeight: 800,
+                    color: "rgba(255,255,255,.84)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}>
+                  {nextInstruction.text}
+                </span>
+              </>
+            )}
         </div>
       </div>
 
@@ -3001,7 +3388,11 @@ function UberDriverNavigationMap({
           style={{
             position: "absolute",
             left: "14px",
-            top: instructionBannerCollapsed ? "56px" : nextInstruction ? "146px" : "96px",
+            top: instructionBannerCollapsed
+              ? "56px"
+              : nextInstruction
+                ? "146px"
+                : "96px",
             background: "rgba(239,68,68,.92)",
             color: "#ffffff",
             borderRadius: "999px",
@@ -3011,8 +3402,7 @@ function UberDriverNavigationMap({
             boxShadow: "0 6px 14px rgba(0,0,0,.20)",
             zIndex: "var(--rp-z-map-panel)",
             pointerEvents: "none",
-          }}
-        >
+          }}>
           GPS fuera de Rapa Nui
         </div>
       )}
@@ -3027,8 +3417,16 @@ function UberDriverNavigationMap({
             left: "14px",
             right: "78px",
             top: instructionBannerCollapsed
-              ? (driverOutsideRapaNui ? "88px" : "56px")
-              : nextInstruction ? (driverOutsideRapaNui ? "178px" : "146px") : (driverOutsideRapaNui ? "128px" : "96px"),
+              ? driverOutsideRapaNui
+                ? "88px"
+                : "56px"
+              : nextInstruction
+                ? driverOutsideRapaNui
+                  ? "178px"
+                  : "146px"
+                : driverOutsideRapaNui
+                  ? "128px"
+                  : "96px",
             ...uberPanelStyle({
               background: "rgba(17,17,17,.82)",
               padding: "7px 10px",
@@ -3040,9 +3438,13 @@ function UberDriverNavigationMap({
             fontWeight: 900,
             zIndex: "var(--rp-z-map-panel)",
             pointerEvents: "none",
-          }}
-        >
-          <IonIcon icon={locationOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Activando GPS real...
+          }}>
+          <IonIcon
+            icon={locationOutline}
+            aria-hidden="true"
+            style={{ fontSize: "1em", verticalAlign: "-0.125em" }}
+          />{" "}
+          Activando GPS real...
         </div>
       )}
 
@@ -3051,8 +3453,8 @@ function UberDriverNavigationMap({
           entre el banner de instrucciones y la hoja inferior. Ver el
           comentario de isCompactPreview más arriba. */}
       {!isCompactPreview && (
-      <>
-      {/* Riel derecho: acciones sobre el mapa. Ancladas desde ABAJO con la
+        <>
+          {/* Riel derecho: acciones sobre el mapa. Ancladas desde ABAJO con la
           misma referencia que la hoja inferior (RAPAGO_NAV_RAIL_BOTTOM), no
           desde arriba: así nunca invaden la hoja sin importar el alto real
           del mapa en el teléfono del conductor. El gap del flex reemplaza los
@@ -3061,169 +3463,182 @@ function UberDriverNavigationMap({
           margen seguro lateral (env(safe-area-inset-right)), en vez de un
           "right:14px" fijo que en algunos recortes de viewport quedaba justo
           en el borde. */}
-      <div
-        style={{
-          position: "absolute",
-          right: "calc(14px + env(safe-area-inset-right, 0px))",
-          bottom: navRailBottom,
-          transition: navRailTransition,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 12,
-          zIndex: "var(--rp-z-map-controls)",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            calculateRouteOnce();
-            focusNavigationCameraInsideApp(true);
-          }}
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 999,
-            border: "1px solid var(--rp-border-c)",
-            background: "var(--rp-surface)",
-            color: "var(--rp-icon-fg)",
-            boxShadow: "var(--rp-shadow)",
-            fontSize: 22,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          aria-label="Recalcular ruta"
-        >
-          <IonIcon icon={refreshOutline} aria-hidden="true" />
-        </button>
+          <div
+            style={{
+              position: "absolute",
+              right: "calc(14px + env(safe-area-inset-right, 0px))",
+              bottom: navRailBottom,
+              transition: navRailTransition,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 12,
+              zIndex: "var(--rp-z-map-controls)",
+            }}>
+            <button
+              type="button"
+              onClick={() => {
+                calculateRouteOnce();
+                focusNavigationCameraInsideApp(true);
+              }}
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 999,
+                border: "1px solid var(--rp-border-c)",
+                background: "var(--rp-surface)",
+                color: "var(--rp-icon-fg)",
+                boxShadow: "var(--rp-shadow)",
+                fontSize: 22,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              aria-label="Recalcular ruta">
+              <IonIcon icon={refreshOutline} aria-hidden="true" />
+            </button>
 
-        <button
-          type="button"
-          onClick={openExternalNavigationToTarget}
-          style={{
-            width: 58,
-            height: 58,
-            borderRadius: 999,
-            border: "1px solid rgba(255,255,255,.25)",
-            background: "#00a884",
-            color: "#ffffff",
-            boxShadow: "0 12px 28px rgba(0,0,0,.42)",
-            fontSize: 25,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          aria-label="Acercar mapa y seguir ruta dentro de Rapa Go"
-        >
-          <IonIcon icon={navigateOutline} aria-hidden="true" />
-        </button>
+            <button
+              type="button"
+              onClick={openExternalNavigationToTarget}
+              style={{
+                width: 58,
+                height: 58,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,.25)",
+                background: "#00a884",
+                color: "#ffffff",
+                boxShadow: "0 12px 28px rgba(0,0,0,.42)",
+                fontSize: 25,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              aria-label="Acercar mapa y seguir ruta dentro de Rapa Go">
+              <IonIcon icon={navigateOutline} aria-hidden="true" />
+            </button>
 
-        <button
-          type="button"
-          onClick={() => setMapVoiceMuted((current) => !current)}
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 999,
-            border: "1px solid var(--rp-border-c)",
-            background: "var(--rp-surface)",
-            color: "var(--rp-icon-fg)",
-            boxShadow: "var(--rp-shadow)",
-            fontSize: 21,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          /* Criterio de nombre para botones interruptor en toda esta pantalla:
+            <button
+              type="button"
+              onClick={() => setMapVoiceMuted((current) => !current)}
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 999,
+                border: "1px solid var(--rp-border-c)",
+                background: "var(--rp-surface)",
+                color: "var(--rp-icon-fg)",
+                boxShadow: "var(--rp-shadow)",
+                fontSize: 21,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              /* Criterio de nombre para botones interruptor en toda esta pantalla:
              el aria-label describe la ACCIÓN que se ejecuta al tocar (mismo
              criterio que el botón de modo día/noche del encabezado), no el
              estado actual. Antes decía "Voz activada"/"Indicaciones visuales
              sin voz" -describiendo el estado-, inconsistente con el resto. */
-          aria-label={mapVoiceMuted ? "Activar voz de las indicaciones" : "Silenciar voz de las indicaciones"}
-        >
-          {mapVoiceMuted ? <IonIcon icon={volumeMuteOutline} aria-hidden="true" /> : <IonIcon icon={volumeHighOutline} aria-hidden="true" />}
-        </button>
-      </div>
+              aria-label={
+                mapVoiceMuted
+                  ? "Activar voz de las indicaciones"
+                  : "Silenciar voz de las indicaciones"
+              }>
+              {mapVoiceMuted ? (
+                <IonIcon icon={volumeMuteOutline} aria-hidden="true" />
+              ) : (
+                <IonIcon icon={volumeHighOutline} aria-hidden="true" />
+              )}
+            </button>
+          </div>
 
-      {!isNavigationCameraLocked && (
-        <button
-          type="button"
-          onClick={() => focusNavigationCameraInsideApp(true)}
-          style={{
-            position: "absolute",
-            left: "50%",
-            transform: "translateX(-50%)",
-            bottom: navRailBottom,
-            transition: navRailTransition,
-            border: "1px solid var(--rp-border-c)",
-            borderRadius: 999,
-            background: "var(--rp-surface)",
-            color: "var(--rp-ok-fg)",
-            padding: "10px 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            minHeight: 44,
-            fontSize: ".78rem",
-            fontWeight: 950,
-            boxShadow: "var(--rp-shadow)",
-            zIndex: "var(--rp-z-map-controls)",
-          }}
-        >
-          <IonIcon icon={navigateOutline} aria-hidden="true" style={{ fontSize: "1.1em" }} /> Centrar
-        </button>
-      )}
+          {!isNavigationCameraLocked && (
+            <button
+              type="button"
+              onClick={() => focusNavigationCameraInsideApp(true)}
+              style={{
+                position: "absolute",
+                left: "50%",
+                transform: "translateX(-50%)",
+                bottom: navRailBottom,
+                transition: navRailTransition,
+                border: "1px solid var(--rp-border-c)",
+                borderRadius: 999,
+                background: "var(--rp-surface)",
+                color: "var(--rp-ok-fg)",
+                padding: "10px 16px",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                minHeight: 44,
+                fontSize: ".78rem",
+                fontWeight: 950,
+                boxShadow: "var(--rp-shadow)",
+                zIndex: "var(--rp-z-map-controls)",
+              }}>
+              <IonIcon
+                icon={navigateOutline}
+                aria-hidden="true"
+                style={{ fontSize: "1.1em" }}
+              />{" "}
+              Centrar
+            </button>
+          )}
 
-      {/* Riel izquierdo: informaci\u00F3n pasiva (velocidad, aviso). No es
+          {/* Riel izquierdo: informaci\u00F3n pasiva (velocidad, aviso). No es
           interactivo (pointerEvents:none), as\u00ED que vive en su propia columna
           con gap real en vez de compartir esquina con los botones de acci\u00F3n
           del riel derecho. Antes "Informar" viv\u00EDa a la DERECHA, en la misma
           esquina que el bot\u00F3n de silenciar, y uno tapaba el final del otro. */}
-      <div
-        style={{
-          position: "absolute",
-          left: "calc(14px + env(safe-area-inset-left, 0px))",
-          bottom: navRailBottom,
-          transition: navRailTransition,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-start",
-          gap: 10,
-          zIndex: "var(--rp-z-map-panel)",
-        }}
-      >
-        <div
-          style={{
-            width: 62,
-            height: 62,
-            borderRadius: 999,
-            background: "var(--rp-surface)",
-            border: "1px solid var(--rp-border-c)",
-            color: "var(--rp-text)",
-            boxShadow: "var(--rp-shadow)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 950,
-            pointerEvents: "none",
-          }}
-        >
-          {/* Sube de .64rem a .7rem: ning\u00FAn texto de esta pantalla debe quedar
+          <div
+            style={{
+              position: "absolute",
+              left: "calc(14px + env(safe-area-inset-left, 0px))",
+              bottom: navRailBottom,
+              transition: navRailTransition,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 10,
+              zIndex: "var(--rp-z-map-panel)",
+            }}>
+            <div
+              style={{
+                width: 62,
+                height: 62,
+                borderRadius: 999,
+                background: "var(--rp-surface)",
+                border: "1px solid var(--rp-border-c)",
+                color: "var(--rp-text)",
+                boxShadow: "var(--rp-shadow)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 950,
+                pointerEvents: "none",
+              }}>
+              {/* Sube de .64rem a .7rem: ning\u00FAn texto de esta pantalla debe quedar
               por debajo de ese piso, se lee de reojo y a un brazo de distancia. */}
-          <div style={{ fontSize: "1.15rem", lineHeight: 1 }}>
-            {speedKmh == null ? "--" : speedKmh}
-          </div>
-          <div style={{ fontSize: ".7rem", lineHeight: 1.1, color: "var(--rp-muted)" }}>km/h</div>
-        </div>
+              <div style={{ fontSize: "1.15rem", lineHeight: 1 }}>
+                {speedKmh == null ? "--" : speedKmh}
+              </div>
+              <div
+                style={{
+                  fontSize: ".7rem",
+                  lineHeight: 1.1,
+                  color: "var(--rp-muted)",
+                }}>
+                km/h
+              </div>
+            </div>
 
-        {/* Aqu\u00ED viv\u00EDa una p\u00EDldora "\u26A0 Informar" que NO era un bot\u00F3n: ten\u00EDa
+            {/* Aqu\u00ED viv\u00EDa una p\u00EDldora "\u26A0 Informar" que NO era un bot\u00F3n: ten\u00EDa
             pointerEvents:none y no ejecutaba nada. Ocupaba una esquina del mapa
             aparentando ser tocable, que es peor que no estar. Informar una
             emergencia real se hace desde el SOS. */}
-      </div>
-      </>
+          </div>
+        </>
       )}
 
       {/* Hoja inferior estilo navegación. Usa tokens --rp-* (no blanco fijo)
@@ -3266,8 +3681,7 @@ function UberDriverNavigationMap({
             draggingSheet || prefersReducedMotion
               ? "none"
               : "transform .22s ease",
-        }}
-      >
+        }}>
         {/* Asa. Los handlers de puntero van en la franja entera y no solo en el
             botón, para que el gesto se agarre con el pulgar sin apuntar. El
             botón de dentro es el que da el nombre accesible y la ruta por
@@ -3286,8 +3700,7 @@ function UberDriverNavigationMap({
               height: RAPAGO_NAV_SHEET_GRIP_H,
               touchAction: "none",
               cursor: draggingSheet ? "grabbing" : "grab",
-            }}
-          >
+            }}>
             <button
               type="button"
               aria-expanded={navSheetOpen}
@@ -3308,20 +3721,11 @@ function UberDriverNavigationMap({
                 alignItems: "center",
                 justifyContent: "center",
                 cursor: "inherit",
-              }}
-            >
-              <span
-                aria-hidden="true"
-                className="rapago-driver-nav-grip"
-              />
+              }}>
+              <span aria-hidden="true" className="rapago-driver-nav-grip" />
             </button>
           </div>
         )}
-
-        {/* Flota con position:absolute (ver CSS): así queda por encima de la
-            franja del asa —que captura el gesto de arrastre en todo su
-            ancho— sin competir por ese gesto ni depender del orden del DOM. */}
-        {!isCompactPreview && sheetPrimaryAction}
 
         {/* Una sola columna. Antes esta franja llevaba dos botones de 58px a los
             lados del ETA: "soltar cámara" (✕) y "recentrar ruta".
@@ -3334,29 +3738,31 @@ function UberDriverNavigationMap({
             Los 152px que ocupaban se los queda el ETA. */}
         <div
           style={{
-            paddingTop: isCompactPreview ? 14 : 0,
-          }}
-        >
-        <div className="rapago-driver-nav-eta" style={{ textAlign: "center", minWidth: 0 }}>
-          {/* 2.4rem, no 1.95: con los dos botones de 58px fuera, el ETA deja de
+            paddingTop: isCompactPreview
+              ? 14
+              : RAPAGO_NAV_SHEET_ACTIONS_CLEARANCE,
+          }}>
+          <div
+            className="rapago-driver-nav-eta"
+            style={{ textAlign: "center", minWidth: 0 }}>
+            {/* 2.4rem, no 1.95: con los dos botones de 58px fuera, el ETA deja de
               competir por el ancho y puede ser lo más grande de la hoja, que es
               lo que merece el dato que el conductor mira de reojo. */}
-          <div className="rapago-driver-nav-eta__value">
-            {routeInfo?.duration || "--"}
-          </div>
-          {/* Solo duración/distancia: el destino (targetLabel) ya aparece en
+            <div className="rapago-driver-nav-eta__value">
+              {routeInfo?.duration || "--"}
+            </div>
+            {/* Solo duración/distancia: el destino (targetLabel) ya aparece en
               el banner superior y en el panel de estado bajo el mapa.
               Repetirlo una tercera vez aquí solo restaba el poco alto
               vertical disponible en un teléfono. */}
-          {/* Distancia con icono: el par «reloj grande + regla pequeña» deja
+            {/* Distancia con icono: el par «reloj grande + regla pequeña» deja
               claro de un vistazo cuál de los dos números es el tiempo y cuál
               el trayecto, sin tener que leer las unidades. */}
-          <div className="rapago-driver-nav-eta__meta">
-            <IonIcon icon={navigateOutline} aria-hidden="true" />
-            <span>{routeInfo?.distance || "Calculando distancia"}</span>
+            <div className="rapago-driver-nav-eta__meta">
+              <IonIcon icon={navigateOutline} aria-hidden="true" />
+              <span>{routeInfo?.distance || "Calculando distancia"}</span>
+            </div>
           </div>
-        </div>
-
         </div>
 
         {/* Estado del viaje. Zona fija, pegada al ETA: juntos responden las dos
@@ -3366,12 +3772,28 @@ function UberDriverNavigationMap({
           <div style={{ flex: "0 0 auto", marginTop: 8 }}>{sheetHeader}</div>
         )}
 
-        {/* Acciones principales ANTES que los avisos, y no al final. El orden
-            del DOM decide qué sobrevive al plegado: la hoja se desplaza hacia
-            abajo, así que lo último se oculta primero. Con las acciones al
-            fondo, el reposo intermedio escondía justo los botones y dejaba a la
-            vista los avisos, que es exactamente al revés de lo que necesita
-            quien va conduciendo. */}
+        {/* Dock de acciones (patrón "button dock" de Base, el sistema de Uber):
+            la acción principal a ancho completo, un solo primario sólido por
+            vista, y Cancelar degradado a texto debajo.
+
+            Va AQUÍ y no al final del DOM, y esa es la parte que no se puede
+            mover: la hoja se pliega desplazándose hacia abajo, así que lo
+            último es lo primero que se oculta. En el reposo intermedio —donde
+            transcurre casi todo el viaje— un dock al fondo desaparecería justo
+            cuando más se necesita. Colocado tras el estado queda dentro del
+            núcleo siempre visible, y lo que se oculta al plegar son los avisos,
+            que es información de consulta.
+
+            El respiro inferior del aparato ya lo pone el padding de la hoja
+            (`max(12px, --rp-driver-tabbar-clearance)`), así que aquí no se
+            vuelve a sumar: contarlo dos veces empujaría el dock hacia arriba. */}
+        {!isCompactPreview && (sheetPrimaryAction || sheetCancelAction) && (
+          <div className="rapago-driver-nav-sheet__dock">
+            {sheetPrimaryAction}
+            {sheetCancelAction}
+          </div>
+        )}
+
         {!isCompactPreview && sheetActions && (
           <div
             style={{
@@ -3379,8 +3801,7 @@ function UberDriverNavigationMap({
               marginTop: 10,
               paddingTop: 10,
               borderTop: "1px solid var(--rp-border-c)",
-            }}
-          >
+            }}>
             {sheetActions}
           </div>
         )}
@@ -3413,8 +3834,7 @@ function UberDriverNavigationMap({
               marginTop: 10,
               paddingTop: 10,
               borderTop: "1px solid var(--rp-border-c)",
-            }}
-          >
+            }}>
             {sheetBody}
           </div>
         )}
@@ -3434,8 +3854,16 @@ function UberDriverNavigationMap({
             left: 14,
             right: 84,
             top: instructionBannerCollapsed
-              ? (driverOutsideRapaNui ? 88 : 56)
-              : nextInstruction ? (driverOutsideRapaNui ? 178 : 146) : (driverOutsideRapaNui ? 128 : 96),
+              ? driverOutsideRapaNui
+                ? 88
+                : 56
+              : nextInstruction
+                ? driverOutsideRapaNui
+                  ? 178
+                  : 146
+                : driverOutsideRapaNui
+                  ? 128
+                  : 96,
             background: "rgba(17,17,17,.82)",
             color: "#fff",
             borderRadius: 999,
@@ -3446,8 +3874,7 @@ function UberDriverNavigationMap({
             overflow: "hidden",
             textOverflow: "ellipsis",
             zIndex: "var(--rp-z-map-alert)",
-          }}
-        >
+          }}>
           {mapError}
         </div>
       )}
@@ -3535,7 +3962,10 @@ type DriverLiveGpsPoint = {
   lng: number;
 };
 
-function distanceMetersForLiveDriverGps(a: DriverLiveGpsPoint, b: DriverLiveGpsPoint): number {
+function distanceMetersForLiveDriverGps(
+  a: DriverLiveGpsPoint,
+  b: DriverLiveGpsPoint,
+): number {
   const earthRadius = 6371000;
   const toRad = (value: number) => (value * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);
@@ -3548,14 +3978,19 @@ function distanceMetersForLiveDriverGps(a: DriverLiveGpsPoint, b: DriverLiveGpsP
   return 2 * earthRadius * Math.asin(Math.sqrt(h));
 }
 
-function bearingDegreesForLiveDriverGps(from: DriverLiveGpsPoint, to: DriverLiveGpsPoint): number {
+function bearingDegreesForLiveDriverGps(
+  from: DriverLiveGpsPoint,
+  to: DriverLiveGpsPoint,
+): number {
   const toRad = (value: number) => (value * Math.PI) / 180;
   const toDeg = (value: number) => (value * 180) / Math.PI;
   const lat1 = toRad(from.lat);
   const lat2 = toRad(to.lat);
   const dLng = toRad(to.lng - from.lng);
   const y = Math.sin(dLng) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
@@ -3567,13 +4002,17 @@ function getDriverLiveUserField(user: unknown, key: string): string | null {
 
 type DriverPassengerFareType = "resident" | "chilean" | "foreigner";
 
-function getDriverPassengerFareTypeLabel(type: DriverPassengerFareType): string {
+function getDriverPassengerFareTypeLabel(
+  type: DriverPassengerFareType,
+): string {
   if (type === "resident") return "RAPA NUI / RESIDENTE RAPA NUI";
   if (type === "chilean") return "Turista chileno";
   return "Turista extranjero";
 }
 
-function normalizeDriverPassengerFareType(value: unknown): DriverPassengerFareType | null {
+function normalizeDriverPassengerFareType(
+  value: unknown,
+): DriverPassengerFareType | null {
   const raw = String(value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -3619,10 +4058,14 @@ function normalizeDriverPassengerFareType(value: unknown): DriverPassengerFareTy
   return null;
 }
 
-function readStoredDriverPassengerFareType(user?: unknown): DriverPassengerFareType | null {
-  const userData = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+function readStoredDriverPassengerFareType(
+  user?: unknown,
+): DriverPassengerFareType | null {
+  const userData =
+    user && typeof user === "object" ? (user as Record<string, unknown>) : {};
 
-  if (userData.isResident === true || userData.driverIsResident === true) return "resident";
+  if (userData.isResident === true || userData.driverIsResident === true)
+    return "resident";
 
   const fromUser =
     normalizeDriverPassengerFareType(userData.farePassengerType) ??
@@ -3645,7 +4088,10 @@ function readStoredDriverPassengerFareType(user?: unknown): DriverPassengerFareT
       ? (JSON.parse(registrationRaw) as Record<string, unknown>)
       : {};
 
-    if (registration.isResident === true || registration.driverIsResident === true) {
+    if (
+      registration.isResident === true ||
+      registration.driverIsResident === true
+    ) {
       return "resident";
     }
 
@@ -3657,20 +4103,36 @@ function readStoredDriverPassengerFareType(user?: unknown): DriverPassengerFareT
       normalizeDriverPassengerFareType(registration.nationality) ??
       normalizeDriverPassengerFareType(registration.passengerFareLabel) ??
       normalizeDriverPassengerFareType(registration.isResident) ??
-      normalizeDriverPassengerFareType(readDriverScopedStorageItem("rapago_driver_passenger_fare_type", user)) ??
-      normalizeDriverPassengerFareType(readDriverScopedStorageItem("rapago_driver_fare_passenger_type", user)) ??
-      normalizeDriverPassengerFareType(readDriverScopedStorageItem("rapago_passenger_fare_type", user)) ??
-      normalizeDriverPassengerFareType(readDriverScopedStorageItem("rapago_profile_passenger_type", user)) ??
-      normalizeDriverPassengerFareType(readDriverScopedStorageItem("rapago_profile_nationality", user)) ??
-      normalizeDriverPassengerFareType(readDriverScopedStorageItem("rapago_driver_nationality", user)) ??
-      normalizeDriverPassengerFareType(readDriverScopedStorageItem("rapago_driver_is_resident", user))
+      normalizeDriverPassengerFareType(
+        readDriverScopedStorageItem("rapago_driver_passenger_fare_type", user),
+      ) ??
+      normalizeDriverPassengerFareType(
+        readDriverScopedStorageItem("rapago_driver_fare_passenger_type", user),
+      ) ??
+      normalizeDriverPassengerFareType(
+        readDriverScopedStorageItem("rapago_passenger_fare_type", user),
+      ) ??
+      normalizeDriverPassengerFareType(
+        readDriverScopedStorageItem("rapago_profile_passenger_type", user),
+      ) ??
+      normalizeDriverPassengerFareType(
+        readDriverScopedStorageItem("rapago_profile_nationality", user),
+      ) ??
+      normalizeDriverPassengerFareType(
+        readDriverScopedStorageItem("rapago_driver_nationality", user),
+      ) ??
+      normalizeDriverPassengerFareType(
+        readDriverScopedStorageItem("rapago_driver_is_resident", user),
+      )
     );
   } catch {
     return null;
   }
 }
 
-function buildDriverResidentFarePayload(user?: unknown): Record<string, unknown> {
+function buildDriverResidentFarePayload(
+  user?: unknown,
+): Record<string, unknown> {
   const fareType = readStoredDriverPassengerFareType(user);
   if (!fareType) return {};
 
@@ -3689,7 +4151,8 @@ function buildDriverResidentFarePayload(user?: unknown): Record<string, unknown>
     isResident,
     driverIsResident: isResident,
     residenceVerificationStatus: isResident
-      ? localStorage.getItem("rapago_residence_verification_status") ?? "pending"
+      ? (localStorage.getItem("rapago_residence_verification_status") ??
+        "pending")
       : "not_required",
   };
 }
@@ -3702,19 +4165,46 @@ function persistDriverResidentFareForDriver(user?: unknown): void {
   const isResident = fareType === "resident";
 
   try {
-    writeDriverScopedStorageItem("rapago_driver_passenger_fare_type", fareType, user);
-    writeDriverScopedStorageItem("rapago_driver_fare_passenger_type", fareType, user);
+    writeDriverScopedStorageItem(
+      "rapago_driver_passenger_fare_type",
+      fareType,
+      user,
+    );
+    writeDriverScopedStorageItem(
+      "rapago_driver_fare_passenger_type",
+      fareType,
+      user,
+    );
     writeDriverScopedStorageItem("rapago_driver_nationality", label, user);
-    writeDriverScopedStorageItem("rapago_driver_is_resident", String(isResident), user);
+    writeDriverScopedStorageItem(
+      "rapago_driver_is_resident",
+      String(isResident),
+      user,
+    );
 
     if (isResident) {
-      writeDriverScopedStorageItem("rapago_passenger_fare_type", "resident", user);
-      writeDriverScopedStorageItem("rapago_profile_passenger_type", "resident", user);
-      writeDriverScopedStorageItem("rapago_fare_passenger_type", "resident", user);
+      writeDriverScopedStorageItem(
+        "rapago_passenger_fare_type",
+        "resident",
+        user,
+      );
+      writeDriverScopedStorageItem(
+        "rapago_profile_passenger_type",
+        "resident",
+        user,
+      );
+      writeDriverScopedStorageItem(
+        "rapago_fare_passenger_type",
+        "resident",
+        user,
+      );
       writeDriverScopedStorageItem("rapago_profile_nationality", label, user);
     }
 
-    const raw = readDriverScopedStorageItem("rapago_registration_profile", user);
+    const raw = readDriverScopedStorageItem(
+      "rapago_registration_profile",
+      user,
+    );
     if (raw) {
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       writeDriverScopedStorageItem(
@@ -3843,16 +4333,25 @@ function publishDriverLiveLocationForPassenger(
     driverVehicleColor: selectedVehicle?.color ?? null,
     driverVehiclePlate: selectedVehicle?.plate ?? null,
     driverVehicleImageDataUrl:
-      selectedVehicle?.imageDataUrl ?? getStoredDriverVehicleImageDataUrl(driverUser) ?? null,
-    driverVehicleImageName: selectedVehicle?.imageName ?? getStoredDriverVehicleImageName(driverUser) ?? null,
+      selectedVehicle?.imageDataUrl ??
+      getStoredDriverVehicleImageDataUrl(driverUser) ??
+      null,
+    driverVehicleImageName:
+      selectedVehicle?.imageName ??
+      getStoredDriverVehicleImageName(driverUser) ??
+      null,
     vehicleBrand: selectedVehicle?.brand ?? null,
     vehicleModel: selectedVehicle?.model ?? null,
     vehicleColor: selectedVehicle?.color ?? null,
     vehiclePlate: selectedVehicle?.plate ?? null,
     vehicleImageDataUrl:
-      selectedVehicle?.imageDataUrl ?? getStoredDriverVehicleImageDataUrl(driverUser) ?? null,
+      selectedVehicle?.imageDataUrl ??
+      getStoredDriverVehicleImageDataUrl(driverUser) ??
+      null,
     vehiclePhotoDataUrl:
-      selectedVehicle?.imageDataUrl ?? getStoredDriverVehicleImageDataUrl(driverUser) ?? null,
+      selectedVehicle?.imageDataUrl ??
+      getStoredDriverVehicleImageDataUrl(driverUser) ??
+      null,
     originText: ride.originText ?? null,
     destinationText: ride.destinationText ?? null,
     ...buildDriverResidentFarePayload(driverUser),
@@ -3862,7 +4361,10 @@ function publishDriverLiveLocationForPassenger(
     const map = readDriverLiveLocationMap();
     map[rideId] = payload;
 
-    safeSetDriverLocalStorageItem(RAPAGO_DRIVER_LIVE_LOCATION_KEY, JSON.stringify(map));
+    safeSetDriverLocalStorageItem(
+      RAPAGO_DRIVER_LIVE_LOCATION_KEY,
+      JSON.stringify(map),
+    );
     safeSetDriverLocalStorageItem(
       "rapago_current_driver_location",
       JSON.stringify(payload),
@@ -3878,7 +4380,9 @@ function publishDriverLiveLocationForPassenger(
         updatedAt: payload.updatedAt,
       };
 
-      publishDriverVehicleSnapshotToStorage(activeVehicleSnapshot as Record<string, unknown>);
+      publishDriverVehicleSnapshotToStorage(
+        activeVehicleSnapshot as Record<string, unknown>,
+      );
     }
 
     window.dispatchEvent(
@@ -4649,12 +5153,7 @@ function DriverHeaderWithoutNotifications({
       <IonToolbar className="driver-home-toolbar">
         <div slot="start" className="driver-home-brand">
           <div className="driver-home-brand__mark" aria-hidden="true">
-            <img
-              src={logoRapago}
-              alt=""
-              width={50}
-              height={50}
-            />
+            <img src={logoRapago} alt="" width={50} height={50} />
           </div>
           <div className="driver-home-brand__text">
             <div className="driver-home-brand__title">Hola, {driverName}</div>
@@ -4668,8 +5167,7 @@ function DriverHeaderWithoutNotifications({
             onClick={onToggleTheme}
             aria-label={isDark ? "Activar modo día" : "Activar modo nocturno"}
             title={isDark ? "Modo día" : "Modo nocturno"}
-            className="driver-home-header-action"
-          >
+            className="driver-home-header-action">
             <IonIcon
               icon={isDark ? sunnyOutline : moonOutline}
               slot="icon-only"
@@ -4680,8 +5178,7 @@ function DriverHeaderWithoutNotifications({
             fill="clear"
             routerLink={ROUTES.DRIVER.PROFILE}
             aria-label="Abrir perfil del conductor"
-            className="driver-home-header-action"
-          >
+            className="driver-home-header-action">
             <IonIcon icon={personOutline} slot="icon-only" />
           </IonButton>
 
@@ -4689,8 +5186,7 @@ function DriverHeaderWithoutNotifications({
             fill="clear"
             onClick={() => void handleLogout()}
             aria-label="Cerrar sesión"
-            className="driver-home-header-action"
-          >
+            className="driver-home-header-action">
             <IonIcon icon={logOutOutline} slot="icon-only" />
           </IonButton>
         </IonButtons>
@@ -4711,11 +5207,17 @@ function DriverAvailabilityControl({
   const isAvailable = value === "available";
 
   return (
-    <section className="driver-availability-panel" aria-label="Estado del conductor">
+    <section
+      className="driver-availability-panel"
+      aria-label="Estado del conductor">
       <div className="driver-availability-panel__header">
         <div>
-          <div className="driver-availability-panel__eyebrow">Conexión de trabajo</div>
-          <div className="driver-availability-panel__title">Estado del conductor</div>
+          <div className="driver-availability-panel__eyebrow">
+            Conexión de trabajo
+          </div>
+          <div className="driver-availability-panel__title">
+            Estado del conductor
+          </div>
         </div>
 
         <div className="driver-availability-panel__status">
@@ -4728,7 +5230,10 @@ function DriverAvailabilityControl({
         </div>
       </div>
 
-      <div className="driver-availability-panel__grid" role="group" aria-label="Cambiar disponibilidad">
+      <div
+        className="driver-availability-panel__grid"
+        role="group"
+        aria-label="Cambiar disponibilidad">
         <button
           type="button"
           className={`driver-availability-button ${
@@ -4738,8 +5243,7 @@ function DriverAvailabilityControl({
             void onChange("available");
           }}
           aria-pressed={isAvailable}
-          disabled={disabled}
-        >
+          disabled={disabled}>
           <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" />
           Disponible
         </button>
@@ -4753,8 +5257,7 @@ function DriverAvailabilityControl({
             void onChange("unavailable");
           }}
           aria-pressed={!isAvailable}
-          disabled={disabled}
-        >
+          disabled={disabled}>
           <IonIcon icon={closeOutline} aria-hidden="true" />
           No disponible
         </button>
@@ -4787,8 +5290,8 @@ const DRIVER_VEHICLES_STORAGE_KEY = "rapago_driver_vehicles_v1";
 const DRIVER_SELECTED_VEHICLE_STORAGE_KEY = "rapago_driver_selected_vehicle_v1";
 const BORROWED_VEHICLE_DAYS = 5;
 
-
-const RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY = "rapago_driver_vehicle_image_data_url";
+const RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY =
+  "rapago_driver_vehicle_image_data_url";
 const RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY = "rapago_driver_profile_photo";
 
 // Marca por conductor que impide que una foto eliminada vuelva a aparecer
@@ -4826,7 +5329,9 @@ function isQuotaExceededStorageError(error: unknown): boolean {
     err?.name === "QuotaExceededError" ||
     err?.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
     err?.code === 22 ||
-    String(err?.message ?? "").toLowerCase().includes("exceeded the quota")
+    String(err?.message ?? "")
+      .toLowerCase()
+      .includes("exceeded the quota")
   );
 }
 
@@ -4864,13 +5369,14 @@ function aggressiveDriverImageStorageCleanup(exceptKey?: string): void {
       const key = localStorage.key(index);
       if (!key || key === exceptKey) continue;
       if (key.includes("__")) continue; // No borrar datos privados de otros conductores.
-      if (key === RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY || key === RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY) continue;
+      if (
+        key === RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY ||
+        key === RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY
+      )
+        continue;
       const lower = key.toLowerCase();
 
-      if (
-        lower.includes("vehicle_photo") ||
-        lower.includes("vehicle_image")
-      ) {
+      if (lower.includes("vehicle_photo") || lower.includes("vehicle_image")) {
         keysToRemove.push(key);
       }
     }
@@ -4931,7 +5437,9 @@ function stripDriverLargeImageFields<T>(value: T): T {
   }
 }
 
-function getDriverSnapshotVehicleImage(snapshot: Record<string, unknown>): string {
+function getDriverSnapshotVehicleImage(
+  snapshot: Record<string, unknown>,
+): string {
   const candidates = [
     snapshot.driverVehicleImageDataUrl,
     snapshot.driverVehiclePhotoDataUrl,
@@ -4942,7 +5450,12 @@ function getDriverSnapshotVehicleImage(snapshot: Record<string, unknown>): strin
 
   for (const value of candidates) {
     const text = String(value ?? "").trim();
-    if (text.startsWith("data:image/") || text.startsWith("blob:") || text.startsWith("http://") || text.startsWith("https://")) {
+    if (
+      text.startsWith("data:image/") ||
+      text.startsWith("blob:") ||
+      text.startsWith("http://") ||
+      text.startsWith("https://")
+    ) {
       return text;
     }
   }
@@ -4950,7 +5463,9 @@ function getDriverSnapshotVehicleImage(snapshot: Record<string, unknown>): strin
   return "";
 }
 
-function getDriverSnapshotProfileImage(snapshot: Record<string, unknown>): string {
+function getDriverSnapshotProfileImage(
+  snapshot: Record<string, unknown>,
+): string {
   const candidates = [
     snapshot.driverProfileImageDataUrl,
     snapshot.driverProfilePhotoUrl,
@@ -4977,8 +5492,9 @@ function getDriverSnapshotProfileImage(snapshot: Record<string, unknown>): strin
   return getStoredDriverProfilePhotoUrl(snapshot);
 }
 
-
-function publishDriverVehicleSnapshotToStorage(snapshot: Record<string, unknown>): void {
+function publishDriverVehicleSnapshotToStorage(
+  snapshot: Record<string, unknown>,
+): void {
   const ownerKey = getDriverScopedOwnerKey(snapshot);
   const ownerSource = {
     ownerKey,
@@ -4997,9 +5513,13 @@ function publishDriverVehicleSnapshotToStorage(snapshot: Record<string, unknown>
     ownerKey,
     driverOwnerKey: ownerKey,
     hasVehicleImage: Boolean(image),
-    vehicleImageStoredIn: image ? RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY : null,
+    vehicleImageStoredIn: image
+      ? RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY
+      : null,
     hasDriverProfileImage: Boolean(profileImage),
-    driverProfileImageStoredIn: profileImage ? RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY : null,
+    driverProfileImageStoredIn: profileImage
+      ? RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY
+      : null,
   };
   const lightPayload = JSON.stringify(lightSnapshot);
 
@@ -5015,21 +5535,64 @@ function publishDriverVehicleSnapshotToStorage(snapshot: Record<string, unknown>
         new Date().toISOString(),
     );
 
-    writeDriverScopedStorageItem(RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY, profileImage, ownerSource);
-    writeDriverScopedStorageItem("rapago_driver_profile_photo_updated_at", profilePhotoUpdatedAt, ownerSource);
-    writeDriverScopedStorageItem("rapago_driver_profile_updated_at", profilePhotoUpdatedAt, ownerSource);
-    writeDriverScopedStorageItem("rapago_public_driver_profile_photo_updated_at", profilePhotoUpdatedAt, ownerSource);
-    writeDriverScopedStorageItem("rapago_public_driver_profile_photo", profileImage, ownerSource);
-    writeDriverScopedStorageItem("rapago_driver_profile_image_data_url", profileImage, ownerSource);
-    writeDriverScopedStorageItem("rapago_driver_profile_photo_url", profileImage, ownerSource);
-    writeDriverScopedStorageItem("rapago_driver_photo", profileImage, ownerSource);
-    writeDriverScopedStorageItem("rapago_profile_photo", profileImage, ownerSource);
+    writeDriverScopedStorageItem(
+      RAPAGO_DRIVER_CANONICAL_PROFILE_PHOTO_KEY,
+      profileImage,
+      ownerSource,
+    );
+    writeDriverScopedStorageItem(
+      "rapago_driver_profile_photo_updated_at",
+      profilePhotoUpdatedAt,
+      ownerSource,
+    );
+    writeDriverScopedStorageItem(
+      "rapago_driver_profile_updated_at",
+      profilePhotoUpdatedAt,
+      ownerSource,
+    );
+    writeDriverScopedStorageItem(
+      "rapago_public_driver_profile_photo_updated_at",
+      profilePhotoUpdatedAt,
+      ownerSource,
+    );
+    writeDriverScopedStorageItem(
+      "rapago_public_driver_profile_photo",
+      profileImage,
+      ownerSource,
+    );
+    writeDriverScopedStorageItem(
+      "rapago_driver_profile_image_data_url",
+      profileImage,
+      ownerSource,
+    );
+    writeDriverScopedStorageItem(
+      "rapago_driver_profile_photo_url",
+      profileImage,
+      ownerSource,
+    );
+    writeDriverScopedStorageItem(
+      "rapago_driver_photo",
+      profileImage,
+      ownerSource,
+    );
+    writeDriverScopedStorageItem(
+      "rapago_profile_photo",
+      profileImage,
+      ownerSource,
+    );
   }
 
   if (image) {
-    writeDriverScopedStorageItem(RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY, image, ownerSource);
+    writeDriverScopedStorageItem(
+      RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY,
+      image,
+      ownerSource,
+    );
   } else {
-    removeDriverScopedStorageItem(RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY, ownerSource);
+    removeDriverScopedStorageItem(
+      RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY,
+      ownerSource,
+    );
   }
 
   const publicKeys = [
@@ -5050,7 +5613,10 @@ function publishDriverVehicleSnapshotToStorage(snapshot: Record<string, unknown>
     const raw = localStorage.getItem("rapago_driver_public_profiles_v1");
     const map = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
     map[ownerKey] = lightSnapshot;
-    safeSetDriverLocalStorageItem("rapago_driver_public_profiles_v1", JSON.stringify(map));
+    safeSetDriverLocalStorageItem(
+      "rapago_driver_public_profiles_v1",
+      JSON.stringify(map),
+    );
   } catch {
     // No bloquea el perfil público.
   }
@@ -5107,20 +5673,21 @@ function canUseDriverLegacyStorage(baseKey: string, source?: unknown): boolean {
   }
 }
 
-function readDriverScopedStorageItem(baseKey: string, source?: unknown): string | null {
+function readDriverScopedStorageItem(
+  baseKey: string,
+  source?: unknown,
+): string | null {
   try {
     const scopedKey = getDriverScopedStorageKey(baseKey, source);
     const scoped =
-      localStorage.getItem(scopedKey) ??
-      sessionStorage.getItem(scopedKey);
+      localStorage.getItem(scopedKey) ?? sessionStorage.getItem(scopedKey);
 
     if (scoped != null && scoped.trim()) return scoped.trim();
 
     if (!canUseDriverLegacyStorage(baseKey, source)) return null;
 
     const legacy =
-      localStorage.getItem(baseKey) ??
-      sessionStorage.getItem(baseKey);
+      localStorage.getItem(baseKey) ?? sessionStorage.getItem(baseKey);
 
     return legacy != null && legacy.trim() ? legacy.trim() : null;
   } catch {
@@ -5128,7 +5695,11 @@ function readDriverScopedStorageItem(baseKey: string, source?: unknown): string 
   }
 }
 
-function writeDriverScopedStorageItem(baseKey: string, value: string, source?: unknown): void {
+function writeDriverScopedStorageItem(
+  baseKey: string,
+  value: string,
+  source?: unknown,
+): void {
   const clean = value.trim();
   const scopedKey = getDriverScopedStorageKey(baseKey, source);
   const ownerKey = getDriverScopedOwnerKey(source);
@@ -5152,7 +5723,10 @@ function writeDriverScopedStorageItem(baseKey: string, value: string, source?: u
   removeDriverScopedStorageItem(baseKey, source);
 }
 
-function removeDriverScopedStorageItem(baseKey: string, source?: unknown): void {
+function removeDriverScopedStorageItem(
+  baseKey: string,
+  source?: unknown,
+): void {
   const scopedKey = getDriverScopedStorageKey(baseKey, source);
 
   try {
@@ -5177,7 +5751,9 @@ function sanitizeDriverVehicleValue(value: string, max = 40): string {
   return value.replace(/[<>]/g, "").trim().slice(0, max);
 }
 
-function normalizeDriverVehicleOwnership(value: unknown): DriverVehicleOwnership {
+function normalizeDriverVehicleOwnership(
+  value: unknown,
+): DriverVehicleOwnership {
   const raw = String(value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -5209,26 +5785,45 @@ function normalizeDriverVehicleRecord(
   if (!value || typeof value !== "object") return null;
 
   const record = value as Record<string, unknown>;
-  const ownerKey = String(
-    record.ownerKey ??
-      record.driverOwnerKey ??
-      record.vehicleOwnerKey ??
-      getDriverVehicleOwnerKey(user),
-  ).trim() || getDriverVehicleOwnerKey(user);
+  const ownerKey =
+    String(
+      record.ownerKey ??
+        record.driverOwnerKey ??
+        record.vehicleOwnerKey ??
+        getDriverVehicleOwnerKey(user),
+    ).trim() || getDriverVehicleOwnerKey(user);
 
   const brand = sanitizeDriverVehicleValue(
-    String(record.brand ?? record.vehicleBrand ?? record.driverVehicleBrand ?? record.marca ?? ""),
+    String(
+      record.brand ??
+        record.vehicleBrand ??
+        record.driverVehicleBrand ??
+        record.marca ??
+        "",
+    ),
     32,
   );
   const model = sanitizeDriverVehicleValue(
-    String(record.model ?? record.vehicleModel ?? record.driverVehicleModel ?? record.modelo ?? ""),
+    String(
+      record.model ??
+        record.vehicleModel ??
+        record.driverVehicleModel ??
+        record.modelo ??
+        "",
+    ),
     32,
   );
   const plate = cleanDriverVehiclePlate(
-    record.plate ?? record.vehiclePlate ?? record.driverVehiclePlate ?? record.patente ?? "",
+    record.plate ??
+      record.vehiclePlate ??
+      record.driverVehiclePlate ??
+      record.patente ??
+      "",
   );
   const color = sanitizeDriverVehicleValue(
-    String(record.color ?? record.vehicleColor ?? record.driverVehicleColor ?? ""),
+    String(
+      record.color ?? record.vehicleColor ?? record.driverVehicleColor ?? "",
+    ),
     24,
   );
   const year = sanitizeDriverVehicleValue(
@@ -5238,25 +5833,41 @@ function normalizeDriverVehicleRecord(
 
   if (!brand && !model && !plate) return null;
 
-  const id = String(record.id ?? record.vehicleId ?? record.selectedVehicleId ?? "").trim()
-    || `vehicle-imported-${ownerKey}-${plate || fallbackIndex}`;
-  const imageDataUrl = String(
-    record.imageDataUrl ??
-      record.photoDataUrl ??
-      record.vehicleImageDataUrl ??
-      record.vehiclePhotoDataUrl ??
-      record.driverVehicleImageDataUrl ??
-      record.driverVehiclePhotoDataUrl ??
-      "",
-  ).trim() || null;
-  const imageName = String(
-    record.imageName ?? record.photoFileName ?? record.vehicleImageName ?? record.driverVehicleImageName ?? "",
-  ).trim() || null;
-  const ownership = normalizeDriverVehicleOwnership(record.ownership ?? record.kind);
-  const label = sanitizeDriverVehicleValue(
-    String(record.label ?? [brand, model, year, color].filter(Boolean).join(" ")),
-    90,
-  ) || `${brand} ${model}`.trim() || plate || "Vehículo Rapa Go";
+  const id =
+    String(
+      record.id ?? record.vehicleId ?? record.selectedVehicleId ?? "",
+    ).trim() || `vehicle-imported-${ownerKey}-${plate || fallbackIndex}`;
+  const imageDataUrl =
+    String(
+      record.imageDataUrl ??
+        record.photoDataUrl ??
+        record.vehicleImageDataUrl ??
+        record.vehiclePhotoDataUrl ??
+        record.driverVehicleImageDataUrl ??
+        record.driverVehiclePhotoDataUrl ??
+        "",
+    ).trim() || null;
+  const imageName =
+    String(
+      record.imageName ??
+        record.photoFileName ??
+        record.vehicleImageName ??
+        record.driverVehicleImageName ??
+        "",
+    ).trim() || null;
+  const ownership = normalizeDriverVehicleOwnership(
+    record.ownership ?? record.kind,
+  );
+  const label =
+    sanitizeDriverVehicleValue(
+      String(
+        record.label ?? [brand, model, year, color].filter(Boolean).join(" "),
+      ),
+      90,
+    ) ||
+    `${brand} ${model}`.trim() ||
+    plate ||
+    "Vehículo Rapa Go";
 
   return {
     id,
@@ -5270,14 +5881,23 @@ function normalizeDriverVehicleRecord(
     label,
     imageDataUrl,
     imageName,
-    createdAt: String(record.createdAt ?? record.updatedAt ?? new Date().toISOString()),
-    expiresAt: ownership === "borrowed" ? String(record.expiresAt ?? "").trim() || null : null,
+    createdAt: String(
+      record.createdAt ?? record.updatedAt ?? new Date().toISOString(),
+    ),
+    expiresAt:
+      ownership === "borrowed"
+        ? String(record.expiresAt ?? "").trim() || null
+        : null,
     primary: Boolean(record.primary),
-    applicationStatus: String(record.applicationStatus ?? record.approvedStatus ?? "").trim() || null,
+    applicationStatus:
+      String(record.applicationStatus ?? record.approvedStatus ?? "").trim() ||
+      null,
   };
 }
 
-function dedupeDriverVehicleRecords(vehicles: DriverVehicleRecord[]): DriverVehicleRecord[] {
+function dedupeDriverVehicleRecords(
+  vehicles: DriverVehicleRecord[],
+): DriverVehicleRecord[] {
   const byKey = new Map<string, DriverVehicleRecord>();
 
   for (const vehicle of vehicles) {
@@ -5300,7 +5920,10 @@ function dedupeDriverVehicleRecords(vehicles: DriverVehicleRecord[]): DriverVehi
   return Array.from(byKey.values());
 }
 
-function parseDriverVehicleArrayFromRaw(raw: string | null, user?: unknown): DriverVehicleRecord[] {
+function parseDriverVehicleArrayFromRaw(
+  raw: string | null,
+  user?: unknown,
+): DriverVehicleRecord[] {
   if (!raw?.trim()) return [];
 
   try {
@@ -5363,7 +5986,6 @@ function resizeDriverVehicleImage(file: File): Promise<string> {
   });
 }
 
-
 function resizeDriverProfileImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
@@ -5373,11 +5995,13 @@ function resizeDriverProfileImage(file: File): Promise<string> {
 
     const reader = new FileReader();
 
-    reader.onerror = () => reject(new Error("No se pudo leer la foto de perfil."));
+    reader.onerror = () =>
+      reject(new Error("No se pudo leer la foto de perfil."));
     reader.onload = () => {
       const img = new Image();
 
-      img.onerror = () => reject(new Error("No se pudo procesar la foto de perfil."));
+      img.onerror = () =>
+        reject(new Error("No se pudo procesar la foto de perfil."));
       img.onload = () => {
         const maxSide = 420;
         const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
@@ -5411,18 +6035,34 @@ function readAllDriverVehicles(user?: unknown): DriverVehicleRecord[] {
   try {
     rawCandidates.push(localStorage.getItem(DRIVER_VEHICLES_STORAGE_KEY));
     rawCandidates.push(sessionStorage.getItem(DRIVER_VEHICLES_STORAGE_KEY));
-    rawCandidates.push(readDriverScopedStorageItem(DRIVER_VEHICLES_STORAGE_KEY, user));
-    rawCandidates.push(readDriverScopedStorageItem("rapago_driver_registered_vehicles_v1", user));
-    rawCandidates.push(readDriverScopedStorageItem("rapago_driver_vehicle_records_v1", user));
-    rawCandidates.push(readDriverScopedStorageItem("rapago_driver_active_vehicle_v1", user));
-    rawCandidates.push(readDriverScopedStorageItem("rapago_driver_public_vehicle_v1", user));
-    rawCandidates.push(readDriverScopedStorageItem("rapago_selected_vehicle_v1", user));
-    rawCandidates.push(readDriverScopedStorageItem("rapago_selected_driver_vehicle_v1", user));
+    rawCandidates.push(
+      readDriverScopedStorageItem(DRIVER_VEHICLES_STORAGE_KEY, user),
+    );
+    rawCandidates.push(
+      readDriverScopedStorageItem("rapago_driver_registered_vehicles_v1", user),
+    );
+    rawCandidates.push(
+      readDriverScopedStorageItem("rapago_driver_vehicle_records_v1", user),
+    );
+    rawCandidates.push(
+      readDriverScopedStorageItem("rapago_driver_active_vehicle_v1", user),
+    );
+    rawCandidates.push(
+      readDriverScopedStorageItem("rapago_driver_public_vehicle_v1", user),
+    );
+    rawCandidates.push(
+      readDriverScopedStorageItem("rapago_selected_vehicle_v1", user),
+    );
+    rawCandidates.push(
+      readDriverScopedStorageItem("rapago_selected_driver_vehicle_v1", user),
+    );
   } catch {
     // No bloquea lectura local.
   }
 
-  const vehicles = rawCandidates.flatMap((raw) => parseDriverVehicleArrayFromRaw(raw, user));
+  const vehicles = rawCandidates.flatMap((raw) =>
+    parseDriverVehicleArrayFromRaw(raw, user),
+  );
 
   // Compatibilidad: si la postulación solo dejó datos sueltos del vehículo, lo reconstruimos.
   const looseVehicle = normalizeDriverVehicleRecord(
@@ -5453,13 +6093,21 @@ function saveAllDriverVehicles(vehicles: DriverVehicleRecord[]): void {
   try {
     const normalized = dedupeDriverVehicleRecords(vehicles);
     const payload = JSON.stringify(normalized);
-    const lightPayload = JSON.stringify(stripDriverLargeImageFields(normalized));
+    const lightPayload = JSON.stringify(
+      stripDriverLargeImageFields(normalized),
+    );
 
     // Guardamos la versión completa solo una vez. Las copias de compatibilidad van sin foto.
     safeSetDriverLocalStorageItem(DRIVER_VEHICLES_STORAGE_KEY, payload);
     safeSetDriverLocalStorageItem("rapago_driver_vehicles", lightPayload);
-    safeSetDriverLocalStorageItem("rapago_driver_registered_vehicles_v1", lightPayload);
-    safeSetDriverLocalStorageItem("rapago_driver_vehicle_records_v1", lightPayload);
+    safeSetDriverLocalStorageItem(
+      "rapago_driver_registered_vehicles_v1",
+      lightPayload,
+    );
+    safeSetDriverLocalStorageItem(
+      "rapago_driver_vehicle_records_v1",
+      lightPayload,
+    );
 
     window.dispatchEvent(new CustomEvent("rapago:driver-vehicles-updated"));
   } catch {
@@ -5467,7 +6115,10 @@ function saveAllDriverVehicles(vehicles: DriverVehicleRecord[]): void {
   }
 }
 
-function isBorrowedVehicleExpired(vehicle: DriverVehicleRecord, now = Date.now()): boolean {
+function isBorrowedVehicleExpired(
+  vehicle: DriverVehicleRecord,
+  now = Date.now(),
+): boolean {
   if (vehicle.ownership !== "borrowed") return false;
   if (!vehicle.expiresAt) return false;
   const expiresAt = new Date(vehicle.expiresAt).getTime();
@@ -5483,7 +6134,12 @@ function purgeExpiredDriverVehicles(user?: unknown): DriverVehicleRecord[] {
     saveAllDriverVehicles(valid);
 
     const selected = readSelectedDriverVehicleId(user);
-    if (selected && !valid.some((vehicle) => vehicle.ownerKey === ownerKey && vehicle.id === selected)) {
+    if (
+      selected &&
+      !valid.some(
+        (vehicle) => vehicle.ownerKey === ownerKey && vehicle.id === selected,
+      )
+    ) {
       writeSelectedDriverVehicleId(null, user);
       saveDriverAvailability("unavailable", user);
     }
@@ -5494,7 +6150,9 @@ function purgeExpiredDriverVehicles(user?: unknown): DriverVehicleRecord[] {
 
 function readDriverVehicles(user?: unknown): DriverVehicleRecord[] {
   const ownerKey = getDriverVehicleOwnerKey(user);
-  return purgeExpiredDriverVehicles(user).filter((vehicle) => vehicle.ownerKey === ownerKey);
+  return purgeExpiredDriverVehicles(user).filter(
+    (vehicle) => vehicle.ownerKey === ownerKey,
+  );
 }
 
 function readSelectedDriverVehicleId(user?: unknown): string | null {
@@ -5502,9 +6160,15 @@ function readSelectedDriverVehicleId(user?: unknown): string | null {
   const rawCandidates: Array<string | null> = [];
 
   try {
-    rawCandidates.push(readDriverScopedStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, user));
-    rawCandidates.push(localStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY));
-    rawCandidates.push(sessionStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY));
+    rawCandidates.push(
+      readDriverScopedStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, user),
+    );
+    rawCandidates.push(
+      localStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY),
+    );
+    rawCandidates.push(
+      sessionStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY),
+    );
   } catch {
     // No bloquea lectura local.
   }
@@ -5535,9 +6199,11 @@ function readSelectedDriverVehicleId(user?: unknown): string | null {
 
   // Si viene desde el formulario de inscripción, seleccionamos automáticamente el principal.
   const vehicles = readAllDriverVehicles(user).filter(
-    (vehicle) => vehicle.ownerKey === ownerKey && !isBorrowedVehicleExpired(vehicle),
+    (vehicle) =>
+      vehicle.ownerKey === ownerKey && !isBorrowedVehicleExpired(vehicle),
   );
-  const inferred = vehicles.find((vehicle) => vehicle.primary) ?? vehicles[0] ?? null;
+  const inferred =
+    vehicles.find((vehicle) => vehicle.primary) ?? vehicles[0] ?? null;
 
   if (inferred) {
     try {
@@ -5546,8 +6212,15 @@ function readSelectedDriverVehicleId(user?: unknown): string | null {
         ? (JSON.parse(raw) as Record<string, string | null>)
         : {};
       map[ownerKey] = inferred.id;
-      safeSetDriverLocalStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, JSON.stringify(map));
-      writeDriverScopedStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, inferred.id, user);
+      safeSetDriverLocalStorageItem(
+        DRIVER_SELECTED_VEHICLE_STORAGE_KEY,
+        JSON.stringify(map),
+      );
+      writeDriverScopedStorageItem(
+        DRIVER_SELECTED_VEHICLE_STORAGE_KEY,
+        inferred.id,
+        user,
+      );
     } catch {
       // No bloquea.
     }
@@ -5558,7 +6231,10 @@ function readSelectedDriverVehicleId(user?: unknown): string | null {
   return null;
 }
 
-function writeSelectedDriverVehicleId(vehicleId: string | null, user?: unknown): void {
+function writeSelectedDriverVehicleId(
+  vehicleId: string | null,
+  user?: unknown,
+): void {
   try {
     const ownerKey = getDriverVehicleOwnerKey(user);
     const raw = localStorage.getItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY);
@@ -5569,11 +6245,20 @@ function writeSelectedDriverVehicleId(vehicleId: string | null, user?: unknown):
     if (vehicleId) map[ownerKey] = vehicleId;
     else delete map[ownerKey];
 
-    safeSetDriverLocalStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, JSON.stringify(map));
-    writeDriverScopedStorageItem(DRIVER_SELECTED_VEHICLE_STORAGE_KEY, vehicleId ?? "", user);
+    safeSetDriverLocalStorageItem(
+      DRIVER_SELECTED_VEHICLE_STORAGE_KEY,
+      JSON.stringify(map),
+    );
+    writeDriverScopedStorageItem(
+      DRIVER_SELECTED_VEHICLE_STORAGE_KEY,
+      vehicleId ?? "",
+      user,
+    );
 
     const selectedVehicle = vehicleId
-      ? readAllDriverVehicles(user).find((vehicle) => vehicle.id === vehicleId) ?? null
+      ? (readAllDriverVehicles(user).find(
+          (vehicle) => vehicle.id === vehicleId,
+        ) ?? null)
       : null;
 
     if (selectedVehicle) {
@@ -5584,10 +6269,14 @@ function writeSelectedDriverVehicleId(vehicleId: string | null, user?: unknown):
         updatedAt: new Date().toISOString(),
       };
 
-      publishDriverVehicleSnapshotToStorage(publicVehicleSnapshot as Record<string, unknown>);
+      publishDriverVehicleSnapshotToStorage(
+        publicVehicleSnapshot as Record<string, unknown>,
+      );
     }
 
-    window.dispatchEvent(new CustomEvent("rapago:driver-selected-vehicle-updated"));
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-selected-vehicle-updated"),
+    );
   } catch {
     // No bloquea el flujo del conductor.
   }
@@ -5628,10 +6317,7 @@ function hydrateApprovedDriverProfileLocally(
   const model = profile.vehicleModel?.trim() ?? "";
   const plate = profile.vehiclePlate?.trim().toUpperCase() ?? "";
   const color = profile.vehicleColor?.trim() ?? "";
-  const year =
-    profile.vehicleYear != null
-      ? String(profile.vehicleYear)
-      : "";
+  const year = profile.vehicleYear != null ? String(profile.vehicleYear) : "";
 
   if (!brand && !model && !plate && !color && !year) {
     return null;
@@ -5662,10 +6348,10 @@ function hydrateApprovedDriverProfileLocally(
       "Vehículo principal",
     // La foto local editada tiene prioridad sobre una URL antigua del backend.
     imageDataUrl: previousApprovedVehicle
-      ? previousApprovedVehicle.imageDataUrl ?? null
+      ? (previousApprovedVehicle.imageDataUrl ?? null)
       : profile.vehiclePhotoUrl?.trim() || null,
     imageName: previousApprovedVehicle
-      ? previousApprovedVehicle.imageName ?? null
+      ? (previousApprovedVehicle.imageName ?? null)
       : profile.vehiclePhotoUrl
         ? "vehiculo-aprobado"
         : null,
@@ -5681,11 +6367,7 @@ function hydrateApprovedDriverProfileLocally(
   const nextVehicles = [
     vehicle,
     ...currentVehicles.filter(
-      (entry) =>
-        !(
-          entry.ownerKey === ownerKey &&
-          entry.id === vehicle.id
-        ),
+      (entry) => !(entry.ownerKey === ownerKey && entry.id === vehicle.id),
     ),
   ];
 
@@ -5693,14 +6375,12 @@ function hydrateApprovedDriverProfileLocally(
 
   // No volvemos a seleccionar por la fuerza el vehículo de la inscripción.
   // Si el conductor tenía activo un opcional, se conserva después del login.
-  const selectedVehicle =
-    previousSelectedVehicleId
-      ? nextVehicles.find(
-          (entry) =>
-            entry.ownerKey === ownerKey &&
-            entry.id === previousSelectedVehicleId,
-        ) ?? null
-      : null;
+  const selectedVehicle = previousSelectedVehicleId
+    ? (nextVehicles.find(
+        (entry) =>
+          entry.ownerKey === ownerKey && entry.id === previousSelectedVehicleId,
+      ) ?? null)
+    : null;
   const effectiveSelectedVehicle = selectedVehicle ?? vehicle;
 
   writeSelectedDriverVehicleId(effectiveSelectedVehicle.id, user);
@@ -5728,7 +6408,9 @@ function getDriverVehicleLabel(vehicle: DriverVehicleRecord | null): string {
   return `${vehicle.label} · ${vehicle.plate} · ${ownership}`;
 }
 
-function getDriverVehiclePublicPayload(user?: unknown): Record<string, unknown> {
+function getDriverVehiclePublicPayload(
+  user?: unknown,
+): Record<string, unknown> {
   const vehicle = readSelectedDriverVehicle(user);
   const ownerKey = getDriverVehicleOwnerKey(user);
   const basePayload = {
@@ -5786,13 +6468,15 @@ function getDriverVehiclePublicPayload(user?: unknown): Record<string, unknown> 
   };
 }
 
-function enrichRideWithSelectedDriverVehicle<T extends Record<string, unknown>>(ride: T, user?: unknown): T {
+function enrichRideWithSelectedDriverVehicle<T extends Record<string, unknown>>(
+  ride: T,
+  user?: unknown,
+): T {
   return {
     ...ride,
     ...getDriverVehiclePublicPayload(user),
   };
 }
-
 
 type DriverAcceptedRideBridgeRecord = Record<string, unknown>;
 
@@ -5837,8 +6521,10 @@ function isSameDriverAcceptedRide(
   const sameRoute =
     driverBridgeClean(candidate.originText) &&
     driverBridgeClean(candidate.destinationText) &&
-    driverBridgeClean(candidate.originText) === driverBridgeClean(accepted.originText) &&
-    driverBridgeClean(candidate.destinationText) === driverBridgeClean(accepted.destinationText);
+    driverBridgeClean(candidate.originText) ===
+      driverBridgeClean(accepted.originText) &&
+    driverBridgeClean(candidate.destinationText) ===
+      driverBridgeClean(accepted.destinationText);
 
   if (!sameRoute) return false;
 
@@ -5848,13 +6534,23 @@ function isSameDriverAcceptedRide(
   if (candidateEmail && acceptedEmail) return candidateEmail === acceptedEmail;
 
   const candidateSchedule = driverBridgeClean(
-    candidate.scheduledAt ?? candidate.scheduledPickupAt ?? candidate.requestedAt ?? candidate.createdAt,
+    candidate.scheduledAt ??
+      candidate.scheduledPickupAt ??
+      candidate.requestedAt ??
+      candidate.createdAt,
   );
   const acceptedSchedule = driverBridgeClean(
-    accepted.scheduledAt ?? accepted.scheduledPickupAt ?? accepted.requestedAt ?? accepted.createdAt,
+    accepted.scheduledAt ??
+      accepted.scheduledPickupAt ??
+      accepted.requestedAt ??
+      accepted.createdAt,
   );
 
-  return !candidateSchedule || !acceptedSchedule || candidateSchedule === acceptedSchedule;
+  return (
+    !candidateSchedule ||
+    !acceptedSchedule ||
+    candidateSchedule === acceptedSchedule
+  );
 }
 
 function buildAcceptedDriverVehicleBridgePayload(
@@ -5864,7 +6560,9 @@ function buildAcceptedDriverVehicleBridgePayload(
   const now = new Date().toISOString();
   const vehiclePayload = getDriverVehiclePublicPayload(user);
   const driverName =
-    String(acceptedRide.driverName ?? acceptedRide.driverFullName ?? "").trim() ||
+    String(
+      acceptedRide.driverName ?? acceptedRide.driverFullName ?? "",
+    ).trim() ||
     getDriverLiveUserField(user, "name") ||
     getDriverLiveUserField(user, "fullName") ||
     getDriverLiveUserField(user, "email") ||
@@ -5881,30 +6579,44 @@ function buildAcceptedDriverVehicleBridgePayload(
   return {
     ...acceptedRide,
     ...vehiclePayload,
-    id: String(acceptedRide.id ?? acceptedRide.rideId ?? acceptedRide.originalRideId ?? `accepted-${Date.now()}`),
+    id: String(
+      acceptedRide.id ??
+        acceptedRide.rideId ??
+        acceptedRide.originalRideId ??
+        `accepted-${Date.now()}`,
+    ),
     originalRideId: acceptedRide.originalRideId ?? acceptedRide.id ?? null,
     status: String(acceptedRide.status ?? "accepted"),
     acceptedAt: acceptedRide.acceptedAt ?? now,
     driverName,
-    driverFullName: String(acceptedRide.driverFullName ?? "").trim() || driverName,
-    driverEmail: getDriverLiveUserField(user, "email") ?? acceptedRide.driverEmail ?? null,
+    driverFullName:
+      String(acceptedRide.driverFullName ?? "").trim() || driverName,
+    driverEmail:
+      getDriverLiveUserField(user, "email") ?? acceptedRide.driverEmail ?? null,
     driverPhone,
     driverAssignedAt: acceptedRide.driverAssignedAt ?? now,
     driverVehicleSyncedAt: now,
   };
 }
 
-function readDriverAcceptedBridgeArray(key: string): DriverAcceptedRideBridgeRecord[] {
+function readDriverAcceptedBridgeArray(
+  key: string,
+): DriverAcceptedRideBridgeRecord[] {
   try {
     const raw = localStorage.getItem(key);
-    const parsed = raw ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[]) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[])
+      : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-function writeDriverAcceptedBridgeArray(key: string, rides: DriverAcceptedRideBridgeRecord[]): void {
+function writeDriverAcceptedBridgeArray(
+  key: string,
+  rides: DriverAcceptedRideBridgeRecord[],
+): void {
   try {
     localStorage.setItem(key, JSON.stringify(rides.slice(0, 220)));
   } catch {
@@ -5926,7 +6638,8 @@ function upsertAcceptedDriverVehicleIntoStorage(
       ...item,
       ...accepted,
       id: String(item.id ?? accepted.id),
-      originalRideId: item.originalRideId ?? accepted.originalRideId ?? accepted.id ?? null,
+      originalRideId:
+        item.originalRideId ?? accepted.originalRideId ?? accepted.id ?? null,
       status: String(accepted.status ?? item.status ?? "accepted"),
     };
   });
@@ -5950,15 +6663,22 @@ function publishAcceptedDriverVehicleToPassenger(
       JSON.stringify({ ride: accepted, acceptedAt: new Date().toISOString() }),
     );
 
-    const rawMap = localStorage.getItem("rapago_driver_accepted_vehicle_by_ride_v1");
-    const map = rawMap ? (JSON.parse(rawMap) as Record<string, DriverAcceptedRideBridgeRecord>) : {};
+    const rawMap = localStorage.getItem(
+      "rapago_driver_accepted_vehicle_by_ride_v1",
+    );
+    const map = rawMap
+      ? (JSON.parse(rawMap) as Record<string, DriverAcceptedRideBridgeRecord>)
+      : {};
     const ids = driverBridgeIds(accepted);
 
     for (const id of ids) {
       map[id] = accepted;
     }
 
-    safeSetDriverLocalStorageItem("rapago_driver_accepted_vehicle_by_ride_v1", JSON.stringify(map));
+    safeSetDriverLocalStorageItem(
+      "rapago_driver_accepted_vehicle_by_ride_v1",
+      JSON.stringify(map),
+    );
 
     for (const key of DRIVER_ACCEPTED_RIDE_BRIDGE_KEYS) {
       upsertAcceptedDriverVehicleIntoStorage(key, accepted);
@@ -5975,8 +6695,8 @@ function publishAcceptedDriverVehicleToPassenger(
   }
 }
 
-
-type DriverScheduledReservationOffer = AvailableRideData & Record<string, unknown>;
+type DriverScheduledReservationOffer = AvailableRideData &
+  Record<string, unknown>;
 
 const DRIVER_SCHEDULED_RESERVATION_KEYS = [
   "rapago_admin_scheduled_rides",
@@ -5991,12 +6711,17 @@ const DRIVER_SCHEDULED_RESERVATION_KEYS = [
 
 const DRIVER_SCHEDULED_RESERVATION_QUEUE_KEY = "rapago_driver_scheduled_queue";
 const DRIVER_RESERVATION_INBOX_KEY = "rapago_driver_reservation_inbox_v1";
-const DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY = "rapago_driver_reservation_inbox_by_driver_v1";
-const DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT = "rapago:driver-assigned-scheduled-ride";
+const DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY =
+  "rapago_driver_reservation_inbox_by_driver_v1";
+const DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT =
+  "rapago:driver-assigned-scheduled-ride";
 
-const DRIVER_SCHEDULED_RESERVATION_EVENT = "rapago:driver-scheduled-reservation-updated";
-const DRIVER_RESERVATION_AUTO_REASSIGN_EVENT = "rapago:admin-reservation-reassign-needed";
-const DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT = "rapago:admin-reservation-auto-assigned";
+const DRIVER_SCHEDULED_RESERVATION_EVENT =
+  "rapago:driver-scheduled-reservation-updated";
+const DRIVER_RESERVATION_AUTO_REASSIGN_EVENT =
+  "rapago:admin-reservation-reassign-needed";
+const DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT =
+  "rapago:admin-reservation-auto-assigned";
 const DRIVER_RESERVATIONS_VIEW_ROUTE = `${ROUTES.DRIVER.REQUESTS}?view=reservations`;
 const DRIVER_REQUESTS_VIEW_ROUTE = `${ROUTES.DRIVER.REQUESTS}?view=requests`;
 
@@ -6037,7 +6762,8 @@ function collectDriverReservationKeys(values: unknown[]): string[] {
 }
 
 function getDriverScheduledReservationIdentityKeys(user?: unknown): string[] {
-  const data = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const data =
+    user && typeof user === "object" ? (user as Record<string, unknown>) : {};
 
   return collectDriverReservationKeys([
     data.id,
@@ -6106,7 +6832,11 @@ function markRideSkippedByCurrentDriver<T extends Record<string, unknown>>(
 ): T {
   const now = new Date().toISOString();
   const currentKeys = getDriverScheduledReservationIdentityKeys(user);
-  const skippedKeys = Array.from(new Set([...getRideSkippedDriverKeys(ride), ...currentKeys].filter(Boolean)));
+  const skippedKeys = Array.from(
+    new Set(
+      [...getRideSkippedDriverKeys(ride), ...currentKeys].filter(Boolean),
+    ),
+  );
   const driverEmail = getDriverLiveUserField(user, "email");
   const driverName =
     getDriverLiveUserField(user, "name") ??
@@ -6125,21 +6855,31 @@ function markRideSkippedByCurrentDriver<T extends Record<string, unknown>>(
     rejectedByDriverKeys: skippedKeys,
     rejectedDriverKeys: skippedKeys,
     rejectedDriverIds: Array.from(
-      new Set([
-        ...(Array.isArray(ride.rejectedDriverIds) ? ride.rejectedDriverIds : []),
-        driverId,
-      ].filter(Boolean)),
+      new Set(
+        [
+          ...(Array.isArray(ride.rejectedDriverIds)
+            ? ride.rejectedDriverIds
+            : []),
+          driverId,
+        ].filter(Boolean),
+      ),
     ),
     rejectedDriverEmails: Array.from(
-      new Set([
-        ...(Array.isArray(ride.rejectedDriverEmails) ? ride.rejectedDriverEmails : []),
-        driverEmail,
-      ].filter(Boolean)),
+      new Set(
+        [
+          ...(Array.isArray(ride.rejectedDriverEmails)
+            ? ride.rejectedDriverEmails
+            : []),
+          driverEmail,
+        ].filter(Boolean),
+      ),
     ),
     ignoredDriverKeys: skippedKeys,
     lastRejectedByDriverId: driverId ?? ride.lastRejectedByDriverId ?? null,
-    lastRejectedByDriverEmail: driverEmail ?? ride.lastRejectedByDriverEmail ?? null,
-    lastRejectedByDriverName: driverName ?? ride.lastRejectedByDriverName ?? null,
+    lastRejectedByDriverEmail:
+      driverEmail ?? ride.lastRejectedByDriverEmail ?? null,
+    lastRejectedByDriverName:
+      driverName ?? ride.lastRejectedByDriverName ?? null,
     lastRejectedByDriverAt: now,
     lastRejectedReason: reason,
     nextDriverSearchReason: reason,
@@ -6168,20 +6908,31 @@ function requeueAvailableRideForNextDriver(
       requeuedReason: reason,
       forceActiveAfterDriverCancel:
         reason === "driver_cancelled" ||
-        (ride as unknown as Record<string, unknown>).forceActiveAfterDriverCancel === true,
+        (ride as unknown as Record<string, unknown>)
+          .forceActiveAfterDriverCancel === true,
     },
     user,
     reason,
   ) as unknown as AvailableRideData;
 
   saveRequeuedAvailableRides([nextRide, ...readRequeuedAvailableRides()]);
-  window.dispatchEvent(new CustomEvent("rapago:driver-available-rides-updated", { detail: { ride: nextRide } }));
-  window.dispatchEvent(new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, { detail: { ride: nextRide, rides: readRequeuedAvailableRides() } }));
+  window.dispatchEvent(
+    new CustomEvent("rapago:driver-available-rides-updated", {
+      detail: { ride: nextRide },
+    }),
+  );
+  window.dispatchEvent(
+    new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, {
+      detail: { ride: nextRide, rides: readRequeuedAvailableRides() },
+    }),
+  );
 
   return nextRide;
 }
 
-function getDriverScheduledReservationDriverKeys(ride: DriverAcceptedRideBridgeRecord): string[] {
+function getDriverScheduledReservationDriverKeys(
+  ride: DriverAcceptedRideBridgeRecord,
+): string[] {
   return collectDriverReservationKeys([
     ride.driverId,
     ride.driverUserId,
@@ -6218,7 +6969,9 @@ function getDriverScheduledReservationDriverKeys(ride: DriverAcceptedRideBridgeR
   ]);
 }
 
-function getDriverScheduledRejectedKeys(ride: DriverAcceptedRideBridgeRecord): string[] {
+function getDriverScheduledRejectedKeys(
+  ride: DriverAcceptedRideBridgeRecord,
+): string[] {
   const direct = [
     ride.rejectedByDriverId,
     ride.rejectedByDriverUserId,
@@ -6247,7 +7000,9 @@ function getDriverScheduledRejectedKeys(ride: DriverAcceptedRideBridgeRecord): s
     .filter(Boolean);
 }
 
-function isDriverScheduledReservationRide(ride: DriverAcceptedRideBridgeRecord): boolean {
+function isDriverScheduledReservationRide(
+  ride: DriverAcceptedRideBridgeRecord,
+): boolean {
   const status = driverBridgeClean(ride.status);
   const notes = driverBridgeClean(ride.notes);
   const scheduleStatus = driverBridgeClean(
@@ -6258,8 +7013,14 @@ function isDriverScheduledReservationRide(ride: DriverAcceptedRideBridgeRecord):
       ride.adminReservationStatus,
   );
 
-  if (["completed", "cancelled", "canceled", "rejected", "expired"].includes(status)) return false;
-  if (["driver_en_route", "driver_arrived", "in_progress"].includes(status)) return false;
+  if (
+    ["completed", "cancelled", "canceled", "rejected", "expired"].includes(
+      status,
+    )
+  )
+    return false;
+  if (["driver_en_route", "driver_arrived", "in_progress"].includes(status))
+    return false;
 
   const scheduledLike =
     ride.isScheduled === true ||
@@ -6287,13 +7048,20 @@ function isDriverScheduledReservationRide(ride: DriverAcceptedRideBridgeRecord):
   return scheduledLike;
 }
 
-function driverScheduledReservationIsAccepted(ride: DriverAcceptedRideBridgeRecord): boolean {
+function driverScheduledReservationIsAccepted(
+  ride: DriverAcceptedRideBridgeRecord,
+): boolean {
   const status = driverBridgeClean(ride.status);
   const response = driverBridgeClean(
-    ride.driverScheduleResponse ?? ride.scheduledDriverResponse ?? ride.driverReservationResponse,
+    ride.driverScheduleResponse ??
+      ride.scheduledDriverResponse ??
+      ride.driverReservationResponse,
   );
   const adminStatus = driverBridgeClean(
-    ride.adminScheduleStatus ?? ride.adminReservationStatus ?? ride.scheduleStatus ?? ride.reservationStatus,
+    ride.adminScheduleStatus ??
+      ride.adminReservationStatus ??
+      ride.scheduleStatus ??
+      ride.reservationStatus,
   );
 
   return (
@@ -6316,15 +7084,20 @@ function driverScheduledReservationMatchesDriver(
   const currentKeys = getDriverScheduledReservationIdentityKeys(user);
   if (currentKeys.length === 0) return false;
 
-  const currentSet = new Set(currentKeys.map((key) => normalizeDriverReservationKey(key) ?? key));
+  const currentSet = new Set(
+    currentKeys.map((key) => normalizeDriverReservationKey(key) ?? key),
+  );
   const assignedKeys = getDriverScheduledReservationDriverKeys(ride);
-  const assignedSet = new Set(assignedKeys.map((key) => normalizeDriverReservationKey(key) ?? key));
+  const assignedSet = new Set(
+    assignedKeys.map((key) => normalizeDriverReservationKey(key) ?? key),
+  );
 
   for (const key of assignedSet) {
     if (key && currentSet.has(key)) return true;
   }
 
-  const userData = user && typeof user === "object" ? (user as Record<string, unknown>) : {};
+  const userData =
+    user && typeof user === "object" ? (user as Record<string, unknown>) : {};
   const currentEmail = normalizeDriverReservationKey(
     userData.email ?? userData.emailAddress ?? userData.driverEmail,
   );
@@ -6332,19 +7105,28 @@ function driverScheduledReservationMatchesDriver(
     ride.assignedDriverEmail ?? ride.driverEmail ?? ride.acceptedDriverEmail,
   );
 
-  if (currentEmail && assignedEmail && currentEmail === assignedEmail) return true;
+  if (currentEmail && assignedEmail && currentEmail === assignedEmail)
+    return true;
 
   const currentName = normalizeDriverReservationKey(
-    userData.name ?? userData.fullName ?? userData.displayName ?? userData.driverName,
+    userData.name ??
+      userData.fullName ??
+      userData.displayName ??
+      userData.driverName,
   );
   const assignedName = normalizeDriverReservationKey(
-    ride.assignedDriverName ?? ride.driverName ?? ride.driverFullName ?? ride.acceptedDriverName,
+    ride.assignedDriverName ??
+      ride.driverName ??
+      ride.driverFullName ??
+      ride.acceptedDriverName,
   );
 
   if (currentName && assignedName) {
     if (currentName === assignedName) return true;
-    if (currentName.length >= 5 && assignedName.includes(currentName)) return true;
-    if (assignedName.length >= 5 && currentName.includes(assignedName)) return true;
+    if (currentName.length >= 5 && assignedName.includes(currentName))
+      return true;
+    if (assignedName.length >= 5 && currentName.includes(assignedName))
+      return true;
   }
 
   return false;
@@ -6357,7 +7139,9 @@ function driverScheduledReservationRejectedByDriver(
   const currentKeys = getDriverScheduledReservationIdentityKeys(user);
   if (currentKeys.length === 0) return false;
 
-  const currentSet = new Set(currentKeys.map((key) => driverBridgeClean(key)).filter(Boolean));
+  const currentSet = new Set(
+    currentKeys.map((key) => driverBridgeClean(key)).filter(Boolean),
+  );
   const rejectedKeys = getDriverScheduledRejectedKeys(ride);
   return rejectedKeys.some((key) => currentSet.has(driverBridgeClean(key)));
 }
@@ -6366,17 +7150,17 @@ function driverScheduledReservationOpenForNextAvailableDriver(
   ride: DriverAcceptedRideBridgeRecord,
 ): boolean {
   const assignmentStatus = driverBridgeClean(
-    ride.adminScheduleStatus ?? ride.reservationStatus ?? ride.driverAssignmentStatus,
+    ride.adminScheduleStatus ??
+      ride.reservationStatus ??
+      ride.driverAssignmentStatus,
   );
 
   return (
     ride.availableForDrivers === true &&
-    (
-      ride.reassignmentNeeded === true ||
+    (ride.reassignmentNeeded === true ||
       ride.needsNextAvailableDriver === true ||
       assignmentStatus.includes("pending_next_driver") ||
-      assignmentStatus.includes("pending_driver")
-    )
+      assignmentStatus.includes("pending_driver"))
   );
 }
 
@@ -6401,7 +7185,9 @@ function driverScheduledReservationCanBeOffered(
   return driverScheduledReservationMatchesDriver(ride, user);
 }
 
-function getDriverScheduledReservationSortMs(ride: DriverAcceptedRideBridgeRecord): number {
+function getDriverScheduledReservationSortMs(
+  ride: DriverAcceptedRideBridgeRecord,
+): number {
   const fields = [
     ride.scheduledAt,
     ride.scheduledPickupAt,
@@ -6420,7 +7206,9 @@ function getDriverScheduledReservationSortMs(ride: DriverAcceptedRideBridgeRecor
   return Number.MAX_SAFE_INTEGER;
 }
 
-function getDriverScheduledReservationDedupeKey(ride: DriverAcceptedRideBridgeRecord): string {
+function getDriverScheduledReservationDedupeKey(
+  ride: DriverAcceptedRideBridgeRecord,
+): string {
   const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? "").trim();
   if (id) return `id:${id}`;
 
@@ -6428,10 +7216,11 @@ function getDriverScheduledReservationDedupeKey(ride: DriverAcceptedRideBridgeRe
     driverBridgeClean(ride.passengerEmail),
     driverBridgeClean(ride.originText),
     driverBridgeClean(ride.destinationText),
-    driverBridgeClean(ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt),
+    driverBridgeClean(
+      ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt,
+    ),
   ].join("|");
 }
-
 
 function collectDriverReservationRecordsFromStorageKey(
   storageKey: string,
@@ -6450,10 +7239,8 @@ function collectDriverReservationRecordsFromStorageKey(
       return parsed.filter(
         (ride) =>
           driverScheduledReservationMatchesDriver(ride, user) ||
-          (
-            driverScheduledReservationOpenForNextAvailableDriver(ride) &&
-            !driverScheduledReservationRejectedByDriver(ride, user)
-          ),
+          (driverScheduledReservationOpenForNextAvailableDriver(ride) &&
+            !driverScheduledReservationRejectedByDriver(ride, user)),
       );
     }
 
@@ -6464,9 +7251,13 @@ function collectDriverReservationRecordsFromStorageKey(
 
     for (const key of currentKeys) {
       const normalizedKey = normalizeDriverReservationKey(key) ?? key;
-      const possibleKeys = Array.from(new Set([key, normalizedKey].filter(Boolean)));
+      const possibleKeys = Array.from(
+        new Set([key, normalizedKey].filter(Boolean)),
+      );
       for (const possibleKey of possibleKeys) {
-        const list = (parsed as Record<string, DriverAcceptedRideBridgeRecord[]>)[possibleKey];
+        const list = (
+          parsed as Record<string, DriverAcceptedRideBridgeRecord[]>
+        )[possibleKey];
         if (Array.isArray(list)) matches.push(...list);
       }
     }
@@ -6479,10 +7270,8 @@ function collectDriverReservationRecordsFromStorageKey(
           ...(value as DriverAcceptedRideBridgeRecord[]).filter(
             (ride) =>
               driverScheduledReservationMatchesDriver(ride, user) ||
-              (
-                driverScheduledReservationOpenForNextAvailableDriver(ride) &&
-                !driverScheduledReservationRejectedByDriver(ride, user)
-              ),
+              (driverScheduledReservationOpenForNextAvailableDriver(ride) &&
+                !driverScheduledReservationRejectedByDriver(ride, user)),
           ),
         );
       }
@@ -6494,12 +7283,26 @@ function collectDriverReservationRecordsFromStorageKey(
   }
 }
 
-function readDriverScheduledReservationQueueOffers(user?: unknown): DriverAcceptedRideBridgeRecord[] {
+function readDriverScheduledReservationQueueOffers(
+  user?: unknown,
+): DriverAcceptedRideBridgeRecord[] {
   const all = [
-    ...collectDriverReservationRecordsFromStorageKey(DRIVER_SCHEDULED_RESERVATION_QUEUE_KEY, user),
-    ...collectDriverReservationRecordsFromStorageKey(DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY, user),
-    ...collectDriverReservationRecordsFromStorageKey(DRIVER_RESERVATION_INBOX_KEY, user),
-    ...collectDriverReservationRecordsFromStorageKey("rapago_local_driver_assigned_rides", user),
+    ...collectDriverReservationRecordsFromStorageKey(
+      DRIVER_SCHEDULED_RESERVATION_QUEUE_KEY,
+      user,
+    ),
+    ...collectDriverReservationRecordsFromStorageKey(
+      DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY,
+      user,
+    ),
+    ...collectDriverReservationRecordsFromStorageKey(
+      DRIVER_RESERVATION_INBOX_KEY,
+      user,
+    ),
+    ...collectDriverReservationRecordsFromStorageKey(
+      "rapago_local_driver_assigned_rides",
+      user,
+    ),
   ];
 
   const byKey = new Map<string, DriverAcceptedRideBridgeRecord>();
@@ -6530,7 +7333,8 @@ function readDriverScheduledReservationOffers(
 
   const byKey = new Map<string, DriverAcceptedRideBridgeRecord>();
   for (const ride of all) {
-    if (!driverScheduledReservationCanBeOffered(ride, user, isAvailable)) continue;
+    if (!driverScheduledReservationCanBeOffered(ride, user, isAvailable))
+      continue;
     const key = getDriverScheduledReservationDedupeKey(ride);
     if (!key) continue;
 
@@ -6548,18 +7352,26 @@ function readDriverScheduledReservationOffers(
   }
 
   return Array.from(byKey.values())
-    .sort((a, b) => getDriverScheduledReservationSortMs(a) - getDriverScheduledReservationSortMs(b))
+    .sort(
+      (a, b) =>
+        getDriverScheduledReservationSortMs(a) -
+        getDriverScheduledReservationSortMs(b),
+    )
     .slice(0, 20) as DriverScheduledReservationOffer[];
 }
 
 function updateDriverScheduledReservationEverywhere(
   target: DriverAcceptedRideBridgeRecord,
-  updater: (ride: DriverAcceptedRideBridgeRecord) => DriverAcceptedRideBridgeRecord,
+  updater: (
+    ride: DriverAcceptedRideBridgeRecord,
+  ) => DriverAcceptedRideBridgeRecord,
 ): void {
   for (const key of DRIVER_SCHEDULED_RESERVATION_KEYS) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[]) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[])
+        : [];
       const current = Array.isArray(parsed) ? parsed : [];
 
       let found = false;
@@ -6585,7 +7397,12 @@ function updateDriverScheduledReservationEverywhere(
   ]) {
     try {
       const rawQueue = localStorage.getItem(objectStorageKey);
-      const queue = rawQueue ? (JSON.parse(rawQueue) as Record<string, DriverAcceptedRideBridgeRecord[]>) : {};
+      const queue = rawQueue
+        ? (JSON.parse(rawQueue) as Record<
+            string,
+            DriverAcceptedRideBridgeRecord[]
+          >)
+        : {};
 
       if (queue && typeof queue === "object" && !Array.isArray(queue)) {
         let changed = false;
@@ -6613,15 +7430,32 @@ function updateDriverScheduledReservationEverywhere(
   // Esto evita bucles infinitos cuando un listener vuelve a leer/actualizar reservas
   // mientras todavía estamos dentro de updateDriverScheduledReservationEverywhere().
   window.setTimeout(() => {
-    window.dispatchEvent(new CustomEvent(DRIVER_SCHEDULED_RESERVATION_EVENT, { detail: { ride: target } }));
-    window.dispatchEvent(new CustomEvent(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, { detail: { ride: target } }));
-    window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated", { detail: { ride: target } }));
-    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride: target } }));
+    window.dispatchEvent(
+      new CustomEvent(DRIVER_SCHEDULED_RESERVATION_EVENT, {
+        detail: { ride: target },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, {
+        detail: { ride: target },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:admin-scheduled-rides-updated", {
+        detail: { ride: target },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:passenger-rides-updated", {
+        detail: { ride: target },
+      }),
+    );
   }, 0);
 }
 
-
-function getDriverScheduledReservationActivationMs(ride: DriverAcceptedRideBridgeRecord): number | null {
+function getDriverScheduledReservationActivationMs(
+  ride: DriverAcceptedRideBridgeRecord,
+): number | null {
   const fields = [
     ride.scheduleActivationAt,
     ride.driverVisibleAt,
@@ -6636,7 +7470,12 @@ function getDriverScheduledReservationActivationMs(ride: DriverAcceptedRideBridg
   }
 
   const scheduled = new Date(
-    String(ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt ?? ""),
+    String(
+      ride.scheduledAt ??
+        ride.scheduledPickupAt ??
+        ride.pickupScheduledAt ??
+        "",
+    ),
   ).getTime();
 
   if (Number.isFinite(scheduled)) return scheduled - 10 * 60_000;
@@ -6644,7 +7483,9 @@ function getDriverScheduledReservationActivationMs(ride: DriverAcceptedRideBridg
   return null;
 }
 
-function driverScheduledReservationIsActiveNow(ride: DriverAcceptedRideBridgeRecord): boolean {
+function driverScheduledReservationIsActiveNow(
+  ride: DriverAcceptedRideBridgeRecord,
+): boolean {
   const status = driverBridgeClean(ride.status);
 
   // Si ya está en progreso real, no lo escondemos.
@@ -6675,19 +7516,23 @@ function driverScheduledReservationIsActiveNow(ride: DriverAcceptedRideBridgeRec
   return ["driver_en_route", "driver_arrived"].includes(status);
 }
 
-function driverRideLooksLikeScheduledReservation(ride: Record<string, unknown>): boolean {
-  const text = driverBridgeClean([
-    ride.status,
-    ride.rideMode,
-    ride.requestMode,
-    ride.scheduleStatus,
-    ride.adminScheduleStatus,
-    ride.reservationStatus,
-    ride.driverAssignmentStatus,
-    ride.bookingPurpose,
-    ride.serviceType,
-    ride.notes,
-  ].join(" "));
+function driverRideLooksLikeScheduledReservation(
+  ride: Record<string, unknown>,
+): boolean {
+  const text = driverBridgeClean(
+    [
+      ride.status,
+      ride.rideMode,
+      ride.requestMode,
+      ride.scheduleStatus,
+      ride.adminScheduleStatus,
+      ride.reservationStatus,
+      ride.driverAssignmentStatus,
+      ride.bookingPurpose,
+      ride.serviceType,
+      ride.notes,
+    ].join(" "),
+  );
 
   return (
     ride.isScheduled === true ||
@@ -6704,17 +7549,28 @@ function driverRideLooksLikeScheduledReservation(ride: Record<string, unknown>):
   );
 }
 
-function shouldHideFromNormalDriverRequestQueue(ride: AvailableRideData | Record<string, unknown>): boolean {
+function shouldHideFromNormalDriverRequestQueue(
+  ride: AvailableRideData | Record<string, unknown>,
+): boolean {
   // Las reservas agendadas NO deben entrar como "Nueva solicitud de viaje".
   // Se muestran solamente en la sección/botón Reservas del conductor asignado.
-  return driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>);
+  return driverRideLooksLikeScheduledReservation(
+    ride as unknown as Record<string, unknown>,
+  );
 }
 
-function getScheduledReservationAlertKey(ride: DriverAcceptedRideBridgeRecord): string {
-  return getDriverScheduledReservationDedupeKey(ride) || String(ride.id ?? ride.rideId ?? "scheduled");
+function getScheduledReservationAlertKey(
+  ride: DriverAcceptedRideBridgeRecord,
+): string {
+  return (
+    getDriverScheduledReservationDedupeKey(ride) ||
+    String(ride.id ?? ride.rideId ?? "scheduled")
+  );
 }
 
-function readAllScheduledReservationsForDriver(user?: unknown): DriverAcceptedRideBridgeRecord[] {
+function readAllScheduledReservationsForDriver(
+  user?: unknown,
+): DriverAcceptedRideBridgeRecord[] {
   const all: DriverAcceptedRideBridgeRecord[] = [];
 
   for (const key of DRIVER_SCHEDULED_RESERVATION_KEYS) {
@@ -6740,12 +7596,15 @@ function readAllScheduledReservationsForDriver(user?: unknown): DriverAcceptedRi
   }
 
   return Array.from(byKey.values()).sort(
-    (a, b) => getDriverScheduledReservationSortMs(a) - getDriverScheduledReservationSortMs(b),
+    (a, b) =>
+      getDriverScheduledReservationSortMs(a) -
+      getDriverScheduledReservationSortMs(b),
   );
 }
 
-
-function getDriverReservationRideIdentityKeys(ride: Record<string, unknown>): string[] {
+function getDriverReservationRideIdentityKeys(
+  ride: Record<string, unknown>,
+): string[] {
   const composite = [
     ride.originText,
     ride.destinationText,
@@ -6773,8 +7632,9 @@ function driverAvailableRideMatchesScheduledReservationForDriver(
   user?: unknown,
 ): boolean {
   const rideKeys = new Set(
-    getDriverReservationRideIdentityKeys(ride as unknown as Record<string, unknown>)
-      .map((key) => normalizeDriverReservationKey(key) ?? key),
+    getDriverReservationRideIdentityKeys(
+      ride as unknown as Record<string, unknown>,
+    ).map((key) => normalizeDriverReservationKey(key) ?? key),
   );
 
   if (rideKeys.size === 0) return false;
@@ -6817,7 +7677,9 @@ function buildScheduledReservationReleasedForPassenger(
 function releaseScheduledReservationForPassengerSearch(
   ride: DriverScheduledReservationOffer,
 ): DriverScheduledReservationOffer {
-  const currentStatus = String(ride.status ?? "").toLowerCase().trim();
+  const currentStatus = String(ride.status ?? "")
+    .toLowerCase()
+    .trim();
   const alreadyReleased =
     ride.scheduledReservationReleasedForPassenger === true ||
     ride.reservationReleasedForPassenger === true ||
@@ -6856,7 +7718,9 @@ function findScheduledReservationReadyForDriver(
 
   const ready = readAllScheduledReservationsForDriver(user).find((ride) => {
     const key = getScheduledReservationAlertKey(ride);
-    return !alreadyAlerted.has(key) && driverScheduledReservationIsActiveNow(ride);
+    return (
+      !alreadyAlerted.has(key) && driverScheduledReservationIsActiveNow(ride)
+    );
   });
 
   if (!ready) return null;
@@ -6872,7 +7736,9 @@ function findScheduledReservationReadyForDriver(
   return ready as unknown as DriverScheduledReservationOffer;
 }
 
-function getScheduledReservationCountdownText(ride: DriverAcceptedRideBridgeRecord): string {
+function getScheduledReservationCountdownText(
+  ride: DriverAcceptedRideBridgeRecord,
+): string {
   const activationMs = getDriverScheduledReservationActivationMs(ride);
   if (activationMs == null) return "queda pendiente hasta la hora reservada";
 
@@ -6919,11 +7785,18 @@ function showScheduledReservationSystemNotification(): void {
         requireInteraction: true,
         badge: "/assets/logo-rapago-MgFpiiP8.jpeg",
         icon: "/assets/logo-rapago-MgFpiiP8.jpeg",
-      } as NotificationOptions & { renotify?: boolean; requireInteraction?: boolean });
+      } as NotificationOptions & {
+        renotify?: boolean;
+        requireInteraction?: boolean;
+      });
 
       notification.onclick = () => {
-        try { window.focus(); } catch {}
-        try { window.location.href = DRIVER_RESERVATIONS_VIEW_ROUTE; } catch {}
+        try {
+          window.focus();
+        } catch {}
+        try {
+          window.location.href = DRIVER_RESERVATIONS_VIEW_ROUTE;
+        } catch {}
         notification.close();
       };
     };
@@ -6977,22 +7850,31 @@ function startScheduledReservationAlertSound(): RideRequestAlertController {
 
   intervals.push(window.setInterval(playAlarmCycle, 1200));
   intervals.push(window.setInterval(speakScheduledReservationAlert, 9000));
-  intervals.push(window.setInterval(showScheduledReservationSystemNotification, 18000));
+  intervals.push(
+    window.setInterval(showScheduledReservationSystemNotification, 18000),
+  );
 
   return {
     stop: () => {
       stopped = true;
       intervals.forEach((id) => window.clearInterval(id));
-      try { if ("vibrate" in navigator) navigator.vibrate(0); } catch {}
-      try { window.speechSynthesis?.cancel(); } catch {}
+      try {
+        if ("vibrate" in navigator) navigator.vibrate(0);
+      } catch {}
+      try {
+        window.speechSynthesis?.cancel();
+      } catch {}
     },
   };
 }
 
-function getAcceptedScheduledReservationStatus(ride: DriverAcceptedRideBridgeRecord): string {
+function getAcceptedScheduledReservationStatus(
+  ride: DriverAcceptedRideBridgeRecord,
+): string {
   const status = driverBridgeClean(ride.status);
 
-  if (["driver_en_route", "driver_arrived", "in_progress"].includes(status)) return status;
+  if (["driver_en_route", "driver_arrived", "in_progress"].includes(status))
+    return status;
   if (driverScheduledReservationIsActiveNow(ride)) return "accepted";
 
   return "driver_scheduled";
@@ -7001,13 +7883,23 @@ function getAcceptedScheduledReservationStatus(ride: DriverAcceptedRideBridgeRec
 function driverScheduledReservationNavigationStarted(
   ride: DriverAcceptedRideBridgeRecord | Record<string, unknown>,
 ): boolean {
-  const status = driverBridgeClean((ride as unknown as Record<string, unknown>).status);
+  const status = driverBridgeClean(
+    (ride as unknown as Record<string, unknown>).status,
+  );
 
   return (
-    (ride as unknown as Record<string, unknown>).scheduledReservationNavigationStarted === true ||
-    (ride as unknown as Record<string, unknown>).driverStartedScheduledReservation === true ||
-    Boolean((ride as unknown as Record<string, unknown>).driverStartedScheduledReservationAt) ||
-    Boolean((ride as unknown as Record<string, unknown>).scheduledReservationStartedAt) ||
+    (ride as unknown as Record<string, unknown>)
+      .scheduledReservationNavigationStarted === true ||
+    (ride as unknown as Record<string, unknown>)
+      .driverStartedScheduledReservation === true ||
+    Boolean(
+      (ride as unknown as Record<string, unknown>)
+        .driverStartedScheduledReservationAt,
+    ) ||
+    Boolean(
+      (ride as unknown as Record<string, unknown>)
+        .scheduledReservationStartedAt,
+    ) ||
     ["driver_en_route", "driver_arrived", "in_progress"].includes(status)
   );
 }
@@ -7070,7 +7962,12 @@ function getActiveScheduledReservationRideForDriver(
   if (!driverScheduledReservationMatchesDriver(ride, user)) return null;
 
   const status = getAcceptedScheduledReservationStatus(ride);
-  if (!["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(status)) return null;
+  if (
+    !["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(
+      status,
+    )
+  )
+    return null;
 
   // Aunque la reserva ya esté activa por hora, NO abrimos mapa automático.
   // Solo se convierte en viaje activo cuando el conductor toca "Iniciar viaje"
@@ -7102,13 +7999,17 @@ function getActiveScheduledReservationRideForDriver(
   ) as unknown as DriverRideData;
 }
 
-function readActiveScheduledReservationRidesForDriver(user?: unknown): DriverRideData[] {
+function readActiveScheduledReservationRidesForDriver(
+  user?: unknown,
+): DriverRideData[] {
   const all: DriverAcceptedRideBridgeRecord[] = [];
 
   for (const key of DRIVER_SCHEDULED_RESERVATION_KEYS) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[]) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[])
+        : [];
       if (Array.isArray(parsed)) all.push(...parsed);
     } catch {
       // Ignora datos dañados.
@@ -7118,12 +8019,20 @@ function readActiveScheduledReservationRidesForDriver(user?: unknown): DriverRid
   const byKey = new Map<string, DriverRideData>();
 
   for (const ride of all) {
-    if (wasDriverRideCancelledLocally(ride as unknown as Record<string, unknown>, user)) continue;
+    if (
+      wasDriverRideCancelledLocally(
+        ride as unknown as Record<string, unknown>,
+        user,
+      )
+    )
+      continue;
 
     const active = getActiveScheduledReservationRideForDriver(ride, user);
     if (!active) continue;
 
-    const key = getDriverScheduledReservationDedupeKey(active as unknown as DriverAcceptedRideBridgeRecord);
+    const key = getDriverScheduledReservationDedupeKey(
+      active as unknown as DriverAcceptedRideBridgeRecord,
+    );
     if (!key) continue;
 
     byKey.set(key, {
@@ -7133,7 +8042,13 @@ function readActiveScheduledReservationRidesForDriver(user?: unknown): DriverRid
   }
 
   return Array.from(byKey.values()).sort(
-    (a, b) => getDriverScheduledReservationSortMs(a as unknown as DriverAcceptedRideBridgeRecord) - getDriverScheduledReservationSortMs(b as unknown as DriverAcceptedRideBridgeRecord),
+    (a, b) =>
+      getDriverScheduledReservationSortMs(
+        a as unknown as DriverAcceptedRideBridgeRecord,
+      ) -
+      getDriverScheduledReservationSortMs(
+        b as unknown as DriverAcceptedRideBridgeRecord,
+      ),
   );
 }
 
@@ -7165,7 +8080,9 @@ function getConfirmedWaitingScheduledReservationForDriver(
   ) as unknown as DriverScheduledReservationOffer;
 }
 
-function readConfirmedWaitingScheduledReservationsForDriver(user?: unknown): DriverScheduledReservationOffer[] {
+function readConfirmedWaitingScheduledReservationsForDriver(
+  user?: unknown,
+): DriverScheduledReservationOffer[] {
   const all: DriverAcceptedRideBridgeRecord[] = [];
 
   for (const key of DRIVER_SCHEDULED_RESERVATION_KEYS) {
@@ -7177,10 +8094,15 @@ function readConfirmedWaitingScheduledReservationsForDriver(user?: unknown): Dri
   const byKey = new Map<string, DriverScheduledReservationOffer>();
 
   for (const ride of all) {
-    const waiting = getConfirmedWaitingScheduledReservationForDriver(ride, user);
+    const waiting = getConfirmedWaitingScheduledReservationForDriver(
+      ride,
+      user,
+    );
     if (!waiting) continue;
 
-    const key = getDriverScheduledReservationDedupeKey(waiting as unknown as DriverAcceptedRideBridgeRecord);
+    const key = getDriverScheduledReservationDedupeKey(
+      waiting as unknown as DriverAcceptedRideBridgeRecord,
+    );
     if (!key) continue;
 
     byKey.set(key, {
@@ -7191,8 +8113,12 @@ function readConfirmedWaitingScheduledReservationsForDriver(user?: unknown): Dri
 
   return Array.from(byKey.values()).sort(
     (a, b) =>
-      getDriverScheduledReservationSortMs(a as unknown as DriverAcceptedRideBridgeRecord) -
-      getDriverScheduledReservationSortMs(b as unknown as DriverAcceptedRideBridgeRecord),
+      getDriverScheduledReservationSortMs(
+        a as unknown as DriverAcceptedRideBridgeRecord,
+      ) -
+      getDriverScheduledReservationSortMs(
+        b as unknown as DriverAcceptedRideBridgeRecord,
+      ),
   );
 }
 
@@ -7206,8 +8132,13 @@ function buildDriverScheduledReservationAcceptedPayload(
     getDriverLiveUserField(user, "fullName") ??
     getDriverLiveUserField(user, "email") ??
     String(ride.driverName ?? ride.assignedDriverName ?? "Conductor Rapa Go");
-  const driverEmail = getDriverLiveUserField(user, "email") ?? (String(ride.driverEmail ?? "").trim() || null);
-  const driverId = getDriverLiveUserField(user, "id") ?? getDriverLiveUserField(user, "userId") ?? (String(ride.driverId ?? "").trim() || null);
+  const driverEmail =
+    getDriverLiveUserField(user, "email") ??
+    (String(ride.driverEmail ?? "").trim() || null);
+  const driverId =
+    getDriverLiveUserField(user, "id") ??
+    getDriverLiveUserField(user, "userId") ??
+    (String(ride.driverId ?? "").trim() || null);
 
   return enrichRideWithSelectedDriverVehicle(
     {
@@ -7230,8 +8161,10 @@ function buildDriverScheduledReservationAcceptedPayload(
       availableForDrivers: false,
       reassignmentNeeded: false,
       needsNextAvailableDriver: false,
-      passengerNotice: "Tu conductor fue asignado. Revisa sus datos, foto de perfil y vehículo en Mis Viajes.",
-      passengerNotification: "Tu conductor fue asignado. Revisa sus datos, foto de perfil y vehículo en Mis Viajes.",
+      passengerNotice:
+        "Tu conductor fue asignado. Revisa sus datos, foto de perfil y vehículo en Mis Viajes.",
+      passengerNotification:
+        "Tu conductor fue asignado. Revisa sus datos, foto de perfil y vehículo en Mis Viajes.",
     },
     user,
   );
@@ -7243,21 +8176,29 @@ function buildDriverScheduledReservationRejectedPayload(
   rejectionReason: string,
 ): DriverAcceptedRideBridgeRecord {
   const now = new Date().toISOString();
-  const cleanRejectionReason = sanitizeDriverTripSafetyText(rejectionReason, 260);
+  const cleanRejectionReason = sanitizeDriverTripSafetyText(
+    rejectionReason,
+    260,
+  );
 
   if (!cleanRejectionReason) {
     throw new Error("Debes escribir el motivo del rechazo.");
   }
 
   const currentKeys = getDriverScheduledReservationIdentityKeys(user);
-  const rejectedKeys = Array.from(new Set([...getDriverScheduledRejectedKeys(ride), ...currentKeys]));
+  const rejectedKeys = Array.from(
+    new Set([...getDriverScheduledRejectedKeys(ride), ...currentKeys]),
+  );
   const driverName =
     getDriverLiveUserField(user, "name") ??
     getDriverLiveUserField(user, "fullName") ??
     getDriverLiveUserField(user, "email") ??
     "Conductor";
   const driverEmail = getDriverLiveUserField(user, "email") ?? null;
-  const driverId = getDriverLiveUserField(user, "id") ?? getDriverLiveUserField(user, "userId") ?? null;
+  const driverId =
+    getDriverLiveUserField(user, "id") ??
+    getDriverLiveUserField(user, "userId") ??
+    null;
 
   return {
     ...ride,
@@ -7276,16 +8217,24 @@ function buildDriverScheduledReservationRejectedPayload(
     skippedDriverKeys: rejectedKeys,
     ignoredDriverKeys: rejectedKeys,
     rejectedDriverIds: Array.from(
-      new Set([
-        ...(Array.isArray(ride.rejectedDriverIds) ? ride.rejectedDriverIds : []),
-        driverId,
-      ].filter(Boolean)),
+      new Set(
+        [
+          ...(Array.isArray(ride.rejectedDriverIds)
+            ? ride.rejectedDriverIds
+            : []),
+          driverId,
+        ].filter(Boolean),
+      ),
     ),
     rejectedDriverEmails: Array.from(
-      new Set([
-        ...(Array.isArray(ride.rejectedDriverEmails) ? ride.rejectedDriverEmails : []),
-        driverEmail,
-      ].filter(Boolean)),
+      new Set(
+        [
+          ...(Array.isArray(ride.rejectedDriverEmails)
+            ? ride.rejectedDriverEmails
+            : []),
+          driverEmail,
+        ].filter(Boolean),
+      ),
     ),
     rejectedAt: now,
     rejectedReason: cleanRejectionReason,
@@ -7307,11 +8256,12 @@ function buildDriverScheduledReservationRejectedPayload(
     availableForDrivers: true,
     reassignmentNeeded: true,
     needsNextAvailableDriver: true,
-    passengerNotice: "La reserva sigue activa. Estamos asignando otro conductor disponible.",
-    passengerNotification: "La reserva sigue activa. Estamos asignando otro conductor disponible.",
+    passengerNotice:
+      "La reserva sigue activa. Estamos asignando otro conductor disponible.",
+    passengerNotification:
+      "La reserva sigue activa. Estamos asignando otro conductor disponible.",
   };
 }
-
 
 type DriverReservationAutoAssignCandidate = {
   id: string | null;
@@ -7324,13 +8274,22 @@ function readDriverReservationAvailabilitySnapshotCandidates(): DriverReservatio
   try {
     const raw = localStorage.getItem(DRIVER_AVAILABILITY_SNAPSHOT_KEY);
     const snapshot = raw
-      ? (JSON.parse(raw) as Record<string, { value?: string | null; email?: string | null; name?: string | null; keys?: string[] }>)
+      ? (JSON.parse(raw) as Record<
+          string,
+          {
+            value?: string | null;
+            email?: string | null;
+            name?: string | null;
+            keys?: string[];
+          }
+        >)
       : {};
 
     const byKey = new Map<string, DriverReservationAutoAssignCandidate>();
 
     Object.entries(snapshot).forEach(([entryKey, record]) => {
-      if (!record || normalizeDriverAvailability(record.value) !== "available") return;
+      if (!record || normalizeDriverAvailability(record.value) !== "available")
+        return;
 
       const keys = collectDriverReservationKeys([
         entryKey,
@@ -7342,7 +8301,9 @@ function readDriverReservationAvailabilitySnapshotCandidates(): DriverReservatio
       if (keys.length === 0) return;
 
       const email = String(record.email ?? "").trim() || null;
-      const name = String(record.name ?? email ?? "Conductor disponible").trim();
+      const name = String(
+        record.name ?? email ?? "Conductor disponible",
+      ).trim();
 
       const stableKey =
         normalizeDriverReservationKey(email) ??
@@ -7369,7 +8330,9 @@ function driverReservationCandidateMatchesRejected(
   rejectedKeys: string[],
 ): boolean {
   const rejected = new Set(
-    rejectedKeys.map((key) => normalizeDriverReservationKey(key) ?? key).filter(Boolean),
+    rejectedKeys
+      .map((key) => normalizeDriverReservationKey(key) ?? key)
+      .filter(Boolean),
   );
 
   return candidate.keys.some((key) => {
@@ -7383,11 +8346,13 @@ function getNextAvailableDriverCandidateForReservation(
   user?: unknown,
 ): DriverReservationAutoAssignCandidate | null {
   const rejectedKeys = Array.from(
-    new Set([
-      ...getDriverScheduledRejectedKeys(ride),
-      ...getRideSkippedDriverKeys(ride),
-      ...getDriverScheduledReservationIdentityKeys(user),
-    ].filter(Boolean)),
+    new Set(
+      [
+        ...getDriverScheduledRejectedKeys(ride),
+        ...getRideSkippedDriverKeys(ride),
+        ...getDriverScheduledReservationIdentityKeys(user),
+      ].filter(Boolean),
+    ),
   );
 
   const currentAssignedKeys = getDriverScheduledReservationDriverKeys(ride)
@@ -7398,13 +8363,15 @@ function getNextAvailableDriverCandidateForReservation(
 
   return (
     candidates.find((candidate) => {
-      if (driverReservationCandidateMatchesRejected(candidate, rejectedKeys)) return false;
+      if (driverReservationCandidateMatchesRejected(candidate, rejectedKeys))
+        return false;
 
       const candidateKeys = candidate.keys
         .map((key) => normalizeDriverReservationKey(key) ?? key)
         .filter(Boolean);
 
-      if (candidateKeys.some((key) => currentAssignedKeys.includes(key))) return false;
+      if (candidateKeys.some((key) => currentAssignedKeys.includes(key)))
+        return false;
       return true;
     }) ?? null
   );
@@ -7417,10 +8384,12 @@ function buildReservationAssignedToNextDriverPayload(
 ): DriverAcceptedRideBridgeRecord {
   const now = new Date().toISOString();
   const rejectedKeys = Array.from(
-    new Set([
-      ...getDriverScheduledRejectedKeys(ride),
-      ...getRideSkippedDriverKeys(ride),
-    ].filter(Boolean)),
+    new Set(
+      [
+        ...getDriverScheduledRejectedKeys(ride),
+        ...getRideSkippedDriverKeys(ride),
+      ].filter(Boolean),
+    ),
   );
   const driverRejectionReason = sanitizeDriverTripSafetyText(
     ride.adminLastDriverRejectionReason ??
@@ -7480,32 +8449,45 @@ function buildReservationAssignedToNextDriverPayload(
       reason === "driver_rejected"
         ? `${rejectedDriverName} rechazó la reserva. Motivo: ${driverRejectionReason || "No informado"}. Se reasignó automáticamente a ${candidate.name}.`
         : `La reserva fue reasignada automáticamente a ${candidate.name}.`,
-    driverNotification: "Te reasignamos esta reserva porque otro conductor no pudo tomarla. Confirma si puedes realizarla.",
-    passengerNotice: "El conductor anterior no pudo tomar la reserva. Estamos esperando confirmación del siguiente conductor disponible.",
-    passengerNotification: "El conductor anterior no pudo tomar la reserva. Estamos esperando confirmación del siguiente conductor disponible.",
+    driverNotification:
+      "Te reasignamos esta reserva porque otro conductor no pudo tomarla. Confirma si puedes realizarla.",
+    passengerNotice:
+      "El conductor anterior no pudo tomar la reserva. Estamos esperando confirmación del siguiente conductor disponible.",
+    passengerNotification:
+      "El conductor anterior no pudo tomar la reserva. Estamos esperando confirmación del siguiente conductor disponible.",
   };
 }
 
-function removeScheduledReservationFromAllDriverQueues(ride: DriverAcceptedRideBridgeRecord): void {
+function removeScheduledReservationFromAllDriverQueues(
+  ride: DriverAcceptedRideBridgeRecord,
+): void {
   for (const objectStorageKey of [
     DRIVER_SCHEDULED_RESERVATION_QUEUE_KEY,
     DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY,
   ]) {
     try {
       const rawQueue = localStorage.getItem(objectStorageKey);
-      const queue = rawQueue ? (JSON.parse(rawQueue) as Record<string, DriverAcceptedRideBridgeRecord[]>) : {};
+      const queue = rawQueue
+        ? (JSON.parse(rawQueue) as Record<
+            string,
+            DriverAcceptedRideBridgeRecord[]
+          >)
+        : {};
       if (!queue || typeof queue !== "object" || Array.isArray(queue)) continue;
 
       let changed = false;
 
       Object.keys(queue).forEach((key) => {
         const list = Array.isArray(queue[key]) ? queue[key] : [];
-        const next = list.filter((item) => !isSameDriverAcceptedRide(item, ride));
+        const next = list.filter(
+          (item) => !isSameDriverAcceptedRide(item, ride),
+        );
         if (next.length !== list.length) changed = true;
         queue[key] = next;
       });
 
-      if (changed) localStorage.setItem(objectStorageKey, JSON.stringify(queue));
+      if (changed)
+        localStorage.setItem(objectStorageKey, JSON.stringify(queue));
     } catch {
       // No bloquea la reasignación.
     }
@@ -7517,9 +8499,13 @@ function removeScheduledReservationFromAllDriverQueues(ride: DriverAcceptedRideB
   ]) {
     try {
       const raw = localStorage.getItem(arrayKey);
-      const parsed = raw ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[]) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[])
+        : [];
       const current = Array.isArray(parsed) ? parsed : [];
-      const next = current.filter((item) => !isSameDriverAcceptedRide(item, ride));
+      const next = current.filter(
+        (item) => !isSameDriverAcceptedRide(item, ride),
+      );
       localStorage.setItem(arrayKey, JSON.stringify(next.slice(0, 160)));
     } catch {
       // No bloquea la reasignación.
@@ -7548,7 +8534,12 @@ function upsertScheduledReservationForOnlyNextDriver(
   ]) {
     try {
       const rawQueue = localStorage.getItem(objectStorageKey);
-      const queue = rawQueue ? (JSON.parse(rawQueue) as Record<string, DriverAcceptedRideBridgeRecord[]>) : {};
+      const queue = rawQueue
+        ? (JSON.parse(rawQueue) as Record<
+            string,
+            DriverAcceptedRideBridgeRecord[]
+          >)
+        : {};
 
       targetKeys.forEach((key) => {
         const current = Array.isArray(queue[key]) ? queue[key] : [];
@@ -7573,15 +8564,19 @@ function upsertScheduledReservationForOnlyNextDriver(
   ]) {
     try {
       const raw = localStorage.getItem(arrayKey);
-      const parsed = raw ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[]) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as DriverAcceptedRideBridgeRecord[])
+        : [];
       const current = Array.isArray(parsed) ? parsed : [];
 
       localStorage.setItem(
         arrayKey,
-        JSON.stringify([
-          ride,
-          ...current.filter((item) => !isSameDriverAcceptedRide(item, ride)),
-        ].slice(0, 160)),
+        JSON.stringify(
+          [
+            ride,
+            ...current.filter((item) => !isSameDriverAcceptedRide(item, ride)),
+          ].slice(0, 160),
+        ),
       );
     } catch {
       // No bloquea la reasignación.
@@ -7594,7 +8589,10 @@ function resolveScheduledReservationNextDriverAssignment(
   user?: unknown,
   reason: "driver_rejected" | "driver_cancelled" = "driver_rejected",
 ): DriverAcceptedRideBridgeRecord {
-  const candidate = getNextAvailableDriverCandidateForReservation(rejectedRide, user);
+  const candidate = getNextAvailableDriverCandidateForReservation(
+    rejectedRide,
+    user,
+  );
 
   if (!candidate) {
     // El conductor que rechazó no debe seguir viendo la reserva.
@@ -7622,7 +8620,11 @@ function resolveScheduledReservationNextDriverAssignment(
     return rejectedRide;
   }
 
-  const nextRide = buildReservationAssignedToNextDriverPayload(rejectedRide, candidate, reason);
+  const nextRide = buildReservationAssignedToNextDriverPayload(
+    rejectedRide,
+    candidate,
+    reason,
+  );
   upsertScheduledReservationForOnlyNextDriver(nextRide, candidate);
 
   pushPassengerNotification({
@@ -7634,12 +8636,29 @@ function resolveScheduledReservationNextDriverAssignment(
 
   window.dispatchEvent(
     new CustomEvent(DRIVER_RESERVATION_AUTO_REASSIGN_EVENT, {
-      detail: { ride: nextRide, reason, nextDriverKeys: candidate.keys, nextDriverEmail: candidate.email },
+      detail: {
+        ride: nextRide,
+        reason,
+        nextDriverKeys: candidate.keys,
+        nextDriverEmail: candidate.email,
+      },
     }),
   );
-  window.dispatchEvent(new CustomEvent("rapago:driver-reservation-inbox-updated", { detail: { ride: nextRide } }));
-  window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated", { detail: { ride: nextRide } }));
-  window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride: nextRide } }));
+  window.dispatchEvent(
+    new CustomEvent("rapago:driver-reservation-inbox-updated", {
+      detail: { ride: nextRide },
+    }),
+  );
+  window.dispatchEvent(
+    new CustomEvent("rapago:admin-scheduled-rides-updated", {
+      detail: { ride: nextRide },
+    }),
+  );
+  window.dispatchEvent(
+    new CustomEvent("rapago:passenger-rides-updated", {
+      detail: { ride: nextRide },
+    }),
+  );
 
   return nextRide;
 }
@@ -7648,7 +8667,10 @@ function acceptDriverScheduledReservationLocally(
   ride: DriverScheduledReservationOffer,
   user?: unknown,
 ): DriverScheduledReservationOffer {
-  const accepted = buildDriverScheduledReservationAcceptedPayload(ride, user) as DriverScheduledReservationOffer;
+  const accepted = buildDriverScheduledReservationAcceptedPayload(
+    ride,
+    user,
+  ) as DriverScheduledReservationOffer;
 
   updateDriverScheduledReservationEverywhere(ride, () => accepted);
   publishAcceptedDriverVehicleToPassenger(accepted, user);
@@ -7695,7 +8717,9 @@ function formatDriverScheduledReservationDate(value: unknown): string {
   });
 }
 
-function getDriverScheduledReservationDateText(ride: DriverAcceptedRideBridgeRecord): string {
+function getDriverScheduledReservationDateText(
+  ride: DriverAcceptedRideBridgeRecord,
+): string {
   return formatDriverScheduledReservationDate(
     ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.pickupScheduledAt,
   );
@@ -7728,11 +8752,9 @@ function addDriverVehicle(input: {
   const now = new Date();
   const currentVehicles = purgeExpiredDriverVehicles(input.user);
   const existingById = input.vehicleId
-    ? currentVehicles.find(
-        (item) =>
-          item.ownerKey === ownerKey &&
-          item.id === input.vehicleId,
-      ) ?? null
+    ? (currentVehicles.find(
+        (item) => item.ownerKey === ownerKey && item.id === input.vehicleId,
+      ) ?? null)
     : null;
   const existingByPlate =
     currentVehicles.find(
@@ -7750,7 +8772,9 @@ function addDriverVehicle(input: {
     input.ownership === "borrowed"
       ? input.expiresAt
         ? new Date(input.expiresAt).toISOString()
-        : new Date(now.getTime() + BORROWED_VEHICLE_DAYS * 24 * 60 * 60_000).toISOString()
+        : new Date(
+            now.getTime() + BORROWED_VEHICLE_DAYS * 24 * 60 * 60_000,
+          ).toISOString()
       : null;
 
   const hasOtherOwnPrimary = currentVehicles.some(
@@ -7774,9 +8798,7 @@ function addDriverVehicle(input: {
     imageDataUrl: input.imageDataUrl?.trim() || null,
     imageName: input.imageName?.trim() || null,
     createdAt:
-      input.createdAt?.trim() ||
-      existing?.createdAt ||
-      now.toISOString(),
+      input.createdAt?.trim() || existing?.createdAt || now.toISOString(),
     expiresAt,
     primary:
       input.ownership === "own"
@@ -7789,10 +8811,8 @@ function addDriverVehicle(input: {
     (item) =>
       !(
         item.ownerKey === ownerKey &&
-        (
-          item.id === vehicleId ||
-          item.plate.toUpperCase() === plate.toUpperCase()
-        )
+        (item.id === vehicleId ||
+          item.plate.toUpperCase() === plate.toUpperCase())
       ),
   );
 
@@ -7816,7 +8836,9 @@ function removeDriverVehicle(vehicleId: string, user?: unknown): void {
   }
 }
 
-function getBorrowedVehicleRemainingText(vehicle: DriverVehicleRecord): string | null {
+function getBorrowedVehicleRemainingText(
+  vehicle: DriverVehicleRecord,
+): string | null {
   if (vehicle.ownership !== "borrowed" || !vehicle.expiresAt) return null;
   const diff = new Date(vehicle.expiresAt).getTime() - Date.now();
   if (!Number.isFinite(diff) || diff <= 0) return "Vence hoy";
@@ -7829,7 +8851,8 @@ export function DriverHomePage(): JSX.Element {
   const { theme, isDark, toggleTheme } = useRapagoSectionTheme("driver-home");
   const history = useHistory();
   const driverAvailabilityUser = session?.user as
-    DriverAvailabilityUser | undefined;
+    | DriverAvailabilityUser
+    | undefined;
   const driverConnection = useRapaGoConnectivityMonitor("driver");
   const [driverAvailability, setDriverAvailability] =
     useState<DriverAvailability>(() =>
@@ -7837,7 +8860,9 @@ export function DriverHomePage(): JSX.Element {
     );
   const [restBlocked, setRestBlocked] = useState(false);
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
-  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(
+    null,
+  );
   const [driverAlertsEnabled, setDriverAlertsEnabled] = useState(() =>
     readDriverAlertsEnabled(),
   );
@@ -7928,11 +8953,12 @@ export function DriverHomePage(): JSX.Element {
     driverAvailability === "available" &&
     !driverConnection.blocked &&
     !restBlocked;
-  const [pendingReservationCount, setPendingReservationCount] = useState(() =>
-    readDriverScheduledReservationOffers(
-      driverAvailabilityUser,
-      isDriverAvailable,
-    ).length,
+  const [pendingReservationCount, setPendingReservationCount] = useState(
+    () =>
+      readDriverScheduledReservationOffers(
+        driverAvailabilityUser,
+        isDriverAvailable,
+      ).length,
   );
 
   useEffect(() => {
@@ -8168,314 +9194,308 @@ export function DriverHomePage(): JSX.Element {
     <>
       <IonPage
         className="rapago-driver-page driver-home-page"
-        data-rapago-theme={theme}
-      >
-      <style>{DRIVER_HOME_STYLES}</style>
-      {/* Variante "root": es la única pantalla donde la marca es el sujeto y no
+        data-rapago-theme={theme}>
+        <style>{DRIVER_HOME_STYLES}</style>
+        {/* Variante "root": es la única pantalla donde la marca es el sujeto y no
           una firma, y la única donde el saludo es información nueva. El toggle
           de tema y el acceso a perfil que había aquí sueltos se fueron al menú
           de cuenta — eran dos de los tres iconos dorados idénticos separados
           por 6px, con "cerrar sesión" de tercero. */}
-      <RapagoAppBar
-        sectionId="driver-home"
-        variant="root"
-        subtitle="Tu panel de conductor"
-        roleLabel="Conductor"
-        showNotifications
-      />
+        <RapagoAppBar
+          sectionId="driver-home"
+          variant="root"
+          subtitle="Tu panel de conductor"
+          roleLabel="Conductor"
+          showNotifications
+        />
 
-      <IonContent className="driver-home-content">
-        <main className="driver-home-shell">
-          <RapaGoConnectivityBanner
-            role="driver"
-            status={driverConnection.status}
-          />
+        <IonContent className="driver-home-content">
+          <main className="driver-home-shell">
+            <RapaGoConnectivityBanner
+              role="driver"
+              status={driverConnection.status}
+            />
 
-          <DriverAvailabilityControl
-            value={isDriverAvailable ? "available" : "unavailable"}
-            onChange={handleAvailabilityChange}
-            disabled={availabilitySaving}
-          />
+            <DriverAvailabilityControl
+              value={isDriverAvailable ? "available" : "unavailable"}
+              onChange={handleAvailabilityChange}
+              disabled={availabilitySaving}
+            />
 
-          <section className="driver-home-cta">
-            <div className="driver-home-cta__icon" aria-hidden="true">
-              <IonIcon
-                icon={isDriverAvailable ? notificationsOutline : carOutline}
-              />
-            </div>
-
-            <div>
-              <div className="driver-home-cta__title">
-                {isDriverAvailable
-                  ? "Revisa tus solicitudes disponibles"
-                  : "Actualmente estás fuera de línea"}
-              </div>
-              <div className="driver-home-cta__copy">
-                {isDriverAvailable
-                  ? "Las nuevas solicitudes y reservas aparecerán con una alerta clara."
-                  : "No recibirás servicios hasta volver a marcarte como disponible."}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="driver-home-cta__button"
-              onClick={() => {
-                if (isDriverAvailable) {
-                  history.push(ROUTES.DRIVER.REQUESTS);
-                } else {
-                  void handleAvailabilityChange("available");
-                }
-              }}
-            >
-              {isDriverAvailable ? "Ver solicitudes" : "Ponerme disponible"}
-            </button>
-          </section>
-
-          {availabilityError && (
-            <div
-              role="alert"
-              style={{
-                margin: "0 0 12px",
-                padding: "11px 13px",
-                borderRadius: 14,
-                border: "1px solid rgba(220,38,38,.28)",
-                background: "rgba(254,226,226,.96)",
-                color: "#991b1b",
-                fontSize: ".78rem",
-                fontWeight: 850,
-                lineHeight: 1.4,
-              }}
-            >
-              {availabilityError}
-            </div>
-          )}
-
-          <section
-            aria-label="Avisos de nuevos traslados"
-            style={{
-              margin: "0 0 14px",
-              padding: "14px",
-              borderRadius: 20,
-              background: driverAlertsEnabled
-                ? "linear-gradient(135deg,rgba(220,252,231,.98),rgba(254,249,195,.98))"
-                : "linear-gradient(135deg,rgba(255,247,214,.98),rgba(254,226,226,.96))",
-              border: driverAlertsEnabled
-                ? "1.5px solid rgba(34,197,94,.42)"
-                : "1.5px solid rgba(210,164,58,.48)",
-              boxShadow: "0 12px 28px rgba(17,24,39,.10)",
-              color: "#111827",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-              }}
-            >
-              <div
-                aria-hidden="true"
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 16,
-                  background: driverAlertsEnabled ? "#16a34a" : "#d2a43a",
-                  color: "#ffffff",
-                  display: "grid",
-                  placeItems: "center",
-                  flex: "0 0 auto",
-                  boxShadow: "0 9px 20px rgba(0,0,0,.16)",
-                }}
-              >
-                <IonIcon icon={notificationsOutline} style={{ fontSize: 26 }} />
-              </div>
-
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 950, fontSize: ".94rem" }}>
-                  Avisos de nuevos traslados
-                </div>
-                <div
-                  style={{
-                    marginTop: 3,
-                    color: "#475569",
-                    fontSize: ".76rem",
-                    lineHeight: 1.35,
-                    fontWeight: 800,
-                  }}
-                >
-                  {driverAlertsEnabled
-                    ? driverNotificationPermission === "granted"
-                      ? "Activos con sonido, voz, vibración y notificación."
-                      : "Activos dentro de RAPA GO. Mantén la aplicación abierta."
-                    : "Actívalos una vez para escuchar inmediatamente cada nueva solicitud."}
-                </div>
-              </div>
-
-              <span
-                style={{
-                  padding: "5px 8px",
-                  borderRadius: 999,
-                  background: driverAlertsEnabled ? "#dcfce7" : "#fef3c7",
-                  color: driverAlertsEnabled ? "#166534" : "#92400e",
-                  border: driverAlertsEnabled
-                    ? "1px solid #86efac"
-                    : "1px solid #fcd34d",
-                  fontSize: ".64rem",
-                  fontWeight: 950,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {driverAlertsEnabled ? "ACTIVOS" : "PENDIENTE"}
-              </span>
-            </div>
-
-            <IonButton
-              expand="block"
-              color={driverAlertsEnabled ? "success" : "warning"}
-              onClick={() => void handleEnableDriverRideAlerts()}
-              style={{
-                marginTop: 12,
-                "--border-radius": "15px",
-                "--color": driverAlertsEnabled ? "#ffffff" : "#111111",
-                height: "46px",
-                fontWeight: 950,
-              } as CSSProperties}
-            >
-              <IonIcon
-                icon={driverAlertsEnabled ? volumeHighOutline : notificationsOutline}
-                slot="start"
-              />
-              {driverAlertsEnabled ? "Probar sonido y avisos" : "Activar avisos"}
-            </IonButton>
-
-            {driverAlertActivationMessage && (
-              <div
-                role="status"
-                style={{
-                  marginTop: 9,
-                  fontSize: ".74rem",
-                  lineHeight: 1.35,
-                  fontWeight: 850,
-                  color: "#334155",
-                }}
-              >
-                {driverAlertActivationMessage}
-              </div>
-            )}
-          </section>
-
-          <DriverRestScheduleCard
-            onBlockedChange={(blocked) => {
-              setRestBlocked(blocked);
-              if (!blocked) setAvailabilityError(null);
-            }}
-          />
-
-          <section className="driver-home-hero">
-            <div className="driver-home-hero__top">
-              <div>
-                <div className="driver-home-hero__eyebrow">
-                  Panel de conductor
-                </div>
-                <div className="driver-home-hero__title">
-                  Tu jornada en Rapa Nui
-                </div>
-                <div className="driver-home-hero__subtitle">
-                  {restBlocked
-                    ? "Estás cumpliendo tu descanso continuo de 12 horas. No se enviarán nuevas ofertas."
-                    : isDriverAvailable
-                      ? "Estás listo para recibir solicitudes y reservas asignadas en Rapa Nui."
-                      : "Activa tu disponibilidad cuando estés preparado para comenzar a trabajar."}
-                </div>
-              </div>
-
-              <div className="driver-home-hero__car" aria-hidden="true">
-                <img
-                  src={logoRapago}
-                  alt=""
-                  width={50}
-                  height={50}
+            <section className="driver-home-cta">
+              <div className="driver-home-cta__icon" aria-hidden="true">
+                <IonIcon
+                  icon={isDriverAvailable ? notificationsOutline : carOutline}
                 />
               </div>
-            </div>
 
-            <div className="driver-home-hero__metrics">
-              <div className="driver-home-metric">
-                <div className="driver-home-metric__label">Estado</div>
-                <div className="driver-home-metric__value">
-                  {isDriverAvailable ? "Disponible" : "No disponible"}
+              <div>
+                <div className="driver-home-cta__title">
+                  {isDriverAvailable
+                    ? "Revisa tus solicitudes disponibles"
+                    : "Actualmente estás fuera de línea"}
+                </div>
+                <div className="driver-home-cta__copy">
+                  {isDriverAvailable
+                    ? "Las nuevas solicitudes y reservas aparecerán con una alerta clara."
+                    : "No recibirás servicios hasta volver a marcarte como disponible."}
                 </div>
               </div>
 
-              <div className="driver-home-metric">
-                <div className="driver-home-metric__label">Zona</div>
-                <div className="driver-home-metric__value">Rapa Nui</div>
-              </div>
+              <button
+                type="button"
+                className="driver-home-cta__button"
+                onClick={() => {
+                  if (isDriverAvailable) {
+                    history.push(ROUTES.DRIVER.REQUESTS);
+                  } else {
+                    void handleAvailabilityChange("available");
+                  }
+                }}>
+                {isDriverAvailable ? "Ver solicitudes" : "Ponerme disponible"}
+              </button>
+            </section>
 
+            {availabilityError && (
               <div
-                className={`driver-home-metric driver-home-metric--network is-${driverConnection.status}`}
-              >
-                <div className="driver-home-metric__label">Red</div>
-                <div className="driver-home-metric__value">
-                  {connectionLabel}
+                role="alert"
+                style={{
+                  margin: "0 0 12px",
+                  padding: "11px 13px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(220,38,38,.28)",
+                  background: "rgba(254,226,226,.96)",
+                  color: "#991b1b",
+                  fontSize: ".78rem",
+                  fontWeight: 850,
+                  lineHeight: 1.4,
+                }}>
+                {availabilityError}
+              </div>
+            )}
+
+            <section
+              aria-label="Avisos de nuevos traslados"
+              style={{
+                margin: "0 0 14px",
+                padding: "14px",
+                borderRadius: 20,
+                background: driverAlertsEnabled
+                  ? "linear-gradient(135deg,rgba(220,252,231,.98),rgba(254,249,195,.98))"
+                  : "linear-gradient(135deg,rgba(255,247,214,.98),rgba(254,226,226,.96))",
+                border: driverAlertsEnabled
+                  ? "1.5px solid rgba(34,197,94,.42)"
+                  : "1.5px solid rgba(210,164,58,.48)",
+                boxShadow: "0 12px 28px rgba(17,24,39,.10)",
+                color: "#111827",
+              }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                }}>
+                <div
+                  aria-hidden="true"
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 16,
+                    background: driverAlertsEnabled ? "#16a34a" : "#d2a43a",
+                    color: "#ffffff",
+                    display: "grid",
+                    placeItems: "center",
+                    flex: "0 0 auto",
+                    boxShadow: "0 9px 20px rgba(0,0,0,.16)",
+                  }}>
+                  <IonIcon
+                    icon={notificationsOutline}
+                    style={{ fontSize: 26 }}
+                  />
+                </div>
+
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 950, fontSize: ".94rem" }}>
+                    Avisos de nuevos traslados
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 3,
+                      color: "#475569",
+                      fontSize: ".76rem",
+                      lineHeight: 1.35,
+                      fontWeight: 800,
+                    }}>
+                    {driverAlertsEnabled
+                      ? driverNotificationPermission === "granted"
+                        ? "Activos con sonido, voz, vibración y notificación."
+                        : "Activos dentro de RAPA GO. Mantén la aplicación abierta."
+                      : "Actívalos una vez para escuchar inmediatamente cada nueva solicitud."}
+                  </div>
+                </div>
+
+                <span
+                  style={{
+                    padding: "5px 8px",
+                    borderRadius: 999,
+                    background: driverAlertsEnabled ? "#dcfce7" : "#fef3c7",
+                    color: driverAlertsEnabled ? "#166534" : "#92400e",
+                    border: driverAlertsEnabled
+                      ? "1px solid #86efac"
+                      : "1px solid #fcd34d",
+                    fontSize: ".64rem",
+                    fontWeight: 950,
+                    whiteSpace: "nowrap",
+                  }}>
+                  {driverAlertsEnabled ? "ACTIVOS" : "PENDIENTE"}
+                </span>
+              </div>
+
+              <IonButton
+                expand="block"
+                color={driverAlertsEnabled ? "success" : "warning"}
+                onClick={() => void handleEnableDriverRideAlerts()}
+                style={
+                  {
+                    marginTop: 12,
+                    "--border-radius": "15px",
+                    "--color": driverAlertsEnabled ? "#ffffff" : "#111111",
+                    height: "46px",
+                    fontWeight: 950,
+                  } as CSSProperties
+                }>
+                <IonIcon
+                  icon={
+                    driverAlertsEnabled
+                      ? volumeHighOutline
+                      : notificationsOutline
+                  }
+                  slot="start"
+                />
+                {driverAlertsEnabled
+                  ? "Probar sonido y avisos"
+                  : "Activar avisos"}
+              </IonButton>
+
+              {driverAlertActivationMessage && (
+                <div
+                  role="status"
+                  style={{
+                    marginTop: 9,
+                    fontSize: ".74rem",
+                    lineHeight: 1.35,
+                    fontWeight: 850,
+                    color: "#334155",
+                  }}>
+                  {driverAlertActivationMessage}
+                </div>
+              )}
+            </section>
+
+            <DriverRestScheduleCard
+              onBlockedChange={(blocked) => {
+                setRestBlocked(blocked);
+                if (!blocked) setAvailabilityError(null);
+              }}
+            />
+
+            <section className="driver-home-hero">
+              <div className="driver-home-hero__top">
+                <div>
+                  <div className="driver-home-hero__eyebrow">
+                    Panel de conductor
+                  </div>
+                  <div className="driver-home-hero__title">
+                    Tu jornada en Rapa Nui
+                  </div>
+                  <div className="driver-home-hero__subtitle">
+                    {restBlocked
+                      ? "Estás cumpliendo tu descanso continuo de 12 horas. No se enviarán nuevas ofertas."
+                      : isDriverAvailable
+                        ? "Estás listo para recibir solicitudes y reservas asignadas en Rapa Nui."
+                        : "Activa tu disponibilidad cuando estés preparado para comenzar a trabajar."}
+                  </div>
+                </div>
+
+                <div className="driver-home-hero__car" aria-hidden="true">
+                  <img src={logoRapago} alt="" width={50} height={50} />
                 </div>
               </div>
-            </div>
-          </section>
 
-          <section className="driver-home-section">
-            <div className="driver-home-section__header">
-              <div className="rapago-section-label">Accesos rápidos</div>
-              <div className="driver-home-section__hint">
-                Todo tu trabajo en un lugar
+              <div className="driver-home-hero__metrics">
+                <div className="driver-home-metric">
+                  <div className="driver-home-metric__label">Estado</div>
+                  <div className="driver-home-metric__value">
+                    {isDriverAvailable ? "Disponible" : "No disponible"}
+                  </div>
+                </div>
+
+                <div className="driver-home-metric">
+                  <div className="driver-home-metric__label">Zona</div>
+                  <div className="driver-home-metric__value">Rapa Nui</div>
+                </div>
+
+                <div
+                  className={`driver-home-metric driver-home-metric--network is-${driverConnection.status}`}>
+                  <div className="driver-home-metric__label">Red</div>
+                  <div className="driver-home-metric__value">
+                    {connectionLabel}
+                  </div>
+                </div>
               </div>
-            </div>
+            </section>
 
-            <div className="rapago-home-quick">
-              {actionCards.map((card) => (
-                <IonCard
-                  key={card.key}
-                  button
-                  routerLink={card.route}
-                  className={`rapago-home-quick-card${
-                    card.attention ? " rapago-home-quick-card--attention" : ""
-                  }`}
-                >
-                  <IonCardContent>
-                    <div className="rapago-driver-quick-top">
-                      {/* Decorativo: el título de la tarjeta (card.title, abajo)
+            <section className="driver-home-section">
+              <div className="driver-home-section__header">
+                <div className="rapago-section-label">Accesos rápidos</div>
+                <div className="driver-home-section__hint">
+                  Todo tu trabajo en un lugar
+                </div>
+              </div>
+
+              <div className="rapago-home-quick">
+                {actionCards.map((card) => (
+                  <IonCard
+                    key={card.key}
+                    button
+                    routerLink={card.route}
+                    className={`rapago-home-quick-card${
+                      card.attention ? " rapago-home-quick-card--attention" : ""
+                    }`}>
+                    <IonCardContent>
+                      <div className="rapago-driver-quick-top">
+                        {/* Decorativo: el título de la tarjeta (card.title, abajo)
                           ya dice de qué acceso se trata. */}
-                      <span className="rapago-home-quick-icon" aria-hidden="true">
-                        <IonIcon icon={card.icon} />
-                      </span>
-                      {card.badge != null && (
                         <span
-                          className="rapago-driver-quick-badge"
-                          aria-label={`${card.badge} reservas pendientes`}
-                        >
-                          {card.badge}
+                          className="rapago-home-quick-icon"
+                          aria-hidden="true">
+                          <IonIcon icon={card.icon} />
                         </span>
-                      )}
-                    </div>
+                        {card.badge != null && (
+                          <span
+                            className="rapago-driver-quick-badge"
+                            aria-label={`${card.badge} reservas pendientes`}>
+                            {card.badge}
+                          </span>
+                        )}
+                      </div>
 
-                    <div style={{ minWidth: 0 }}>
-                      <span className="rapago-home-quick-title">
-                        {card.title}
-                      </span>
-                      <span className="rapago-home-quick-sub">
-                        {card.description}
-                      </span>
-                    </div>
-                  </IonCardContent>
-                </IonCard>
-              ))}
-            </div>
-          </section>
-
-        </main>
-      </IonContent>
-    </IonPage>
+                      <div style={{ minWidth: 0 }}>
+                        <span className="rapago-home-quick-title">
+                          {card.title}
+                        </span>
+                        <span className="rapago-home-quick-sub">
+                          {card.description}
+                        </span>
+                      </div>
+                    </IonCardContent>
+                  </IonCard>
+                ))}
+              </div>
+            </section>
+          </main>
+        </IonContent>
+      </IonPage>
     </>
   );
 }
@@ -8497,11 +9517,13 @@ type PassengerNotificationPayload = {
 };
 
 const RAPAGO_REQUEUED_RIDES_KEY = "rapago_requeued_available_rides_v1";
-const RAPAGO_REQUEUED_PASSENGER_FORCE_KEY = "rapago_requeued_passenger_visible_rides_v1";
+const RAPAGO_REQUEUED_PASSENGER_FORCE_KEY =
+  "rapago_requeued_passenger_visible_rides_v1";
 const RAPAGO_PASSENGER_NOTIFICATIONS_KEY = "rapago_passenger_notifications_v1";
 const RAPAGO_REQUEUED_RIDES_EVENT = "rapago:ride-requeued-after-driver-cancel";
 
-const RAPAGO_DRIVER_CANCELLED_ACTIVE_RIDES_KEY = "rapago_driver_cancelled_active_rides_v1";
+const RAPAGO_DRIVER_CANCELLED_ACTIVE_RIDES_KEY =
+  "rapago_driver_cancelled_active_rides_v1";
 
 type DriverCancelledActiveRideRecord = {
   id: string;
@@ -8537,7 +9559,10 @@ function getDriverRideIdentityKeys(ride: Record<string, unknown>): string[] {
     ride.originText,
     ride.destinationText,
     ride.passengerEmail,
-    ride.scheduledAt ?? ride.scheduledPickupAt ?? ride.requestedAt ?? ride.createdAt,
+    ride.scheduledAt ??
+      ride.scheduledPickupAt ??
+      ride.requestedAt ??
+      ride.createdAt,
   ]
     .map((value) => normalizeDriverRideIdentityValue(value))
     .join("|");
@@ -8545,7 +9570,9 @@ function getDriverRideIdentityKeys(ride: Record<string, unknown>): string[] {
   return Array.from(new Set([...directKeys, routeKey].filter(Boolean)));
 }
 
-function getDriverRideRecordFromPossibleWrapper(value: unknown): Record<string, unknown> | null {
+function getDriverRideRecordFromPossibleWrapper(
+  value: unknown,
+): Record<string, unknown> | null {
   if (!value || typeof value !== "object") return null;
 
   const record = value as Record<string, unknown>;
@@ -8556,7 +9583,10 @@ function getDriverRideRecordFromPossibleWrapper(value: unknown): Record<string, 
   return record;
 }
 
-function driverRideIdentityMatches(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+function driverRideIdentityMatches(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
   const aKeys = getDriverRideIdentityKeys(a);
   const bKeys = getDriverRideIdentityKeys(b);
   return aKeys.some((key) => bKeys.includes(key));
@@ -8589,7 +9619,9 @@ function getDriverRideTimestampMs(
   return null;
 }
 
-function getDriverRideAcceptedTimestampMs(ride: Record<string, unknown>): number | null {
+function getDriverRideAcceptedTimestampMs(
+  ride: Record<string, unknown>,
+): number | null {
   return getDriverRideTimestampMs(ride, [
     "acceptedAt",
     "driverAcceptedAt",
@@ -8604,7 +9636,9 @@ function getDriverRideAcceptedTimestampMs(ride: Record<string, unknown>): number
   ]);
 }
 
-function getDriverRideCreationTimestampMs(ride: Record<string, unknown>): number | null {
+function getDriverRideCreationTimestampMs(
+  ride: Record<string, unknown>,
+): number | null {
   return getDriverRideTimestampMs(ride, [
     "requestedAt",
     "createdAt",
@@ -8613,7 +9647,9 @@ function getDriverRideCreationTimestampMs(ride: Record<string, unknown>): number
   ]);
 }
 
-function getDriverRideCancellationTimestampMs(ride: Record<string, unknown>): number | null {
+function getDriverRideCancellationTimestampMs(
+  ride: Record<string, unknown>,
+): number | null {
   return getDriverRideTimestampMs(ride, [
     "cancelledAt",
     "canceledAt",
@@ -8639,7 +9675,9 @@ function cancellationRecordIsOlderThanAcceptedRide(
 function readDriverCancelledActiveRides(): DriverCancelledActiveRideRecord[] {
   try {
     const raw = localStorage.getItem(RAPAGO_DRIVER_CANCELLED_ACTIVE_RIDES_KEY);
-    const parsed = raw ? (JSON.parse(raw) as DriverCancelledActiveRideRecord[]) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as DriverCancelledActiveRideRecord[])
+      : [];
     if (!Array.isArray(parsed)) return [];
 
     const maxAgeMs = 24 * 60 * 60 * 1000;
@@ -8654,7 +9692,9 @@ function readDriverCancelledActiveRides(): DriverCancelledActiveRideRecord[] {
   }
 }
 
-function saveDriverCancelledActiveRides(records: DriverCancelledActiveRideRecord[]): void {
+function saveDriverCancelledActiveRides(
+  records: DriverCancelledActiveRideRecord[],
+): void {
   try {
     localStorage.setItem(
       RAPAGO_DRIVER_CANCELLED_ACTIVE_RIDES_KEY,
@@ -8665,17 +9705,30 @@ function saveDriverCancelledActiveRides(records: DriverCancelledActiveRideRecord
   }
 }
 
-function markDriverRideCancelledLocally(ride: Record<string, unknown>, driverUser?: unknown): void {
+function markDriverRideCancelledLocally(
+  ride: Record<string, unknown>,
+  driverUser?: unknown,
+): void {
   const now = new Date().toISOString();
   const keys = getDriverRideIdentityKeys(ride);
-  const driverEmail = normalizeDriverRideIdentityValue(getDriverLiveUserField(driverUser, "email"));
+  const driverEmail = normalizeDriverRideIdentityValue(
+    getDriverLiveUserField(driverUser, "email"),
+  );
 
   const record: DriverCancelledActiveRideRecord = {
-    id: normalizeDriverRideIdentityValue(ride.id ?? ride.rideId ?? ride.originalRideId ?? keys[0] ?? `cancelled-${Date.now()}`),
+    id: normalizeDriverRideIdentityValue(
+      ride.id ??
+        ride.rideId ??
+        ride.originalRideId ??
+        keys[0] ??
+        `cancelled-${Date.now()}`,
+    ),
     keys,
     originText: typeof ride.originText === "string" ? ride.originText : null,
-    destinationText: typeof ride.destinationText === "string" ? ride.destinationText : null,
-    passengerEmail: typeof ride.passengerEmail === "string" ? ride.passengerEmail : null,
+    destinationText:
+      typeof ride.destinationText === "string" ? ride.destinationText : null,
+    passengerEmail:
+      typeof ride.passengerEmail === "string" ? ride.passengerEmail : null,
     driverEmail: driverEmail || null,
     cancelledAt: now,
     reason: "driver_cancelled",
@@ -8690,22 +9743,34 @@ function markDriverRideCancelledLocally(ride: Record<string, unknown>, driverUse
   saveDriverCancelledActiveRides(next);
 }
 
-function wasDriverRideCancelledLocally(ride: Record<string, unknown>, driverUser?: unknown): boolean {
+function wasDriverRideCancelledLocally(
+  ride: Record<string, unknown>,
+  driverUser?: unknown,
+): boolean {
   const keys = getDriverRideIdentityKeys(ride);
   if (keys.length === 0) return false;
 
-  const driverEmail = normalizeDriverRideIdentityValue(getDriverLiveUserField(driverUser, "email"));
+  const driverEmail = normalizeDriverRideIdentityValue(
+    getDriverLiveUserField(driverUser, "email"),
+  );
 
   return readDriverCancelledActiveRides().some((record) => {
     const sameRide = record.keys.some((key) => keys.includes(key));
     if (!sameRide) return false;
 
-    const recordDriverEmail = normalizeDriverRideIdentityValue(record.driverEmail);
-    return !recordDriverEmail || !driverEmail || recordDriverEmail === driverEmail;
+    const recordDriverEmail = normalizeDriverRideIdentityValue(
+      record.driverEmail,
+    );
+    return (
+      !recordDriverEmail || !driverEmail || recordDriverEmail === driverEmail
+    );
   });
 }
 
-function updateDriverRideListAfterLocalCancel(list: Array<Record<string, unknown>>, cancelledRide: Record<string, unknown>): Array<Record<string, unknown>> {
+function updateDriverRideListAfterLocalCancel(
+  list: Array<Record<string, unknown>>,
+  cancelledRide: Record<string, unknown>,
+): Array<Record<string, unknown>> {
   return list
     .map((item) => {
       const same = driverRideIdentityMatches(item, cancelledRide);
@@ -8717,7 +9782,8 @@ function updateDriverRideListAfterLocalCancel(list: Array<Record<string, unknown
         cancelledAt: cancelledRide.cancelledAt ?? new Date().toISOString(),
         cancelledByRole: "driver",
         cancelledBy: "driver",
-        cancellationReason: cancelledRide.cancellationReason ?? "Cancelado por conductor.",
+        cancellationReason:
+          cancelledRide.cancellationReason ?? "Cancelado por conductor.",
         requeuedReason: "driver_cancelled",
         driverId: null,
         driverUserId: null,
@@ -8734,7 +9800,9 @@ function updateDriverRideListAfterLocalCancel(list: Array<Record<string, unknown
     });
 }
 
-function clearDriverActiveRideLocalMirrors(cancelledRide: Record<string, unknown>): void {
+function clearDriverActiveRideLocalMirrors(
+  cancelledRide: Record<string, unknown>,
+): void {
   const activeKeys = [
     "rapago_last_accepted_ride",
     "rapago_driver_active_ride",
@@ -8754,7 +9822,8 @@ function clearDriverActiveRideLocalMirrors(cancelledRide: Record<string, unknown
       const rideRecord = getDriverRideRecordFromPossibleWrapper(parsed);
       if (
         rideRecord &&
-        (wasDriverRideCancelledLocally(rideRecord) || driverRideIdentityMatches(rideRecord, cancelledRide))
+        (wasDriverRideCancelledLocally(rideRecord) ||
+          driverRideIdentityMatches(rideRecord, cancelledRide))
       ) {
         localStorage.removeItem(key);
       }
@@ -8774,12 +9843,15 @@ function clearDriverActiveRideLocalMirrors(cancelledRide: Record<string, unknown
   for (const key of arrayKeys) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
       if (!Array.isArray(parsed)) continue;
 
-      const next = updateDriverRideListAfterLocalCancel(parsed, cancelledRide).filter(
-        (item) => !wasDriverRideCancelledLocally(item),
-      );
+      const next = updateDriverRideListAfterLocalCancel(
+        parsed,
+        cancelledRide,
+      ).filter((item) => !wasDriverRideCancelledLocally(item));
 
       localStorage.setItem(key, JSON.stringify(next.slice(0, 200)));
     } catch {
@@ -8787,21 +9859,30 @@ function clearDriverActiveRideLocalMirrors(cancelledRide: Record<string, unknown
     }
   }
 
-  for (const key of [DRIVER_RESERVATION_INBOX_KEY, DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY]) {
+  for (const key of [
+    DRIVER_RESERVATION_INBOX_KEY,
+    DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY,
+  ]) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Record<string, Array<Record<string, unknown>>>) : {};
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+      const parsed = raw
+        ? (JSON.parse(raw) as Record<string, Array<Record<string, unknown>>>)
+        : {};
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+        continue;
 
       let changed = false;
       const next: Record<string, Array<Record<string, unknown>>> = {};
 
       for (const [driverKey, list] of Object.entries(parsed)) {
         const current = Array.isArray(list) ? list : [];
-        const hadMatch = current.some((item) => driverRideIdentityMatches(item, cancelledRide));
-        const updated = updateDriverRideListAfterLocalCancel(current, cancelledRide).filter(
-          (item) => !wasDriverRideCancelledLocally(item),
+        const hadMatch = current.some((item) =>
+          driverRideIdentityMatches(item, cancelledRide),
         );
+        const updated = updateDriverRideListAfterLocalCancel(
+          current,
+          cancelledRide,
+        ).filter((item) => !wasDriverRideCancelledLocally(item));
         next[driverKey] = updated.slice(0, 80);
         if (hadMatch || updated.length !== current.length) changed = true;
       }
@@ -8815,10 +9896,12 @@ function clearDriverActiveRideLocalMirrors(cancelledRide: Record<string, unknown
   }
 }
 
-
-const RAPAGO_DRIVER_PASSENGER_CANCELLED_RIDES_KEY = "rapago_driver_passenger_cancelled_rides_v1";
-const RAPAGO_DRIVER_PASSENGER_CANCEL_NOTICE_SEEN_KEY = "rapago_driver_passenger_cancel_notice_seen_v2";
-const RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT = "rapago:passenger-cancelled-ride-for-driver";
+const RAPAGO_DRIVER_PASSENGER_CANCELLED_RIDES_KEY =
+  "rapago_driver_passenger_cancelled_rides_v1";
+const RAPAGO_DRIVER_PASSENGER_CANCEL_NOTICE_SEEN_KEY =
+  "rapago_driver_passenger_cancel_notice_seen_v2";
+const RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT =
+  "rapago:passenger-cancelled-ride-for-driver";
 
 type DriverPassengerCancelNoticeSeenRecord = {
   key: string;
@@ -8857,12 +9940,20 @@ function claimDriverPassengerCancelNoticeOnce(
   const maxAgeMs = 7 * 24 * 60 * 60 * 1000;
 
   try {
-    const raw = localStorage.getItem(RAPAGO_DRIVER_PASSENGER_CANCEL_NOTICE_SEEN_KEY);
-    const parsed = raw ? (JSON.parse(raw) as DriverPassengerCancelNoticeSeenRecord[]) : [];
+    const raw = localStorage.getItem(
+      RAPAGO_DRIVER_PASSENGER_CANCEL_NOTICE_SEEN_KEY,
+    );
+    const parsed = raw
+      ? (JSON.parse(raw) as DriverPassengerCancelNoticeSeenRecord[])
+      : [];
     const current = Array.isArray(parsed)
       ? parsed.filter((item) => {
           const seenAtMs = new Date(String(item?.seenAt ?? "")).getTime();
-          return Boolean(item?.key) && Number.isFinite(seenAtMs) && now - seenAtMs <= maxAgeMs;
+          return (
+            Boolean(item?.key) &&
+            Number.isFinite(seenAtMs) &&
+            now - seenAtMs <= maxAgeMs
+          );
         })
       : [];
 
@@ -8870,7 +9961,12 @@ function claimDriverPassengerCancelNoticeOnce(
 
     localStorage.setItem(
       RAPAGO_DRIVER_PASSENGER_CANCEL_NOTICE_SEEN_KEY,
-      JSON.stringify([{ key, seenAt: new Date(now).toISOString() }, ...current].slice(0, 200)),
+      JSON.stringify(
+        [{ key, seenAt: new Date(now).toISOString() }, ...current].slice(
+          0,
+          200,
+        ),
+      ),
     );
     return true;
   } catch {
@@ -8902,7 +9998,6 @@ type DriverPassengerCancelledRideRecord = {
   cancelledByRole: "passenger";
 };
 
-
 function getPassengerCancellationReasonForDriver(
   ride: Record<string, unknown>,
 ): string {
@@ -8922,9 +10017,13 @@ function getPassengerCancellationReasonForDriver(
   return clean || "Motivo no informado por el pasajero.";
 }
 
-function isRidePassengerCancelledForDriver(ride: Record<string, unknown>): boolean {
+function isRidePassengerCancelledForDriver(
+  ride: Record<string, unknown>,
+): boolean {
   const status = normalizeDriverRideIdentityValue(ride.status);
-  const cancelledByRole = normalizeDriverRideIdentityValue(ride.cancelledByRole ?? ride.cancelledBy);
+  const cancelledByRole = normalizeDriverRideIdentityValue(
+    ride.cancelledByRole ?? ride.cancelledBy,
+  );
   const cancellationReason = normalizeDriverRideIdentityValue(
     ride.cancellationReason ?? ride.cancelReason ?? ride.reason,
   );
@@ -8973,8 +10072,12 @@ function isRecentServerPassengerCancellationForDriver(
 
 function readDriverPassengerCancelledRideRecords(): DriverPassengerCancelledRideRecord[] {
   try {
-    const raw = localStorage.getItem(RAPAGO_DRIVER_PASSENGER_CANCELLED_RIDES_KEY);
-    const parsed = raw ? (JSON.parse(raw) as DriverPassengerCancelledRideRecord[]) : [];
+    const raw = localStorage.getItem(
+      RAPAGO_DRIVER_PASSENGER_CANCELLED_RIDES_KEY,
+    );
+    const parsed = raw
+      ? (JSON.parse(raw) as DriverPassengerCancelledRideRecord[])
+      : [];
     if (!Array.isArray(parsed)) return [];
 
     const maxAgeMs = 24 * 60 * 60 * 1000;
@@ -8989,7 +10092,9 @@ function readDriverPassengerCancelledRideRecords(): DriverPassengerCancelledRide
   }
 }
 
-function saveDriverPassengerCancelledRideRecords(records: DriverPassengerCancelledRideRecord[]): void {
+function saveDriverPassengerCancelledRideRecords(
+  records: DriverPassengerCancelledRideRecord[],
+): void {
   try {
     localStorage.setItem(
       RAPAGO_DRIVER_PASSENGER_CANCELLED_RIDES_KEY,
@@ -9000,23 +10105,36 @@ function saveDriverPassengerCancelledRideRecords(records: DriverPassengerCancell
   }
 }
 
-function markDriverRidePassengerCancelledLocally(ride: Record<string, unknown>): void {
+function markDriverRidePassengerCancelledLocally(
+  ride: Record<string, unknown>,
+): void {
   const keys = getDriverRideIdentityKeys(ride);
   const now = new Date().toISOString();
 
   const record: DriverPassengerCancelledRideRecord = {
-    id: normalizeDriverRideIdentityValue(ride.id ?? ride.rideId ?? ride.originalRideId ?? keys[0] ?? `passenger-cancelled-${Date.now()}`),
+    id: normalizeDriverRideIdentityValue(
+      ride.id ??
+        ride.rideId ??
+        ride.originalRideId ??
+        keys[0] ??
+        `passenger-cancelled-${Date.now()}`,
+    ),
     keys,
     originText: typeof ride.originText === "string" ? ride.originText : null,
-    destinationText: typeof ride.destinationText === "string" ? ride.destinationText : null,
-    passengerEmail: typeof ride.passengerEmail === "string" ? ride.passengerEmail : null,
+    destinationText:
+      typeof ride.destinationText === "string" ? ride.destinationText : null,
+    passengerEmail:
+      typeof ride.passengerEmail === "string" ? ride.passengerEmail : null,
     cancellationReason:
       typeof ride.cancellationReason === "string"
         ? sanitizeDriverTripSafetyText(ride.cancellationReason, 240)
         : null,
     cancellationReasonLabel:
       typeof ride.passengerCancellationReasonLabel === "string"
-        ? sanitizeDriverTripSafetyText(ride.passengerCancellationReasonLabel, 180)
+        ? sanitizeDriverTripSafetyText(
+            ride.passengerCancellationReasonLabel,
+            180,
+          )
         : typeof ride.cancellationReasonLabel === "string"
           ? sanitizeDriverTripSafetyText(ride.cancellationReasonLabel, 180)
           : null,
@@ -9040,7 +10158,9 @@ function markDriverRidePassengerCancelledLocally(ride: Record<string, unknown>):
   ]);
 }
 
-function wasDriverRidePassengerCancelledLocally(ride: Record<string, unknown>): boolean {
+function wasDriverRidePassengerCancelledLocally(
+  ride: Record<string, unknown>,
+): boolean {
   const keys = getDriverRideIdentityKeys(ride);
   if (keys.length === 0) return false;
 
@@ -9049,7 +10169,9 @@ function wasDriverRidePassengerCancelledLocally(ride: Record<string, unknown>): 
   );
 }
 
-function readPassengerCancelledRideRecordsForDriver(): Array<Record<string, unknown>> {
+function readPassengerCancelledRideRecordsForDriver(): Array<
+  Record<string, unknown>
+> {
   const results: Array<Record<string, unknown>> = [];
 
   for (const key of RAPAGO_PASSENGER_CANCEL_STORAGE_KEYS_FOR_DRIVER) {
@@ -9059,7 +10181,11 @@ function readPassengerCancelledRideRecordsForDriver(): Array<Record<string, unkn
 
       const parsed = JSON.parse(raw) as unknown;
       if (Array.isArray(parsed)) {
-        results.push(...parsed.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object")));
+        results.push(
+          ...parsed.filter((item): item is Record<string, unknown> =>
+            Boolean(item && typeof item === "object"),
+          ),
+        );
       } else if (parsed && typeof parsed === "object") {
         results.push(parsed as Record<string, unknown>);
       }
@@ -9071,7 +10197,8 @@ function readPassengerCancelledRideRecordsForDriver(): Array<Record<string, unkn
   try {
     const raw = localStorage.getItem("rapago_last_scheduled_ride_for_admin");
     const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    if (parsed && typeof parsed === "object") results.push(parsed as Record<string, unknown>);
+    if (parsed && typeof parsed === "object")
+      results.push(parsed as Record<string, unknown>);
   } catch {
     // Ignora storage corrupto.
   }
@@ -9099,21 +10226,35 @@ function driverRideMatchesPassengerCancelledRecord(
   if (activeIds.length > 0 && cancelledIds.size > 0) return false;
 
   const activeOrigin = normalizeDriverRideIdentityValue(activeRide.originText);
-  const activeDestination = normalizeDriverRideIdentityValue(activeRide.destinationText);
+  const activeDestination = normalizeDriverRideIdentityValue(
+    activeRide.destinationText,
+  );
   const activePassengerEmail = normalizeDriverRideIdentityValue(
     activeRide.passengerEmail ?? activeRide.userEmail ?? activeRide.email,
   );
   const activeSchedule = normalizeDriverRideIdentityValue(
-    activeRide.scheduledAt ?? activeRide.scheduledPickupAt ?? activeRide.requestedAt ?? activeRide.createdAt,
+    activeRide.scheduledAt ??
+      activeRide.scheduledPickupAt ??
+      activeRide.requestedAt ??
+      activeRide.createdAt,
   );
 
-  const cancelledOrigin = normalizeDriverRideIdentityValue(cancelledRide.originText);
-  const cancelledDestination = normalizeDriverRideIdentityValue(cancelledRide.destinationText);
+  const cancelledOrigin = normalizeDriverRideIdentityValue(
+    cancelledRide.originText,
+  );
+  const cancelledDestination = normalizeDriverRideIdentityValue(
+    cancelledRide.destinationText,
+  );
   const cancelledPassengerEmail = normalizeDriverRideIdentityValue(
-    cancelledRide.passengerEmail ?? cancelledRide.userEmail ?? cancelledRide.email,
+    cancelledRide.passengerEmail ??
+      cancelledRide.userEmail ??
+      cancelledRide.email,
   );
   const cancelledSchedule = normalizeDriverRideIdentityValue(
-    cancelledRide.scheduledAt ?? cancelledRide.scheduledPickupAt ?? cancelledRide.requestedAt ?? cancelledRide.createdAt,
+    cancelledRide.scheduledAt ??
+      cancelledRide.scheduledPickupAt ??
+      cancelledRide.requestedAt ??
+      cancelledRide.createdAt,
   );
 
   // La comparación por ruta es solo un respaldo para registros antiguos sin ID.
@@ -9123,17 +10264,23 @@ function driverRideMatchesPassengerCancelledRecord(
 
   return Boolean(
     activeOrigin &&
-      activeDestination &&
-      cancelledOrigin &&
-      cancelledDestination &&
-      activeOrigin === cancelledOrigin &&
-      activeDestination === cancelledDestination &&
-      (!activePassengerEmail || !cancelledPassengerEmail || activePassengerEmail === cancelledPassengerEmail) &&
-      (!activeSchedule || !cancelledSchedule || activeSchedule === cancelledSchedule),
+    activeDestination &&
+    cancelledOrigin &&
+    cancelledDestination &&
+    activeOrigin === cancelledOrigin &&
+    activeDestination === cancelledDestination &&
+    (!activePassengerEmail ||
+      !cancelledPassengerEmail ||
+      activePassengerEmail === cancelledPassengerEmail) &&
+    (!activeSchedule ||
+      !cancelledSchedule ||
+      activeSchedule === cancelledSchedule),
   );
 }
 
-function findPassengerCancelledRideForDriver(ride: Record<string, unknown>): Record<string, unknown> | null {
+function findPassengerCancelledRideForDriver(
+  ride: Record<string, unknown>,
+): Record<string, unknown> | null {
   if (isRidePassengerCancelledForDriver(ride)) return ride;
 
   return (
@@ -9143,7 +10290,9 @@ function findPassengerCancelledRideForDriver(ride: Record<string, unknown>): Rec
   );
 }
 
-function removeDriverRideAfterPassengerCancel(cancelledRide: Record<string, unknown>): void {
+function removeDriverRideAfterPassengerCancel(
+  cancelledRide: Record<string, unknown>,
+): void {
   const activeKeys = [
     "rapago_last_accepted_ride",
     "rapago_driver_active_ride",
@@ -9161,7 +10310,10 @@ function removeDriverRideAfterPassengerCancel(cancelledRide: Record<string, unkn
 
       const parsed = JSON.parse(raw) as unknown;
       const rideRecord = getDriverRideRecordFromPossibleWrapper(parsed);
-      if (rideRecord && driverRideMatchesPassengerCancelledRecord(rideRecord, cancelledRide)) {
+      if (
+        rideRecord &&
+        driverRideMatchesPassengerCancelledRecord(rideRecord, cancelledRide)
+      ) {
         localStorage.removeItem(key);
       }
     } catch {
@@ -9180,27 +10332,41 @@ function removeDriverRideAfterPassengerCancel(cancelledRide: Record<string, unkn
   for (const key of arrayKeys) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
       if (!Array.isArray(parsed)) continue;
 
-      const next = parsed.filter((item) => !driverRideMatchesPassengerCancelledRecord(item, cancelledRide));
+      const next = parsed.filter(
+        (item) =>
+          !driverRideMatchesPassengerCancelledRecord(item, cancelledRide),
+      );
       localStorage.setItem(key, JSON.stringify(next.slice(0, 200)));
     } catch {
       // No bloquea el retiro visual.
     }
   }
 
-  for (const key of [DRIVER_RESERVATION_INBOX_KEY, DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY]) {
+  for (const key of [
+    DRIVER_RESERVATION_INBOX_KEY,
+    DRIVER_RESERVATION_INBOX_BY_DRIVER_KEY,
+  ]) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Record<string, Array<Record<string, unknown>>>) : {};
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+      const parsed = raw
+        ? (JSON.parse(raw) as Record<string, Array<Record<string, unknown>>>)
+        : {};
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+        continue;
 
       const next: Record<string, Array<Record<string, unknown>>> = {};
       for (const [driverKey, list] of Object.entries(parsed)) {
         const current = Array.isArray(list) ? list : [];
         next[driverKey] = current
-          .filter((item) => !driverRideMatchesPassengerCancelledRecord(item, cancelledRide))
+          .filter(
+            (item) =>
+              !driverRideMatchesPassengerCancelledRecord(item, cancelledRide),
+          )
           .slice(0, 80);
       }
 
@@ -9211,7 +10377,12 @@ function removeDriverRideAfterPassengerCancel(cancelledRide: Record<string, unkn
   }
 
   try {
-    const rideId = String(cancelledRide.id ?? cancelledRide.rideId ?? cancelledRide.originalRideId ?? "").trim();
+    const rideId = String(
+      cancelledRide.id ??
+        cancelledRide.rideId ??
+        cancelledRide.originalRideId ??
+        "",
+    ).trim();
     if (rideId) clearDriverLiveLocationForPassenger(rideId);
   } catch {
     // No bloquea el retiro visual.
@@ -9228,8 +10399,6 @@ function removeDriverRideAfterPassengerCancel(cancelledRide: Record<string, unkn
     }),
   );
 }
-
-
 
 function readRequeuedAvailableRides(): AvailableRideData[] {
   try {
@@ -9249,17 +10418,28 @@ function saveRequeuedAvailableRides(rides: AvailableRideData[]): void {
     }
     const deduped = Array.from(byId.values()).slice(0, 100);
     localStorage.setItem(RAPAGO_REQUEUED_RIDES_KEY, JSON.stringify(deduped));
-    localStorage.setItem(RAPAGO_REQUEUED_PASSENGER_FORCE_KEY, JSON.stringify(deduped));
-    window.dispatchEvent(new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, { detail: { rides: deduped } }));
+    localStorage.setItem(
+      RAPAGO_REQUEUED_PASSENGER_FORCE_KEY,
+      JSON.stringify(deduped),
+    );
+    window.dispatchEvent(
+      new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, {
+        detail: { rides: deduped },
+      }),
+    );
   } catch {
     // No bloquea el re-encolamiento local.
   }
 }
 
-function pushPassengerNotification(notification: Omit<PassengerNotificationPayload, "id" | "createdAt" | "read">): void {
+function pushPassengerNotification(
+  notification: Omit<PassengerNotificationPayload, "id" | "createdAt" | "read">,
+): void {
   try {
     const raw = localStorage.getItem(RAPAGO_PASSENGER_NOTIFICATIONS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as PassengerNotificationPayload[]) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as PassengerNotificationPayload[])
+      : [];
     const current = Array.isArray(parsed) ? parsed : [];
     const next: PassengerNotificationPayload = {
       ...notification,
@@ -9268,14 +10448,22 @@ function pushPassengerNotification(notification: Omit<PassengerNotificationPaylo
       read: false,
     };
 
-    localStorage.setItem(RAPAGO_PASSENGER_NOTIFICATIONS_KEY, JSON.stringify([next, ...current].slice(0, 80)));
-    window.dispatchEvent(new CustomEvent("rapago:passenger-notification", { detail: next }));
+    localStorage.setItem(
+      RAPAGO_PASSENGER_NOTIFICATIONS_KEY,
+      JSON.stringify([next, ...current].slice(0, 80)),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:passenger-notification", { detail: next }),
+    );
   } catch {
     // No bloquea la cancelación.
   }
 }
 
-function requeueRideAfterDriverCancel(ride: DriverRideData, driverUser?: unknown): AvailableRideData {
+function requeueRideAfterDriverCancel(
+  ride: DriverRideData,
+  driverUser?: unknown,
+): AvailableRideData {
   const now = new Date().toISOString();
   const cancelledDriverEmail = getDriverLiveUserField(driverUser, "email");
 
@@ -9329,8 +10517,10 @@ function requeueRideAfterDriverCancel(ride: DriverRideData, driverUser?: unknown
       requeuedReason: "driver_cancelled",
       forceActiveAfterDriverCancel: true,
       cancelledByDriverEmail: cancelledDriverEmail ?? null,
-      passengerNotice: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
-      passengerNotification: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+      passengerNotice:
+        "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+      passengerNotification:
+        "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
     },
     driverUser,
     "driver_cancelled",
@@ -9350,16 +10540,38 @@ function requeueRideAfterDriverCancel(ride: DriverRideData, driverUser?: unknown
 
     for (const key of passengerRideKeys) {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
       const current = Array.isArray(parsed) ? parsed : [];
       let found = false;
 
       const next = current.map((item) => {
-        const sameId = driverRideIdentityMatches(item, ride as unknown as Record<string, unknown>);
+        const sameId = driverRideIdentityMatches(
+          item,
+          ride as unknown as Record<string, unknown>,
+        );
         const sameRoute =
-          String(item.originText ?? "").trim().toLowerCase() === String(ride.originText ?? "").trim().toLowerCase() &&
-          String(item.destinationText ?? "").trim().toLowerCase() === String(ride.destinationText ?? "").trim().toLowerCase() &&
-          String(item.passengerEmail ?? "").trim().toLowerCase() === String((ride as unknown as Record<string, unknown>).passengerEmail ?? "").trim().toLowerCase();
+          String(item.originText ?? "")
+            .trim()
+            .toLowerCase() ===
+            String(ride.originText ?? "")
+              .trim()
+              .toLowerCase() &&
+          String(item.destinationText ?? "")
+            .trim()
+            .toLowerCase() ===
+            String(ride.destinationText ?? "")
+              .trim()
+              .toLowerCase() &&
+          String(item.passengerEmail ?? "")
+            .trim()
+            .toLowerCase() ===
+            String(
+              (ride as unknown as Record<string, unknown>).passengerEmail ?? "",
+            )
+              .trim()
+              .toLowerCase();
 
         if (!sameId && !sameRoute) return item;
         found = true;
@@ -9405,8 +10617,10 @@ function requeueRideAfterDriverCancel(ride: DriverRideData, driverUser?: unknown
           requeuedAt: now,
           requeuedReason: "driver_cancelled",
           forceActiveAfterDriverCancel: true,
-          passengerNotice: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
-          passengerNotification: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+          passengerNotice:
+            "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+          passengerNotification:
+            "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
         } as Record<string, unknown>;
       });
 
@@ -9426,8 +10640,16 @@ function requeueRideAfterDriverCancel(ride: DriverRideData, driverUser?: unknown
     }
 
     window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
-    window.dispatchEvent(new CustomEvent("rapago:driver-available-rides-updated", { detail: { ride: requeued } }));
-    window.dispatchEvent(new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, { detail: { ride: requeued, rides: readRequeuedAvailableRides() } }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-available-rides-updated", {
+        detail: { ride: requeued },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent(RAPAGO_REQUEUED_RIDES_EVENT, {
+        detail: { ride: requeued, rides: readRequeuedAvailableRides() },
+      }),
+    );
   } catch {
     // No bloquea la cancelación.
   }
@@ -9444,7 +10666,9 @@ function requeueRideAfterDriverCancel(ride: DriverRideData, driverUser?: unknown
 }
 
 function removeRequeuedRide(rideId: string): void {
-  saveRequeuedAvailableRides(readRequeuedAvailableRides().filter((ride) => ride.id !== rideId));
+  saveRequeuedAvailableRides(
+    readRequeuedAvailableRides().filter((ride) => ride.id !== rideId),
+  );
 }
 
 function isCancelledRideConflictMessage(error: unknown): boolean {
@@ -9462,7 +10686,10 @@ function isCancelledRideConflictMessage(error: unknown): boolean {
   );
 }
 
-function getAvailableRideById(rideId: string, extra: AvailableRideData[] = []): AvailableRideData | null {
+function getAvailableRideById(
+  rideId: string,
+  extra: AvailableRideData[] = [],
+): AvailableRideData | null {
   return (
     extra.find((ride) => ride.id === rideId) ??
     readRequeuedAvailableRides().find((ride) => ride.id === rideId) ??
@@ -9494,10 +10721,14 @@ function buildLocalAcceptedRideFromAvailable(
   ) as unknown as DriverRideData;
 }
 
-function rideCanBeAcceptedLocallyAfterRequeue(ride: AvailableRideData | Record<string, unknown> | null): boolean {
+function rideCanBeAcceptedLocallyAfterRequeue(
+  ride: AvailableRideData | Record<string, unknown> | null,
+): boolean {
   if (!ride) return false;
   const record = ride as Record<string, unknown>;
-  const reason = String(record.requeuedReason ?? record.nextDriverSearchReason ?? "").toLowerCase();
+  const reason = String(
+    record.requeuedReason ?? record.nextDriverSearchReason ?? "",
+  ).toLowerCase();
 
   return (
     record.forceActiveAfterDriverCancel === true ||
@@ -9546,7 +10777,10 @@ function normalizeActiveDriverRideForLocalMirror(
   ride: DriverRideData | Record<string, unknown>,
   user?: unknown,
 ): DriverRideData {
-  const driverId = getDriverLiveUserField(user, "id") ?? getDriverLiveUserField(user, "userId") ?? null;
+  const driverId =
+    getDriverLiveUserField(user, "id") ??
+    getDriverLiveUserField(user, "userId") ??
+    null;
   const driverEmail = getDriverLiveUserField(user, "email");
   const driverName =
     getDriverLiveUserField(user, "name") ??
@@ -9559,8 +10793,15 @@ function normalizeActiveDriverRideForLocalMirror(
     getDriverLiveUserField(user, "phoneNumber") ??
     getStoredDriverPublicPhone(user);
   const driverKeys = getDriverScheduledReservationIdentityKeys(user);
-  const rawStatus = String((ride as unknown as Record<string, unknown>).status ?? "").toLowerCase();
-  const activeStatus = ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(rawStatus)
+  const rawStatus = String(
+    (ride as unknown as Record<string, unknown>).status ?? "",
+  ).toLowerCase();
+  const activeStatus = [
+    "accepted",
+    "driver_en_route",
+    "driver_arrived",
+    "in_progress",
+  ].includes(rawStatus)
     ? rawStatus
     : "accepted";
 
@@ -9568,19 +10809,36 @@ function normalizeActiveDriverRideForLocalMirror(
     {
       ...(ride as unknown as Record<string, unknown>),
       status: activeStatus,
-      acceptedAt: (ride as unknown as Record<string, unknown>).acceptedAt ?? new Date().toISOString(),
-      driverId: (ride as unknown as Record<string, unknown>).driverId ?? driverId,
-      driverUserId: (ride as unknown as Record<string, unknown>).driverUserId ?? driverId,
-      assignedDriverId: (ride as unknown as Record<string, unknown>).assignedDriverId ?? driverId,
-      assignedDriverUserId: (ride as unknown as Record<string, unknown>).assignedDriverUserId ?? driverId,
-      driverEmail: (ride as unknown as Record<string, unknown>).driverEmail ?? driverEmail,
-      assignedDriverEmail: (ride as unknown as Record<string, unknown>).assignedDriverEmail ?? driverEmail,
-      driverName: (ride as unknown as Record<string, unknown>).driverName ?? driverName,
-      assignedDriverName: (ride as unknown as Record<string, unknown>).assignedDriverName ?? driverName,
-      driverPhone: (ride as unknown as Record<string, unknown>).driverPhone ?? driverPhone,
+      acceptedAt:
+        (ride as unknown as Record<string, unknown>).acceptedAt ??
+        new Date().toISOString(),
+      driverId:
+        (ride as unknown as Record<string, unknown>).driverId ?? driverId,
+      driverUserId:
+        (ride as unknown as Record<string, unknown>).driverUserId ?? driverId,
+      assignedDriverId:
+        (ride as unknown as Record<string, unknown>).assignedDriverId ??
+        driverId,
+      assignedDriverUserId:
+        (ride as unknown as Record<string, unknown>).assignedDriverUserId ??
+        driverId,
+      driverEmail:
+        (ride as unknown as Record<string, unknown>).driverEmail ?? driverEmail,
+      assignedDriverEmail:
+        (ride as unknown as Record<string, unknown>).assignedDriverEmail ??
+        driverEmail,
+      driverName:
+        (ride as unknown as Record<string, unknown>).driverName ?? driverName,
+      assignedDriverName:
+        (ride as unknown as Record<string, unknown>).assignedDriverName ??
+        driverName,
+      driverPhone:
+        (ride as unknown as Record<string, unknown>).driverPhone ?? driverPhone,
       assignedDriverKeys: Array.from(
         new Set([
-          ...collectDriverReservationKeys([(ride as unknown as Record<string, unknown>).assignedDriverKeys]),
+          ...collectDriverReservationKeys([
+            (ride as unknown as Record<string, unknown>).assignedDriverKeys,
+          ]),
           ...driverKeys,
         ]),
       ),
@@ -9595,9 +10853,12 @@ function clearOlderDriverCancellationMarkersForAcceptedRide(
   acceptedRide: Record<string, unknown>,
   user?: unknown,
 ): void {
-  const acceptedAt = getDriverRideAcceptedTimestampMs(acceptedRide) ?? Date.now();
+  const acceptedAt =
+    getDriverRideAcceptedTimestampMs(acceptedRide) ?? Date.now();
   const directIds = new Set(getDriverRideDirectIds(acceptedRide));
-  const driverEmail = normalizeDriverRideIdentityValue(getDriverLiveUserField(user, "email"));
+  const driverEmail = normalizeDriverRideIdentityValue(
+    getDriverLiveUserField(user, "email"),
+  );
 
   try {
     const current = readDriverCancelledActiveRides();
@@ -9608,11 +10869,17 @@ function clearOlderDriverCancellationMarkersForAcceptedRide(
         normalizeDriverRideIdentityValue(record.driverEmail) === driverEmail;
       if (!sameDriver) return true;
 
-      const recordIds = record.keys.map(normalizeDriverRideIdentityValue).filter(Boolean);
+      const recordIds = record.keys
+        .map(normalizeDriverRideIdentityValue)
+        .filter(Boolean);
       const exactIdMatch = recordIds.some((id) => directIds.has(id));
       const recordTime = new Date(String(record.cancelledAt ?? "")).getTime();
 
-      return !(exactIdMatch && Number.isFinite(recordTime) && recordTime < acceptedAt);
+      return !(
+        exactIdMatch &&
+        Number.isFinite(recordTime) &&
+        recordTime < acceptedAt
+      );
     });
 
     if (next.length !== current.length) saveDriverCancelledActiveRides(next);
@@ -9623,14 +10890,21 @@ function clearOlderDriverCancellationMarkersForAcceptedRide(
   try {
     const current = readDriverPassengerCancelledRideRecords();
     const next = current.filter((record) => {
-      const recordIds = record.keys.map(normalizeDriverRideIdentityValue).filter(Boolean);
+      const recordIds = record.keys
+        .map(normalizeDriverRideIdentityValue)
+        .filter(Boolean);
       const exactIdMatch = recordIds.some((id) => directIds.has(id));
       const recordTime = new Date(String(record.cancelledAt ?? "")).getTime();
 
-      return !(exactIdMatch && Number.isFinite(recordTime) && recordTime < acceptedAt);
+      return !(
+        exactIdMatch &&
+        Number.isFinite(recordTime) &&
+        recordTime < acceptedAt
+      );
     });
 
-    if (next.length !== current.length) saveDriverPassengerCancelledRideRecords(next);
+    if (next.length !== current.length)
+      saveDriverPassengerCancelledRideRecords(next);
   } catch {
     // No bloquea la apertura del mapa.
   }
@@ -9654,11 +10928,19 @@ function saveDriverActiveRideLocalMirror(
   for (const key of keys) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
       const current = Array.isArray(parsed) ? parsed : [];
       const next = [
         activeRide as unknown as Record<string, unknown>,
-        ...current.filter((item) => !driverRideIdentityMatches(item, activeRide as unknown as Record<string, unknown>)),
+        ...current.filter(
+          (item) =>
+            !driverRideIdentityMatches(
+              item,
+              activeRide as unknown as Record<string, unknown>,
+            ),
+        ),
       ].slice(0, 200);
       localStorage.setItem(key, JSON.stringify(next));
     } catch {
@@ -9678,10 +10960,13 @@ function saveDriverActiveRideLocalMirror(
     // No bloquea la apertura del mapa.
   }
 
-  window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { rideId: activeRide.id, status: activeRide.status } }));
+  window.dispatchEvent(
+    new CustomEvent("rapago:driver-rides-updated", {
+      detail: { rideId: activeRide.id, status: activeRide.status },
+    }),
+  );
   return activeRide;
 }
-
 
 const RAPAGO_DRIVER_NEXT_RIDES_KEY = "rapago_driver_next_rides_v1";
 const RAPAGO_DRIVER_NEXT_RIDES_EVENT = "rapago:driver-next-rides-updated";
@@ -9706,10 +10991,15 @@ function removeDriverActiveRideLocalMirror(
   for (const key of keys) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
       if (!Array.isArray(parsed)) continue;
 
-      const next = parsed.filter((item) => !driverRideIdentityMatches(item, target as Record<string, unknown>));
+      const next = parsed.filter(
+        (item) =>
+          !driverRideIdentityMatches(item, target as Record<string, unknown>),
+      );
       localStorage.setItem(key, JSON.stringify(next.slice(0, 200)));
     } catch {
       // No bloquea el cierre.
@@ -9718,17 +11008,35 @@ function removeDriverActiveRideLocalMirror(
 
   try {
     const raw = localStorage.getItem("rapago_last_accepted_ride");
-    const parsed = raw ? (JSON.parse(raw) as { ride?: Record<string, unknown> } | Record<string, unknown>) : null;
-    const lastRide = parsed && typeof parsed === "object" && "ride" in parsed ? parsed.ride : parsed;
+    const parsed = raw
+      ? (JSON.parse(raw) as
+          | { ride?: Record<string, unknown> }
+          | Record<string, unknown>)
+      : null;
+    const lastRide =
+      parsed && typeof parsed === "object" && "ride" in parsed
+        ? parsed.ride
+        : parsed;
 
-    if (lastRide && typeof lastRide === "object" && driverRideIdentityMatches(lastRide as Record<string, unknown>, target as Record<string, unknown>)) {
+    if (
+      lastRide &&
+      typeof lastRide === "object" &&
+      driverRideIdentityMatches(
+        lastRide as Record<string, unknown>,
+        target as Record<string, unknown>,
+      )
+    ) {
       localStorage.removeItem("rapago_last_accepted_ride");
     }
   } catch {
     // No bloquea el cierre.
   }
 
-  window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { ride, status: "completed" } }));
+  window.dispatchEvent(
+    new CustomEvent("rapago:driver-rides-updated", {
+      detail: { ride, status: "completed" },
+    }),
+  );
 }
 
 function readDriverNextRideQueue(user?: unknown): DriverNextRideQueueRecord[] {
@@ -9739,8 +11047,17 @@ function readDriverNextRideQueue(user?: unknown): DriverNextRideQueueRecord[] {
 
     return parsed
       .filter((ride) => ride && typeof ride === "object")
-      .filter((ride) => activeDriverRideBelongsToCurrentDriver(ride as unknown as Record<string, unknown>, user))
-      .sort((a, b) => new Date(String(a.queuedAt ?? a.acceptedAt ?? 0)).getTime() - new Date(String(b.queuedAt ?? b.acceptedAt ?? 0)).getTime());
+      .filter((ride) =>
+        activeDriverRideBelongsToCurrentDriver(
+          ride as unknown as Record<string, unknown>,
+          user,
+        ),
+      )
+      .sort(
+        (a, b) =>
+          new Date(String(a.queuedAt ?? a.acceptedAt ?? 0)).getTime() -
+          new Date(String(b.queuedAt ?? b.acceptedAt ?? 0)).getTime(),
+      );
   } catch {
     return [];
   }
@@ -9748,9 +11065,16 @@ function readDriverNextRideQueue(user?: unknown): DriverNextRideQueueRecord[] {
 
 function writeDriverNextRideQueue(queue: DriverNextRideQueueRecord[]): void {
   try {
-    localStorage.setItem(RAPAGO_DRIVER_NEXT_RIDES_KEY, JSON.stringify(queue.slice(0, 20)));
-    window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_NEXT_RIDES_EVENT, { detail: { queue } }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { queue } }));
+    localStorage.setItem(
+      RAPAGO_DRIVER_NEXT_RIDES_KEY,
+      JSON.stringify(queue.slice(0, 20)),
+    );
+    window.dispatchEvent(
+      new CustomEvent(RAPAGO_DRIVER_NEXT_RIDES_EVENT, { detail: { queue } }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-rides-updated", { detail: { queue } }),
+    );
   } catch {
     // No bloquea el viaje en cola.
   }
@@ -9766,12 +11090,16 @@ function saveDriverNextRideAfterCurrent(
     {
       ...(ride as unknown as Record<string, unknown>),
       status: "accepted",
-      queuedAfterRideId: String((currentRide as Record<string, unknown>).id ?? ""),
+      queuedAfterRideId: String(
+        (currentRide as Record<string, unknown>).id ?? "",
+      ),
       queuedAt: now,
       queuedStatus: "waiting_current_trip",
       driverHasCurrentRide: true,
-      passengerNotice: "Tu conductor aceptó tu viaje y lo iniciará cuando termine su viaje actual.",
-      passengerNotification: "Tu conductor está terminando un viaje anterior. Te avisaremos cuando vaya en camino.",
+      passengerNotice:
+        "Tu conductor aceptó tu viaje y lo iniciará cuando termine su viaje actual.",
+      passengerNotification:
+        "Tu conductor está terminando un viaje anterior. Te avisaremos cuando vaya en camino.",
     },
     user,
   ) as DriverNextRideQueueRecord;
@@ -9779,7 +11107,13 @@ function saveDriverNextRideAfterCurrent(
   const currentQueue = readDriverNextRideQueue(user);
   const nextQueue = [
     queuedRide,
-    ...currentQueue.filter((item) => !driverRideIdentityMatches(item as unknown as Record<string, unknown>, queuedRide as unknown as Record<string, unknown>)),
+    ...currentQueue.filter(
+      (item) =>
+        !driverRideIdentityMatches(
+          item as unknown as Record<string, unknown>,
+          queuedRide as unknown as Record<string, unknown>,
+        ),
+    ),
   ];
 
   writeDriverNextRideQueue(nextQueue);
@@ -9792,10 +11126,16 @@ function getDriverNextRideForActiveRide(
 ): DriverNextRideQueueRecord | null {
   if (!activeRide) return readDriverNextRideQueue(user)[0] ?? null;
 
-  const activeId = String((activeRide as Record<string, unknown>).id ?? "").trim();
+  const activeId = String(
+    (activeRide as Record<string, unknown>).id ?? "",
+  ).trim();
   const queue = readDriverNextRideQueue(user);
 
-  return queue.find((ride) => String(ride.queuedAfterRideId ?? "") === activeId) ?? queue[0] ?? null;
+  return (
+    queue.find((ride) => String(ride.queuedAfterRideId ?? "") === activeId) ??
+    queue[0] ??
+    null
+  );
 }
 
 function promoteDriverNextRideAfterCompletion(
@@ -9805,7 +11145,9 @@ function promoteDriverNextRideAfterCompletion(
   const queue = readDriverNextRideQueue(user);
   if (queue.length === 0) return null;
 
-  const index = queue.findIndex((ride) => String(ride.queuedAfterRideId ?? "") === completedRideId);
+  const index = queue.findIndex(
+    (ride) => String(ride.queuedAfterRideId ?? "") === completedRideId,
+  );
   const chosenIndex = index >= 0 ? index : 0;
   const chosen = queue[chosenIndex];
   const remaining = queue.filter((_, itemIndex) => itemIndex !== chosenIndex);
@@ -9818,14 +11160,17 @@ function promoteDriverNextRideAfterCompletion(
       queuedStatus: "promoted_to_active",
       queuedAfterRideId: null,
       previousRideCompletedAt: new Date().toISOString(),
-      passengerNotice: "Tu conductor ya terminó su viaje anterior y va en camino.",
+      passengerNotice:
+        "Tu conductor ya terminó su viaje anterior y va en camino.",
       passengerNotification: "Tu conductor va en camino.",
     },
     user,
   );
 }
 
-function readActiveDriverLocalRideMirrorsForDriver(user?: unknown): DriverRideData[] {
+function readActiveDriverLocalRideMirrorsForDriver(
+  user?: unknown,
+): DriverRideData[] {
   const output: DriverRideData[] = [];
   const keys = [
     "rapago_driver_active_rides_v1",
@@ -9836,8 +11181,11 @@ function readActiveDriverLocalRideMirrorsForDriver(user?: unknown): DriverRideDa
   for (const key of keys) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
-      if (Array.isArray(parsed)) output.push(...(parsed as unknown as DriverRideData[]));
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
+      if (Array.isArray(parsed))
+        output.push(...(parsed as unknown as DriverRideData[]));
     } catch {
       // Ignora espejos locales antiguos.
     }
@@ -9845,8 +11193,13 @@ function readActiveDriverLocalRideMirrorsForDriver(user?: unknown): DriverRideDa
 
   try {
     const raw = localStorage.getItem("rapago_last_accepted_ride");
-    const parsed = raw ? (JSON.parse(raw) as { ride?: DriverRideData } | DriverRideData) : null;
-    const ride = parsed && typeof parsed === "object" && "ride" in parsed ? parsed.ride : parsed;
+    const parsed = raw
+      ? (JSON.parse(raw) as { ride?: DriverRideData } | DriverRideData)
+      : null;
+    const ride =
+      parsed && typeof parsed === "object" && "ride" in parsed
+        ? parsed.ride
+        : parsed;
     if (ride && typeof ride === "object") output.push(ride as DriverRideData);
   } catch {
     // Ignora último aceptado antiguo.
@@ -9855,18 +11208,42 @@ function readActiveDriverLocalRideMirrorsForDriver(user?: unknown): DriverRideDa
   const byKey = new Map<string, DriverRideData>();
   for (const ride of output) {
     const status = String(ride.status ?? "").toLowerCase();
-    if (!["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(status)) continue;
-    if (wasDriverRideCancelledLocally(ride as unknown as Record<string, unknown>, user)) continue;
-    if (!activeDriverRideBelongsToCurrentDriver(ride as unknown as Record<string, unknown>, user)) continue;
+    if (
+      ![
+        "accepted",
+        "driver_en_route",
+        "driver_arrived",
+        "in_progress",
+      ].includes(status)
+    )
+      continue;
+    if (
+      wasDriverRideCancelledLocally(
+        ride as unknown as Record<string, unknown>,
+        user,
+      )
+    )
+      continue;
+    if (
+      !activeDriverRideBelongsToCurrentDriver(
+        ride as unknown as Record<string, unknown>,
+        user,
+      )
+    )
+      continue;
 
-    const key = getDriverScheduledReservationDedupeKey(ride as unknown as DriverAcceptedRideBridgeRecord) || String(ride.id);
+    const key =
+      getDriverScheduledReservationDedupeKey(
+        ride as unknown as DriverAcceptedRideBridgeRecord,
+      ) || String(ride.id);
     if (key) byKey.set(key, ride);
   }
 
   return Array.from(byKey.values());
 }
 
-const RAPAGO_DRIVER_HANDLED_RIDE_REQUESTS_KEY = "rapago_driver_handled_ride_requests_v1";
+const RAPAGO_DRIVER_HANDLED_RIDE_REQUESTS_KEY =
+  "rapago_driver_handled_ride_requests_v1";
 const RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT = "rapago:driver-ride-alert-stop";
 
 type DriverHandledRideRequestRecord = {
@@ -9889,21 +11266,33 @@ function getDriverHandledRequestDriverKey(user?: unknown): string {
   return normalizeDriverReservationKey(raw) ?? "driver-local";
 }
 
-function getDriverRideRequestStableKeys(ride: Partial<AvailableRideData> & Record<string, unknown>): string[] {
+function getDriverRideRequestStableKeys(
+  ride: Partial<AvailableRideData> & Record<string, unknown>,
+): string[] {
   const keys = new Set<string>();
-  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
+  const id = String(
+    ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "",
+  ).trim();
   if (id) {
     keys.add(`id:${id}`);
     keys.add(id);
   }
 
-  const dedupe = getDriverScheduledReservationDedupeKey(ride as unknown as DriverAcceptedRideBridgeRecord);
+  const dedupe = getDriverScheduledReservationDedupeKey(
+    ride as unknown as DriverAcceptedRideBridgeRecord,
+  );
   if (dedupe) keys.add(`dedupe:${dedupe}`);
 
   const routeKey = [
-    String(ride.passengerEmail ?? ride.email ?? "").trim().toLowerCase(),
-    String(ride.originText ?? "").trim().toLowerCase(),
-    String(ride.destinationText ?? "").trim().toLowerCase(),
+    String(ride.passengerEmail ?? ride.email ?? "")
+      .trim()
+      .toLowerCase(),
+    String(ride.originText ?? "")
+      .trim()
+      .toLowerCase(),
+    String(ride.destinationText ?? "")
+      .trim()
+      .toLowerCase(),
     String(ride.requestedAt ?? ride.createdAt ?? ride.scheduledAt ?? "").trim(),
   ].join("|");
   if (routeKey.replace(/\|/g, "").trim()) keys.add(`route:${routeKey}`);
@@ -9914,20 +11303,29 @@ function getDriverRideRequestStableKeys(ride: Partial<AvailableRideData> & Recor
 function readDriverHandledRideRequests(): DriverHandledRideRequestRecord[] {
   try {
     const raw = localStorage.getItem(RAPAGO_DRIVER_HANDLED_RIDE_REQUESTS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as DriverHandledRideRequestRecord[]) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as DriverHandledRideRequestRecord[])
+      : [];
     if (!Array.isArray(parsed)) return [];
 
     const now = Date.now();
     return parsed.filter((item) => {
       const expiresAt = new Date(String(item.expiresAt ?? "")).getTime();
-      return item && typeof item === "object" && item.key && (!Number.isFinite(expiresAt) || expiresAt > now);
+      return (
+        item &&
+        typeof item === "object" &&
+        item.key &&
+        (!Number.isFinite(expiresAt) || expiresAt > now)
+      );
     });
   } catch {
     return [];
   }
 }
 
-function writeDriverHandledRideRequests(records: DriverHandledRideRequestRecord[]): void {
+function writeDriverHandledRideRequests(
+  records: DriverHandledRideRequestRecord[],
+): void {
   try {
     const byKey = new Map<string, DriverHandledRideRequestRecord>();
     for (const record of records) {
@@ -9945,14 +11343,20 @@ function writeDriverHandledRideRequests(records: DriverHandledRideRequestRecord[
 }
 
 function markDriverRideRequestHandled(
-  ride: Partial<AvailableRideData> & Record<string, unknown> | string,
+  ride: (Partial<AvailableRideData> & Record<string, unknown>) | string,
   user?: unknown,
   reason: DriverHandledRideRequestRecord["reason"] = "accepted",
 ): void {
   const driverKey = getDriverHandledRequestDriverKey(user);
-  const recordRide = typeof ride === "string" ? ({ id: ride } as Record<string, unknown>) : ride;
-  const keys = getDriverRideRequestStableKeys(recordRide as Partial<AvailableRideData> & Record<string, unknown>);
-  const rideId = String(recordRide.id ?? recordRide.rideId ?? recordRide.originalRideId ?? "").trim() || null;
+  const recordRide =
+    typeof ride === "string" ? ({ id: ride } as Record<string, unknown>) : ride;
+  const keys = getDriverRideRequestStableKeys(
+    recordRide as Partial<AvailableRideData> & Record<string, unknown>,
+  );
+  const rideId =
+    String(
+      recordRide.id ?? recordRide.rideId ?? recordRide.originalRideId ?? "",
+    ).trim() || null;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
   const current = readDriverHandledRideRequests();
@@ -9977,15 +11381,34 @@ function driverRideRequestIsHandled(
   if (rideKeys.size === 0) return false;
 
   const handled = readDriverHandledRideRequests();
-  if (handled.some((record) => record.driverKey === driverKey && rideKeys.has(record.key))) return true;
+  if (
+    handled.some(
+      (record) => record.driverKey === driverKey && rideKeys.has(record.key),
+    )
+  )
+    return true;
 
   // Si ya está como próximo servicio aceptado, no puede volver a sonar como solicitud nueva.
-  if (readDriverNextRideQueue(user).some((queued) => driverRideIdentityMatches(queued as unknown as Record<string, unknown>, ride))) {
+  if (
+    readDriverNextRideQueue(user).some((queued) =>
+      driverRideIdentityMatches(
+        queued as unknown as Record<string, unknown>,
+        ride,
+      ),
+    )
+  ) {
     return true;
   }
 
   // Si ya está activo para este conductor, tampoco debe volver a entrar a la cola.
-  if (readActiveDriverLocalRideMirrorsForDriver(user).some((active) => driverRideIdentityMatches(active as unknown as Record<string, unknown>, ride))) {
+  if (
+    readActiveDriverLocalRideMirrorsForDriver(user).some((active) =>
+      driverRideIdentityMatches(
+        active as unknown as Record<string, unknown>,
+        ride,
+      ),
+    )
+  ) {
     return true;
   }
 
@@ -10014,13 +11437,20 @@ function stopAllDriverRideRequestAlerts(rideId?: string): void {
 
 function removeHandledRideFromAvailableList<T extends { id?: string }>(
   rides: T[],
-  target: Partial<AvailableRideData> & Record<string, unknown> | string,
+  target: (Partial<AvailableRideData> & Record<string, unknown>) | string,
 ): T[] {
-  const record = typeof target === "string" ? ({ id: target } as Record<string, unknown>) : target;
-  return rides.filter((item) => !driverRideIdentityMatches(item as unknown as Record<string, unknown>, record));
+  const record =
+    typeof target === "string"
+      ? ({ id: target } as Record<string, unknown>)
+      : target;
+  return rides.filter(
+    (item) =>
+      !driverRideIdentityMatches(
+        item as unknown as Record<string, unknown>,
+        record,
+      ),
+  );
 }
-
-
 
 export function DriverRequestsPage(): JSX.Element {
   return <AssignedRidesPage mode="requests" />;
@@ -10129,22 +11559,27 @@ function getDriverFastSearchInfo(
       ride.fastSearchFeeClp ??
       800,
   );
-  const feeClp = Number.isFinite(feeValue) && feeValue > 0
-    ? Math.round(feeValue)
-    : 800;
+  const feeClp =
+    Number.isFinite(feeValue) && feeValue > 0 ? Math.round(feeValue) : 800;
 
   const methodText = String(
     notes.match(/RAPAGO_FAST_SEARCH_PAYMENT_METHOD:\s*(cash|card)/i)?.[1] ??
       ride.rapagoFastSearchPaymentMethod ??
       ride.fastSearchPaymentMethod ??
       "",
-  ).trim().toLowerCase();
+  )
+    .trim()
+    .toLowerCase();
   const statusText = String(
-    notes.match(/RAPAGO_FAST_SEARCH_PAYMENT_STATUS:\s*(approved|pending|rejected)/i)?.[1] ??
+    notes.match(
+      /RAPAGO_FAST_SEARCH_PAYMENT_STATUS:\s*(approved|pending|rejected)/i,
+    )?.[1] ??
       ride.rapagoFastSearchPaymentStatus ??
       ride.fastSearchPaymentStatus ??
       (active ? "approved" : ""),
-  ).trim().toLowerCase();
+  )
+    .trim()
+    .toLowerCase();
 
   return {
     active,
@@ -10189,16 +11624,14 @@ function DriverFastSearchBadge({
         border: isCard ? "2px solid #2563eb" : "2px solid #d49b16",
         color: "#111111",
         boxShadow: "0 8px 20px rgba(0,0,0,.10)",
-      }}
-    >
+      }}>
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
           gap: 10,
-        }}
-      >
+        }}>
         <div style={{ minWidth: 0 }}>
           <div
             style={{
@@ -10207,9 +11640,13 @@ function DriverFastSearchBadge({
               letterSpacing: ".04em",
               textTransform: "uppercase",
               color: isCard ? "#1d4ed8" : "#805900",
-            }}
-          >
-            <IonIcon icon={flashOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> RapaGo más veloz
+            }}>
+            <IonIcon
+              icon={flashOutline}
+              aria-hidden="true"
+              style={{ fontSize: "1em", verticalAlign: "-0.125em" }}
+            />{" "}
+            RapaGo más veloz
           </div>
           <div
             style={{
@@ -10217,9 +11654,9 @@ function DriverFastSearchBadge({
               fontSize: compact ? ".78rem" : ".84rem",
               fontWeight: 900,
               lineHeight: 1.35,
-            }}
-          >
-            El pasajero agregó {formatClp(info.feeClp)} para priorizar esta solicitud.
+            }}>
+            El pasajero agregó {formatClp(info.feeClp)} para priorizar esta
+            solicitud.
           </div>
         </div>
 
@@ -10232,8 +11669,7 @@ function DriverFastSearchBadge({
             color: "#ffffff",
             fontWeight: 950,
             fontSize: ".75rem",
-          }}
-        >
+          }}>
           +{formatClp(info.feeClp)}
         </div>
       </div>
@@ -10250,16 +11686,25 @@ function DriverFastSearchBadge({
           fontSize: ".76rem",
           fontWeight: 900,
           lineHeight: 1.35,
-        }}
-      >
+        }}>
         <span>
           {isCard ? (
             <>
-              <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Recargo pagado con Mercado Pago. No cobrar efectivo.
+              <IonIcon
+                icon={checkmarkCircleOutline}
+                aria-hidden="true"
+                style={{ fontSize: "1em", verticalAlign: "-0.125em" }}
+              />{" "}
+              Recargo pagado con Mercado Pago. No cobrar efectivo.
             </>
           ) : (
             <>
-              <IonIcon icon={cashOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Cobrar el total actualizado en efectivo.
+              <IonIcon
+                icon={cashOutline}
+                aria-hidden="true"
+                style={{ fontSize: "1em", verticalAlign: "-0.125em" }}
+              />{" "}
+              Cobrar el total actualizado en efectivo.
             </>
           )}
         </span>
@@ -10270,7 +11715,8 @@ function DriverFastSearchBadge({
 }
 
 function getRideDisplayFareClp(ride: RideWithFarePayload): number | null {
-  const record = ride as unknown as RideWithFarePayload & Record<string, unknown>;
+  const record = ride as unknown as RideWithFarePayload &
+    Record<string, unknown>;
   const fastSearch = getDriverFastSearchInfo(record);
   const directCandidates = [
     ride.estimatedFareClp,
@@ -10305,11 +11751,20 @@ function getRideDisplayFareClp(ride: RideWithFarePayload): number | null {
   return null;
 }
 
-function getDriverRideMinimumFareForNoShow(ride: Partial<DriverRideData> & Record<string, unknown>): number {
+function getDriverRideMinimumFareForNoShow(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+): number {
   const displayFare = getRideDisplayFareClp(ride as RideWithFarePayload);
   if (displayFare != null && displayFare > 0) return displayFare;
 
-  const candidates = [ride.minimumFareClp, ride.minFareClp, ride.fareMinimumClp, ride.estimatedFareClp, ride.fareClp, ride.priceClp];
+  const candidates = [
+    ride.minimumFareClp,
+    ride.minFareClp,
+    ride.fareMinimumClp,
+    ride.estimatedFareClp,
+    ride.fareClp,
+    ride.priceClp,
+  ];
   for (const candidate of candidates) {
     const parsed = Number(candidate);
     if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
@@ -10318,7 +11773,9 @@ function getDriverRideMinimumFareForNoShow(ride: Partial<DriverRideData> & Recor
   return 3000;
 }
 
-function getDriverRideNoShowFeeClp(ride: Partial<DriverRideData> & Record<string, unknown>): number {
+function getDriverRideNoShowFeeClp(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+): number {
   const applicableFareClp = Math.max(
     0,
     Math.round(getDriverRideMinimumFareForNoShow(ride)),
@@ -10328,9 +11785,7 @@ function getDriverRideNoShowFeeClp(ride: Partial<DriverRideData> & Record<string
     RAPAGO_DRIVER_NO_SHOW_CAP_CLP,
     Math.max(
       0,
-      Math.round(
-        applicableFareClp * (RAPAGO_DRIVER_NO_SHOW_PERCENT / 100),
-      ),
+      Math.round(applicableFareClp * (RAPAGO_DRIVER_NO_SHOW_PERCENT / 100)),
     ),
   );
 }
@@ -10350,8 +11805,15 @@ function getDriverNoShowDistribution(amountClp: number): {
   };
 }
 
-function getDriverRideArrivalTimestampMsForNoShow(ride: Partial<DriverRideData> & Record<string, unknown>): number | null {
-  const candidates = [ride.arrivedAt, ride.driverArrivedAt, ride.driverReachedPickupAt, ride.updatedAt];
+function getDriverRideArrivalTimestampMsForNoShow(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+): number | null {
+  const candidates = [
+    ride.arrivedAt,
+    ride.driverArrivedAt,
+    ride.driverReachedPickupAt,
+    ride.updatedAt,
+  ];
   for (const candidate of candidates) {
     const parsed = new Date(String(candidate ?? "")).getTime();
     if (Number.isFinite(parsed)) return parsed;
@@ -10359,7 +11821,10 @@ function getDriverRideArrivalTimestampMsForNoShow(ride: Partial<DriverRideData> 
   return null;
 }
 
-function getDriverNoShowState(ride: Partial<DriverRideData> & Record<string, unknown>, nowMs = Date.now()): {
+function getDriverNoShowState(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): {
   allowed: boolean;
   remainingMs: number;
   feeClp: number;
@@ -10383,12 +11848,16 @@ function readDriverNoShowTimerMap(): Record<string, number> {
   try {
     const raw = localStorage.getItem(RAPAGO_DRIVER_NO_SHOW_TIMER_KEY);
     const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return {};
 
     return Object.fromEntries(
       Object.entries(parsed)
         .map(([key, value]) => [key, Number(value)] as const)
-        .filter((entry): entry is readonly [string, number] => Number.isFinite(entry[1]) && entry[1] > 0),
+        .filter(
+          (entry): entry is readonly [string, number] =>
+            Number.isFinite(entry[1]) && entry[1] > 0,
+        ),
     );
   } catch {
     return {};
@@ -10422,7 +11891,9 @@ function ensureDriverNoShowTimerStartMs(
   return nowMs;
 }
 
-function clearDriverNoShowTimer(ride: Partial<DriverRideData> & Record<string, unknown>): void {
+function clearDriverNoShowTimer(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+): void {
   const key = getDriverNoShowRideKey(ride);
   const current = readDriverNoShowTimerMap();
 
@@ -10432,9 +11903,18 @@ function clearDriverNoShowTimer(ride: Partial<DriverRideData> & Record<string, u
   writeDriverNoShowTimerMap(current);
 }
 
-function getDriverNoShowProgressPercent(state: { remainingMs: number }): number {
-  const elapsed = RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS - Math.max(0, state.remainingMs);
-  return Math.max(0, Math.min(100, Math.round((elapsed / RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS) * 100)));
+function getDriverNoShowProgressPercent(state: {
+  remainingMs: number;
+}): number {
+  const elapsed =
+    RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS - Math.max(0, state.remainingMs);
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round((elapsed / RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS) * 100),
+    ),
+  );
 }
 
 function getDriverNoShowStateFromTimer(
@@ -10446,7 +11926,10 @@ function getDriverNoShowStateFromTimer(
   feeClp: number;
 } {
   const startAtMs = ensureDriverNoShowTimerStartMs(ride, nowMs);
-  const remainingMs = Math.max(0, startAtMs + RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS - nowMs);
+  const remainingMs = Math.max(
+    0,
+    startAtMs + RAPAGO_DRIVER_NO_SHOW_AFTER_ARRIVAL_MS - nowMs,
+  );
 
   return {
     allowed: remainingMs <= 0,
@@ -10455,19 +11938,27 @@ function getDriverNoShowStateFromTimer(
   };
 }
 
-function getDriverNoShowRideKey(ride: Partial<DriverRideData> & Record<string, unknown>): string {
+function getDriverNoShowRideKey(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+): string {
   const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? "").trim();
   if (id) return `ride:${id}`;
 
   return [
-    String(ride.passengerEmail ?? ride.email ?? "").trim().toLowerCase(),
-    String(ride.originText ?? "").trim().toLowerCase(),
-    String(ride.destinationText ?? "").trim().toLowerCase(),
+    String(ride.passengerEmail ?? ride.email ?? "")
+      .trim()
+      .toLowerCase(),
+    String(ride.originText ?? "")
+      .trim()
+      .toLowerCase(),
+    String(ride.destinationText ?? "")
+      .trim()
+      .toLowerCase(),
     String(ride.acceptedAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
-  ].filter(Boolean).join("|");
+  ]
+    .filter(Boolean)
+    .join("|");
 }
-
-
 
 type DriverPassengerIdentityForNoShow = {
   userId: string | null;
@@ -10504,9 +11995,7 @@ function driverNoShowIdentityString(
   return "";
 }
 
-function extractDriverNoShowPassengerNameFromNotes(
-  notes: unknown,
-): string {
+function extractDriverNoShowPassengerNameFromNotes(notes: unknown): string {
   const text = repairDriverDisplayText(notes);
   if (!text.trim()) return "";
 
@@ -10543,9 +12032,8 @@ function readDriverPassengerIdentityMirror(
 
       if (Array.isArray(parsed)) {
         candidates.push(
-          ...parsed.filter(
-            (item): item is Record<string, unknown> =>
-              Boolean(item && typeof item === "object"),
+          ...parsed.filter((item): item is Record<string, unknown> =>
+            Boolean(item && typeof item === "object"),
           ),
         );
       } else if (parsed && typeof parsed === "object") {
@@ -10636,7 +12124,9 @@ function getDriverPassengerIdentityForNoShow(
   };
 }
 
-function getDriverRidePassengerPhoneForNoShow(ride: Partial<DriverRideData> & Record<string, unknown>): string {
+function getDriverRidePassengerPhoneForNoShow(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+): string {
   const identity = getDriverPassengerIdentityForNoShow(
     ride as Record<string, unknown>,
   );
@@ -10651,7 +12141,6 @@ function getDriverRidePassengerPhoneForNoShow(ride: Partial<DriverRideData> & Re
       "",
   ).replace(/\D/g, "");
 }
-
 
 function getDriverPolicyChargeApiBaseUrl(): string {
   return getConfiguredApiOrigin();
@@ -10673,9 +12162,10 @@ async function declareDriverNoShowInBackend(
     },
   );
 
-  const payload = (await response
-    .json()
-    .catch(() => ({}))) as Record<string, unknown>;
+  const payload = (await response.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
 
   if (!response.ok) {
     throw new Error(
@@ -10688,8 +12178,13 @@ async function declareDriverNoShowInBackend(
   return payload;
 }
 
-function buildDriverNoShowWhatsappUrl(ride: DriverRideData, feeClp: number): string | null {
-  const phone = getDriverRidePassengerPhoneForNoShow(ride as DriverRideData & Record<string, unknown>);
+function buildDriverNoShowWhatsappUrl(
+  ride: DriverRideData,
+  feeClp: number,
+): string | null {
+  const phone = getDriverRidePassengerPhoneForNoShow(
+    ride as DriverRideData & Record<string, unknown>,
+  );
   if (!phone) return null;
 
   const message = [
@@ -10704,8 +12199,13 @@ function buildDriverNoShowWhatsappUrl(ride: DriverRideData, feeClp: number): str
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
-function buildDriverArrivedWhatsappUrl(ride: DriverRideData, feeClp: number): string | null {
-  const phone = getDriverRidePassengerPhoneForNoShow(ride as DriverRideData & Record<string, unknown>);
+function buildDriverArrivedWhatsappUrl(
+  ride: DriverRideData,
+  feeClp: number,
+): string | null {
+  const phone = getDriverRidePassengerPhoneForNoShow(
+    ride as DriverRideData & Record<string, unknown>,
+  );
   if (!phone) return null;
 
   const message = [
@@ -10720,7 +12220,9 @@ function buildDriverArrivedWhatsappUrl(ride: DriverRideData, feeClp: number): st
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
-function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): void {
+function notifyPassengerDriverArrivedByAppAndWhatsapp(
+  ride: DriverRideData,
+): void {
   const record = ride as DriverRideData & Record<string, unknown>;
   const feeClp = getDriverRideNoShowFeeClp(record);
   const rideId = String(record.id ?? record.rideId ?? "");
@@ -10738,9 +12240,13 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
 
   try {
     const raw = localStorage.getItem("rapago_passenger_notifications_v1");
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
     const current = Array.isArray(parsed) ? parsed : [];
-    alreadyNotified = current.some((item) => String(item.id ?? "") === notification.id);
+    alreadyNotified = current.some(
+      (item) => String(item.id ?? "") === notification.id,
+    );
 
     if (!alreadyNotified) {
       localStorage.setItem(
@@ -10754,9 +12260,11 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
       status: "driver_arrived",
       driverArrivedAt: record.driverArrivedAt ?? new Date().toISOString(),
       arrivedAt: record.arrivedAt ?? new Date().toISOString(),
-      passengerNotice: "Tu conductor llegó al punto. Sal ahora para evitar No show.",
+      passengerNotice:
+        "Tu conductor llegó al punto. Sal ahora para evitar No show.",
       passengerNotification: notification.body,
-      noShowCountdownStartedAt: record.noShowCountdownStartedAt ?? new Date().toISOString(),
+      noShowCountdownStartedAt:
+        record.noShowCountdownStartedAt ?? new Date().toISOString(),
     };
 
     // Actualiza los puentes locales para que TripsPage del pasajero muestre mapa + mensaje al instante.
@@ -10772,7 +12280,9 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
     ]) {
       try {
         const localRaw = localStorage.getItem(key);
-        const localParsed = localRaw ? (JSON.parse(localRaw) as Array<Record<string, unknown>>) : [];
+        const localParsed = localRaw
+          ? (JSON.parse(localRaw) as Array<Record<string, unknown>>)
+          : [];
         if (!Array.isArray(localParsed)) continue;
 
         let found = false;
@@ -10782,7 +12292,8 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
           return { ...item, ...arrivedPatch };
         });
 
-        if (!found && key === "rapago_local_passenger_rides") next.unshift(arrivedPatch);
+        if (!found && key === "rapago_local_passenger_rides")
+          next.unshift(arrivedPatch);
 
         localStorage.setItem(key, JSON.stringify(next.slice(0, 220)));
       } catch {
@@ -10790,9 +12301,21 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
       }
     }
 
-    window.dispatchEvent(new CustomEvent("rapago:passenger-notifications-updated", { detail: { notification } }));
-    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride: arrivedPatch, notification } }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-accepted-vehicle-updated", { detail: { ride: arrivedPatch } }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:passenger-notifications-updated", {
+        detail: { notification },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:passenger-rides-updated", {
+        detail: { ride: arrivedPatch, notification },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-accepted-vehicle-updated", {
+        detail: { ride: arrivedPatch },
+      }),
+    );
   } catch {
     // No bloquea la llegada.
   }
@@ -10809,7 +12332,10 @@ function notifyPassengerDriverArrivedByAppAndWhatsapp(ride: DriverRideData): voi
   }
 }
 
-function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: number): void {
+function notifyPassengerNoShowByAppAndWhatsapp(
+  ride: DriverRideData,
+  feeClp: number,
+): void {
   const record = ride as DriverRideData & Record<string, unknown>;
   const passengerIdentity = getDriverPassengerIdentityForNoShow(record);
   const now = new Date().toISOString();
@@ -10818,18 +12344,32 @@ function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: num
 
   const rideId = String(
     record.id ??
-    record.rideId ??
-    record.originalRideId ??
-    record.serverRideId ??
-    "",
+      record.rideId ??
+      record.originalRideId ??
+      record.serverRideId ??
+      "",
   ).trim();
 
   const rideKey = [
-    String(record.passengerEmail ?? record.email ?? "").trim().toLowerCase(),
-    String(record.originText ?? "").trim().toLowerCase(),
-    String(record.destinationText ?? "").trim().toLowerCase(),
-    String(record.scheduledAt ?? record.scheduledPickupAt ?? record.requestedAt ?? record.createdAt ?? "").trim(),
-  ].filter(Boolean).join("|");
+    String(record.passengerEmail ?? record.email ?? "")
+      .trim()
+      .toLowerCase(),
+    String(record.originText ?? "")
+      .trim()
+      .toLowerCase(),
+    String(record.destinationText ?? "")
+      .trim()
+      .toLowerCase(),
+    String(
+      record.scheduledAt ??
+        record.scheduledPickupAt ??
+        record.requestedAt ??
+        record.createdAt ??
+        "",
+    ).trim(),
+  ]
+    .filter(Boolean)
+    .join("|");
 
   const noShowRideId = rideId || rideKey || `no-show-${Date.now()}`;
 
@@ -10870,7 +12410,8 @@ function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: num
     passengerNoShowMessage: body,
     cancelledByRole: "driver_no_show",
     cancelledBy: "driver_no_show",
-    cancellationReason: "No show: pasajero no se present? tras 5 minutos de espera.",
+    cancellationReason:
+      "No show: pasajero no se present? tras 5 minutos de espera.",
     driverFinalState: "no_show_completed",
     shouldHideActiveMap: true,
     localStorageFinancialAuthority: false,
@@ -10920,7 +12461,9 @@ function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: num
 
   try {
     const raw = localStorage.getItem("rapago_passenger_notifications_v1");
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
     const current = Array.isArray(parsed) ? parsed : [];
 
     const nextNotifications = [
@@ -10928,14 +12471,21 @@ function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: num
       ...current.filter((item) => item.id !== notification.id),
     ].slice(0, 100);
 
-    localStorage.setItem("rapago_passenger_notifications_v1", JSON.stringify(nextNotifications));
+    localStorage.setItem(
+      "rapago_passenger_notifications_v1",
+      JSON.stringify(nextNotifications),
+    );
   } catch {
     // No bloquea No show.
   }
 
   try {
-    const raw = localStorage.getItem("rapago_passenger_no_show_completed_rides_v1");
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const raw = localStorage.getItem(
+      "rapago_passenger_no_show_completed_rides_v1",
+    );
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
     const current = Array.isArray(parsed) ? parsed : [];
 
     const next = [
@@ -10943,22 +12493,32 @@ function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: num
       ...current.filter((item) => !driverRideIdentityMatches(item, record)),
     ].slice(0, 200);
 
-    localStorage.setItem("rapago_passenger_no_show_completed_rides_v1", JSON.stringify(next));
+    localStorage.setItem(
+      "rapago_passenger_no_show_completed_rides_v1",
+      JSON.stringify(next),
+    );
   } catch {
     // No bloquea No show.
   }
 
   try {
     const raw = localStorage.getItem("rapago_passenger_pending_charges_v1");
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
     const current = Array.isArray(parsed) ? parsed : [];
 
     const nextCharges = [
       pendingCharge,
-      ...current.filter((item) => String(item.id ?? "") !== String(pendingCharge.id)),
+      ...current.filter(
+        (item) => String(item.id ?? "") !== String(pendingCharge.id),
+      ),
     ].slice(0, 250);
 
-    localStorage.setItem("rapago_passenger_pending_charges_v1", JSON.stringify(nextCharges));
+    localStorage.setItem(
+      "rapago_passenger_pending_charges_v1",
+      JSON.stringify(nextCharges),
+    );
   } catch {
     // No bloquea No show.
   }
@@ -10977,7 +12537,9 @@ function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: num
   for (const key of passengerRideKeys) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
       const current = Array.isArray(parsed) ? parsed : [];
 
       let found = false;
@@ -11003,36 +12565,75 @@ function notifyPassengerNoShowByAppAndWhatsapp(ride: DriverRideData, feeClp: num
   }
 
   try {
-    window.dispatchEvent(new CustomEvent("rapago:passenger-notifications-updated", {
-      detail: { notification, ride: noShowRide, pendingCharge, noShowCompleted: true },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:passenger-notifications-updated", {
+        detail: {
+          notification,
+          ride: noShowRide,
+          pendingCharge,
+          noShowCompleted: true,
+        },
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", {
-      detail: { ride: noShowRide, notification, pendingCharge, noShowCompleted: true },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:passenger-rides-updated", {
+        detail: {
+          ride: noShowRide,
+          notification,
+          pendingCharge,
+          noShowCompleted: true,
+        },
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent("rapago:passenger-pending-charge-updated", {
-      detail: { charge: pendingCharge, ride: noShowRide, backendAuthorityRequired: true },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:passenger-pending-charge-updated", {
+        detail: {
+          charge: pendingCharge,
+          ride: noShowRide,
+          backendAuthorityRequired: true,
+        },
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", {
-      detail: { charge: pendingCharge, ride: noShowRide, backendAuthorityRequired: true },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:admin-passenger-pending-charge-updated", {
+        detail: {
+          charge: pendingCharge,
+          ride: noShowRide,
+          backendAuthorityRequired: true,
+        },
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", {
-      detail: { charge: pendingCharge, ride: noShowRide, noShowCompleted: true },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:admin-rides-updated", {
+        detail: {
+          charge: pendingCharge,
+          ride: noShowRide,
+          noShowCompleted: true,
+        },
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", {
-      detail: { charge: pendingCharge, ride: noShowRide, backendAuthorityRequired: true },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:wallet-updated", {
+        detail: {
+          charge: pendingCharge,
+          ride: noShowRide,
+          backendAuthorityRequired: true,
+        },
+      }),
+    );
   } catch {
     // No bloquea No show.
   }
 
   try {
     const url = buildDriverNoShowWhatsappUrl(ride, amountClp);
-    if (url) localStorage.setItem("rapago_driver_last_no_show_whatsapp_url", url);
+    if (url)
+      localStorage.setItem("rapago_driver_last_no_show_whatsapp_url", url);
   } catch {
     // WhatsApp queda manual, no se abre autom?tico.
   }
@@ -11048,7 +12649,9 @@ function saveDriverNoShowChargeForPassenger(
   const applicableFareClp = getDriverRideMinimumFareForNoShow(record);
   const passengerIdentity = getDriverPassengerIdentityForNoShow(record);
   const now = new Date().toISOString();
-  const rideId = String(record.id ?? record.rideId ?? record.originalRideId ?? "").trim();
+  const rideId = String(
+    record.id ?? record.rideId ?? record.originalRideId ?? "",
+  ).trim();
 
   const charge = {
     id: `driver-no-show-${rideId || rideKey}`,
@@ -11087,28 +12690,66 @@ function saveDriverNoShowChargeForPassenger(
       `Monto por revisar: ${formatClp(feeClp)}. El administrador debe aprobar o rechazar. ` +
       `Si se recauda, ${RAPAGO_DRIVER_NO_SHOW_DRIVER_SHARE_PERCENT}% corresponde al conductor y ` +
       `${RAPAGO_DRIVER_NO_SHOW_PLATFORM_SHARE_PERCENT}% a Rapa Go.`,
-    driverId: String((user as Record<string, unknown> | null)?.id ?? record.driverId ?? record.driverUserId ?? "").trim() || null,
-    driverEmail: String((user as Record<string, unknown> | null)?.email ?? record.driverEmail ?? "").trim() || null,
-    driverName: String((user as Record<string, unknown> | null)?.name ?? record.driverName ?? "").trim() || null,
+    driverId:
+      String(
+        (user as Record<string, unknown> | null)?.id ??
+          record.driverId ??
+          record.driverUserId ??
+          "",
+      ).trim() || null,
+    driverEmail:
+      String(
+        (user as Record<string, unknown> | null)?.email ??
+          record.driverEmail ??
+          "",
+      ).trim() || null,
+    driverName:
+      String(
+        (user as Record<string, unknown> | null)?.name ??
+          record.driverName ??
+          "",
+      ).trim() || null,
   };
 
   try {
-    const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY_DRIVER);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const raw = localStorage.getItem(
+      RAPAGO_PASSENGER_PENDING_CHARGES_KEY_DRIVER,
+    );
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
     const current = Array.isArray(parsed) ? parsed : [];
 
     localStorage.setItem(
       RAPAGO_PASSENGER_PENDING_CHARGES_KEY_DRIVER,
-      JSON.stringify([
-        charge,
-        ...current.filter((item) => String(item.id ?? "") !== String(charge.id) && String(item.rideKey ?? "") !== rideKey),
-      ].slice(0, 250)),
+      JSON.stringify(
+        [
+          charge,
+          ...current.filter(
+            (item) =>
+              String(item.id ?? "") !== String(charge.id) &&
+              String(item.rideKey ?? "") !== rideKey,
+          ),
+        ].slice(0, 250),
+      ),
     );
 
-    window.dispatchEvent(new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_DRIVER, { detail: { charge } }));
-    window.dispatchEvent(new CustomEvent("rapago:admin-passenger-pending-charge-updated", { detail: { charge } }));
-    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { charge } }));
-    window.dispatchEvent(new CustomEvent("rapago:wallet-updated", { detail: { charge } }));
+    window.dispatchEvent(
+      new CustomEvent(RAPAGO_PASSENGER_PENDING_CHARGE_EVENT_DRIVER, {
+        detail: { charge },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:admin-passenger-pending-charge-updated", {
+        detail: { charge },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:admin-rides-updated", { detail: { charge } }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:wallet-updated", { detail: { charge } }),
+    );
   } catch {
     // No bloquea el cierre por no show.
   }
@@ -11152,32 +12793,46 @@ function markPassengerRideNoShowCancelledFromDriver(
   for (const key of keys) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
       const current = Array.isArray(parsed) ? parsed : [];
       let found = false;
       const next = current.map((item) => {
         const same =
           driverRideIdentityMatches(item, target) ||
-          (
-            String(item.originText ?? "").trim().toLowerCase() === String(target.originText ?? "").trim().toLowerCase() &&
-            String(item.destinationText ?? "").trim().toLowerCase() === String(target.destinationText ?? "").trim().toLowerCase()
-          );
+          (String(item.originText ?? "")
+            .trim()
+            .toLowerCase() ===
+            String(target.originText ?? "")
+              .trim()
+              .toLowerCase() &&
+            String(item.destinationText ?? "")
+              .trim()
+              .toLowerCase() ===
+              String(target.destinationText ?? "")
+                .trim()
+                .toLowerCase());
 
         if (!same) return item;
         found = true;
         return { ...item, ...cancelled };
       });
 
-      if (!found && key === "rapago_local_passenger_rides") next.unshift(cancelled);
+      if (!found && key === "rapago_local_passenger_rides")
+        next.unshift(cancelled);
       localStorage.setItem(key, JSON.stringify(next.slice(0, 200)));
     } catch {
       // No bloquea el no show.
     }
   }
 
-  window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { ride: cancelled, charge } }));
+  window.dispatchEvent(
+    new CustomEvent("rapago:passenger-rides-updated", {
+      detail: { ride: cancelled, charge },
+    }),
+  );
 }
-
 
 function getRidePaymentMethodLabel(notes: string | null | undefined): string {
   const text = String(notes ?? "").toLowerCase();
@@ -11199,7 +12854,6 @@ function getRidePaymentIcon(notes: string | null | undefined): string {
   if (label === "Efectivo") return "💵";
   return "⌛";
 }
-
 
 const RAPAGO_DRIVER_CASH_CLOSURES_KEY = "rapago_driver_cash_closures_v1";
 const RAPAGO_ADMIN_CASH_CLOSURES_KEY = "rapago_admin_cash_closures_v1";
@@ -11252,14 +12906,16 @@ function normalizeDriverCashText(value: unknown): string {
     .trim();
 }
 
-function isDriverCashRide(ride: Partial<DriverRideData> & Record<string, unknown>): boolean {
+function isDriverCashRide(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+): boolean {
   const direct = normalizeDriverCashText(
     ride.paymentMethod ??
-    ride.paymentType ??
-    ride.payMethod ??
-    ride.paymentLabel ??
-    ride.methodOfPayment ??
-    ride.paymentMethodLabel,
+      ride.paymentType ??
+      ride.payMethod ??
+      ride.paymentLabel ??
+      ride.methodOfPayment ??
+      ride.paymentMethodLabel,
   );
 
   if (direct.includes("efectivo") || direct.includes("cash")) return true;
@@ -11269,18 +12925,29 @@ function isDriverCashRide(ride: Partial<DriverRideData> & Record<string, unknown
 }
 
 function parseDriverCashAmountText(value: string): number | null {
-  const cleaned = value.replace(/\./g, "").replace(/,/g, ".").replace(/[^\d.]/g, "");
+  const cleaned = value
+    .replace(/\./g, "")
+    .replace(/,/g, ".")
+    .replace(/[^\d.]/g, "");
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
 }
 
-function getDriverCashRideKey(ride: Partial<DriverRideData> & Record<string, unknown>): string {
-  const id = String(ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "").trim();
+function getDriverCashRideKey(
+  ride: Partial<DriverRideData> & Record<string, unknown>,
+): string {
+  const id = String(
+    ride.id ?? ride.rideId ?? ride.originalRideId ?? ride.serverRideId ?? "",
+  ).trim();
   if (id) return `ride:${id}`;
 
   return [
-    String(ride.originText ?? "").trim().toLowerCase(),
-    String(ride.destinationText ?? "").trim().toLowerCase(),
+    String(ride.originText ?? "")
+      .trim()
+      .toLowerCase(),
+    String(ride.destinationText ?? "")
+      .trim()
+      .toLowerCase(),
     String(ride.acceptedAt ?? ride.requestedAt ?? ride.createdAt ?? "").trim(),
   ].join("|");
 }
@@ -11291,9 +12958,10 @@ function appendDriverCashClosureNoteOnce(
 ): string {
   const current = String(notes ?? "").trim();
   const marker = "Cierre efectivo conductor:";
-  const line = closure.decision === "overpaid"
-    ? `${marker} tarifa ${formatClp(closure.fareClp)}, cliente pagó ${formatClp(closure.paidClp)}, pagó demás ${formatClp(closure.overpaidClp)}. Revisión admin pendiente.`
-    : `${marker} cliente pagó justo ${formatClp(closure.fareClp)}.`;
+  const line =
+    closure.decision === "overpaid"
+      ? `${marker} tarifa ${formatClp(closure.fareClp)}, cliente pagó ${formatClp(closure.paidClp)}, pagó demás ${formatClp(closure.overpaidClp)}. Revisión admin pendiente.`
+      : `${marker} cliente pagó justo ${formatClp(closure.fareClp)}.`;
 
   if (current.toLowerCase().includes(marker.toLowerCase())) return current;
   return `${current}${current ? " " : ""}${line}`.trim();
@@ -11308,9 +12976,8 @@ function buildDriverCashClosurePayload(
   const record = ride as DriverRideData & Record<string, unknown>;
   const fareClp = getRideDisplayFareClp(record as RideWithFarePayload) ?? 0;
   const parsedPaid = parseDriverCashAmountText(paidAmountText);
-  const paidClp = decision === "exact"
-    ? fareClp
-    : Math.max(fareClp, parsedPaid ?? fareClp);
+  const paidClp =
+    decision === "exact" ? fareClp : Math.max(fareClp, parsedPaid ?? fareClp);
   const overpaidClp = Math.max(0, paidClp - fareClp);
   const now = new Date().toISOString();
   const rideId = String(record.id ?? record.rideId ?? "").trim();
@@ -11329,18 +12996,35 @@ function buildDriverCashClosurePayload(
     paymentMethod: "cash",
     status: "completed",
     adminReviewStatus: overpaidClp > 0 ? "pending_admin" : "not_required",
-    driverId: getDriverCashText(user, ["id", "userId", "uid"]) || String(record.driverId ?? record.driverUserId ?? "") || null,
-    driverUserId: getDriverCashText(user, ["userId", "id", "uid"]) || String(record.driverUserId ?? "") || null,
-    driverEmail: getDriverCashText(user, ["email", "mail"]) || String(record.driverEmail ?? "") || null,
-    driverName: getDriverCashText(user, ["name", "fullName", "displayName"]) || String(record.driverName ?? record.driverFullName ?? "") || null,
-    driverPhone: getDriverCashText(user, ["phone", "phoneNumber", "mobile"]) || String(record.driverPhone ?? "") || null,
-    passengerName: String(record.passengerName ?? record.userName ?? "") || null,
+    driverId:
+      getDriverCashText(user, ["id", "userId", "uid"]) ||
+      String(record.driverId ?? record.driverUserId ?? "") ||
+      null,
+    driverUserId:
+      getDriverCashText(user, ["userId", "id", "uid"]) ||
+      String(record.driverUserId ?? "") ||
+      null,
+    driverEmail:
+      getDriverCashText(user, ["email", "mail"]) ||
+      String(record.driverEmail ?? "") ||
+      null,
+    driverName:
+      getDriverCashText(user, ["name", "fullName", "displayName"]) ||
+      String(record.driverName ?? record.driverFullName ?? "") ||
+      null,
+    driverPhone:
+      getDriverCashText(user, ["phone", "phoneNumber", "mobile"]) ||
+      String(record.driverPhone ?? "") ||
+      null,
+    passengerName:
+      String(record.passengerName ?? record.userName ?? "") || null,
     passengerEmail: String(record.passengerEmail ?? record.email ?? "") || null,
     closedByDriverAt: now,
     createdAt: now,
-    notes: overpaidClp > 0
-      ? `Cliente pagó ${formatClp(paidClp)} en efectivo. Diferencia: ${formatClp(overpaidClp)}.`
-      : `Cliente pagó justo ${formatClp(fareClp)} en efectivo.`,
+    notes:
+      overpaidClp > 0
+        ? `Cliente pagó ${formatClp(paidClp)} en efectivo. Diferencia: ${formatClp(overpaidClp)}.`
+        : `Cliente pagó justo ${formatClp(fareClp)} en efectivo.`,
   };
 }
 
@@ -11365,19 +13049,32 @@ function buildDriverCashClosureRidePatch(
     adminCashReviewStatus: closure.adminReviewStatus,
     adminPaymentReviewStatus: closure.adminReviewStatus,
     paymentMethod: "cash",
-    paymentStatus: closure.overpaidClp > 0 ? "cash_overpaid_pending_admin" : "cash_paid_exact",
-    notes: appendDriverCashClosureNoteOnce(String((ride as unknown as Record<string, unknown>).notes ?? ""), closure),
+    paymentStatus:
+      closure.overpaidClp > 0
+        ? "cash_overpaid_pending_admin"
+        : "cash_paid_exact",
+    notes: appendDriverCashClosureNoteOnce(
+      String((ride as unknown as Record<string, unknown>).notes ?? ""),
+      closure,
+    ),
   };
 }
 
-function upsertDriverCashClosureStorage(key: string, closure: DriverCashClosurePayload): void {
+function upsertDriverCashClosureStorage(
+  key: string,
+  closure: DriverCashClosurePayload,
+): void {
   try {
     const raw = localStorage.getItem(key);
     const parsed = raw ? (JSON.parse(raw) as DriverCashClosurePayload[]) : [];
     const current = Array.isArray(parsed) ? parsed : [];
     const next = [
       closure,
-      ...current.filter((item) => String(item.id ?? "") !== closure.id && String(item.rideId ?? "") !== closure.rideId),
+      ...current.filter(
+        (item) =>
+          String(item.id ?? "") !== closure.id &&
+          String(item.rideId ?? "") !== closure.rideId,
+      ),
     ].slice(0, 300);
 
     localStorage.setItem(key, JSON.stringify(next));
@@ -11405,12 +13102,21 @@ function persistDriverCashClosureForAdmin(
 
   upsertDriverCashClosureStorage(RAPAGO_DRIVER_CASH_CLOSURES_KEY, closure);
   upsertDriverCashClosureStorage(RAPAGO_ADMIN_CASH_CLOSURES_KEY, closure);
-  upsertDriverCashClosureStorage("rapago_admin_cash_payment_closures_v1", closure);
+  upsertDriverCashClosureStorage(
+    "rapago_admin_cash_payment_closures_v1",
+    closure,
+  );
   upsertDriverCashClosureStorage("rapago_cash_payment_reviews_v1", closure);
 
   try {
-    localStorage.setItem("rapago_last_driver_cash_closure_for_admin", JSON.stringify(closure));
-    sessionStorage.setItem("rapago_last_driver_cash_closure_for_admin", JSON.stringify(closure));
+    localStorage.setItem(
+      "rapago_last_driver_cash_closure_for_admin",
+      JSON.stringify(closure),
+    );
+    sessionStorage.setItem(
+      "rapago_last_driver_cash_closure_for_admin",
+      JSON.stringify(closure),
+    );
   } catch {
     // No bloquea el cierre.
   }
@@ -11432,15 +13138,24 @@ function persistDriverCashClosureForAdmin(
   for (const key of rideKeys) {
     try {
       const raw = localStorage.getItem(key);
-      const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+        : [];
       if (!Array.isArray(parsed)) continue;
 
       let found = false;
       const next = parsed.map((item) => {
         if (!item || typeof item !== "object") return item;
-        if (!driverRideIdentityMatches(item, ride as Record<string, unknown>)) return item;
+        if (!driverRideIdentityMatches(item, ride as Record<string, unknown>))
+          return item;
         found = true;
-        return { ...item, ...patch, status: "completed", completedAt: closure.closedByDriverAt, closedByDriverAt: closure.closedByDriverAt };
+        return {
+          ...item,
+          ...patch,
+          status: "completed",
+          completedAt: closure.closedByDriverAt,
+          closedByDriverAt: closure.closedByDriverAt,
+        };
       });
 
       const finalList = found ? next : [enrichedRide, ...parsed];
@@ -11451,11 +13166,31 @@ function persistDriverCashClosureForAdmin(
   }
 
   try {
-    window.dispatchEvent(new CustomEvent(RAPAGO_ADMIN_CASH_CLOSURES_EVENT, { detail: { closure, ride: enrichedRide, user } }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-cash-closure-updated", { detail: { closure, ride: enrichedRide, user } }));
-    window.dispatchEvent(new CustomEvent("rapago:admin-rides-updated", { detail: { closure, ride: enrichedRide, user } }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { closure, ride: enrichedRide, user } }));
-    window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { closure, ride: enrichedRide } }));
+    window.dispatchEvent(
+      new CustomEvent(RAPAGO_ADMIN_CASH_CLOSURES_EVENT, {
+        detail: { closure, ride: enrichedRide, user },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-cash-closure-updated", {
+        detail: { closure, ride: enrichedRide, user },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:admin-rides-updated", {
+        detail: { closure, ride: enrichedRide, user },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-rides-updated", {
+        detail: { closure, ride: enrichedRide, user },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:passenger-rides-updated", {
+        detail: { closure, ride: enrichedRide },
+      }),
+    );
   } catch {
     // Eventos opcionales.
   }
@@ -11513,9 +13248,14 @@ function DriverCashCloseRideOverlay({
   user?: unknown;
   loading?: boolean;
   onCancel: () => void;
-  onConfirm: (ride: DriverRideData, cashClosure?: DriverCashClosurePayload | null) => void;
+  onConfirm: (
+    ride: DriverRideData,
+    cashClosure?: DriverCashClosurePayload | null,
+  ) => void;
 }): JSX.Element {
-  const isCash = isDriverCashRide(ride as DriverRideData & Record<string, unknown>);
+  const isCash = isDriverCashRide(
+    ride as DriverRideData & Record<string, unknown>,
+  );
   const fareClp = getRideDisplayFareClp(ride as RideWithFarePayload) ?? 0;
   const [destinationOk, setDestinationOk] = useState(false);
   const [decision, setDecision] = useState<DriverCashClosureDecision>("exact");
@@ -11523,11 +13263,11 @@ function DriverCashCloseRideOverlay({
   const paidAmountClp = parseDriverCashAmountText(paidAmountText);
   const paidForPreview = decision === "exact" ? fareClp : (paidAmountClp ?? 0);
   const overpaidClp = Math.max(0, paidForPreview - fareClp);
-  const canConfirm = destinationOk && (
-    !isCash ||
-    decision === "exact" ||
-    (paidAmountClp != null && paidAmountClp > fareClp)
-  );
+  const canConfirm =
+    destinationOk &&
+    (!isCash ||
+      decision === "exact" ||
+      (paidAmountClp != null && paidAmountClp > fareClp));
 
   function confirmClose(): void {
     if (!canConfirm) return;
@@ -11552,8 +13292,7 @@ function DriverCashCloseRideOverlay({
         overflowY: "auto",
         WebkitOverflowScrolling: "touch",
         padding: "10px 8px calc(92px + env(safe-area-inset-bottom))",
-      }}
-    >
+      }}>
       <style>{`
         .rapago-cash-close-input {
           --background: var(--rp-field-bg) !important;
@@ -11603,8 +13342,7 @@ function DriverCashCloseRideOverlay({
           color: "var(--rp-text)",
           boxShadow: "0 22px 60px rgba(0,0,0,.45)",
           border: "1px solid var(--rp-border-c)",
-        }}
-      >
+        }}>
         {/* El encabezado verde y el scrim oscuro de fondo se mantienen fijos a
             propósito: son color semántico de "éxito" y un velo neutro, ambos
             funcionan igual en los dos temas sin necesitar tokens. Todo lo
@@ -11619,12 +13357,19 @@ function DriverCashCloseRideOverlay({
             background: "linear-gradient(135deg,#14532d,#22c55e)",
             color: "#fff",
             borderRadius: "24px 24px 0 0",
-          }}
-        >
-          <div id="rapago-driver-cash-close-title" style={{ fontSize: "1.05rem", fontWeight: 950 }}>
+          }}>
+          <div
+            id="rapago-driver-cash-close-title"
+            style={{ fontSize: "1.05rem", fontWeight: 950 }}>
             Cierre de carrera
           </div>
-          <div style={{ marginTop: 3, fontSize: ".78rem", fontWeight: 800, opacity: .92 }}>
+          <div
+            style={{
+              marginTop: 3,
+              fontSize: ".78rem",
+              fontWeight: 800,
+              opacity: 0.92,
+            }}>
             Antes de tomar otro servicio, confirma destino y pago.
           </div>
         </div>
@@ -11642,8 +13387,7 @@ function DriverCashCloseRideOverlay({
             padding: 12,
             overflowY: "auto",
             WebkitOverflowScrolling: "touch",
-          }}
-        >
+          }}>
           <div
             style={{
               borderRadius: 18,
@@ -11651,37 +13395,64 @@ function DriverCashCloseRideOverlay({
               border: "1px solid var(--rp-border-c)",
               padding: 13,
               marginBottom: 12,
-            }}
-          >
-            <div style={{ fontSize: ".72rem", fontWeight: 950, color: "var(--rp-ok-fg)", textTransform: "uppercase" }}>
+            }}>
+            <div
+              style={{
+                fontSize: ".72rem",
+                fontWeight: 950,
+                color: "var(--rp-ok-fg)",
+                textTransform: "uppercase",
+              }}>
               Viaje
             </div>
-            <div style={{ marginTop: 5, fontWeight: 950, lineHeight: 1.3, color: "var(--rp-text)" }}>
+            <div
+              style={{
+                marginTop: 5,
+                fontWeight: 950,
+                lineHeight: 1.3,
+                color: "var(--rp-text)",
+              }}>
               {getDriverRideRouteDisplayLabel(ride)}
             </div>
-            <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 900, color: "var(--rp-muted)" }}>
-              Tarifa: {formatClp(fareClp)} · Pago: {isCash ? "Efectivo" : getRidePaymentMethodLabel(ride.notes)}
+            <div
+              style={{
+                marginTop: 7,
+                fontSize: ".82rem",
+                fontWeight: 900,
+                color: "var(--rp-muted)",
+              }}>
+              Tarifa: {formatClp(fareClp)} · Pago:{" "}
+              {isCash ? "Efectivo" : getRidePaymentMethodLabel(ride.notes)}
             </div>
           </div>
 
           <div
             style={{
               borderRadius: 18,
-              background: destinationOk ? "var(--rp-ok-bg)" : "var(--rp-field-bg)",
-              border: destinationOk ? "1px solid var(--rp-ok-bd)" : "1px solid var(--rp-border-c)",
+              background: destinationOk
+                ? "var(--rp-ok-bg)"
+                : "var(--rp-field-bg)",
+              border: destinationOk
+                ? "1px solid var(--rp-ok-bd)"
+                : "1px solid var(--rp-border-c)",
               padding: 13,
               marginBottom: 12,
-            }}
-          >
-            <div style={{ fontWeight: 950, marginBottom: 8, color: "var(--rp-text)" }}>
+            }}>
+            <div
+              style={{
+                fontWeight: 950,
+                marginBottom: 8,
+                color: "var(--rp-text)",
+              }}>
               ¿Llegaste bien al destino y el pasajero ya bajó?
             </div>
             <IonButton
               expand="block"
               color={destinationOk ? "success" : "warning"}
               onClick={() => setDestinationOk(true)}
-              style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-            >
+              style={
+                { "--border-radius": "14px", fontWeight: 950 } as CSSProperties
+              }>
               Sí, llegué bien al destino
             </IonButton>
           </div>
@@ -11690,24 +13461,47 @@ function DriverCashCloseRideOverlay({
             <div
               style={{
                 borderRadius: 20,
-                background: "color-mix(in srgb, var(--rp-gold) 12%, var(--rp-surface))",
-                border: "1px solid color-mix(in srgb, var(--rp-gold) 34%, transparent)",
+                background:
+                  "color-mix(in srgb, var(--rp-gold) 12%, var(--rp-surface))",
+                border:
+                  "1px solid color-mix(in srgb, var(--rp-gold) 34%, transparent)",
                 boxShadow: "0 14px 34px rgba(120,82,0,.09)",
                 padding: 13,
                 marginBottom: 12,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
-                <IonIcon icon={cashOutline} aria-hidden="true" style={{ color: "var(--rp-ok-fg)", fontSize: 24 }} />
+              }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 9,
+                }}>
+                <IonIcon
+                  icon={cashOutline}
+                  aria-hidden="true"
+                  style={{ color: "var(--rp-ok-fg)", fontSize: 24 }}
+                />
                 <div>
-                  <div style={{ fontWeight: 950, color: "var(--rp-text)" }}>Pago en efectivo</div>
-                  <div style={{ fontSize: ".74rem", color: "var(--rp-muted)", fontWeight: 800 }}>
+                  <div style={{ fontWeight: 950, color: "var(--rp-text)" }}>
+                    Pago en efectivo
+                  </div>
+                  <div
+                    style={{
+                      fontSize: ".74rem",
+                      color: "var(--rp-muted)",
+                      fontWeight: 800,
+                    }}>
                     Esto se enviará al panel Admin para cuadratura.
                   </div>
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 8,
+                }}>
                 <IonButton
                   expand="block"
                   color={decision === "exact" ? "success" : "medium"}
@@ -11716,8 +13510,12 @@ function DriverCashCloseRideOverlay({
                     setDecision("exact");
                     setPaidAmountText("");
                   }}
-                  style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-                >
+                  style={
+                    {
+                      "--border-radius": "14px",
+                      fontWeight: 950,
+                    } as CSSProperties
+                  }>
                   Pagó justo
                 </IonButton>
                 <IonButton
@@ -11725,8 +13523,12 @@ function DriverCashCloseRideOverlay({
                   color={decision === "overpaid" ? "warning" : "medium"}
                   fill={decision === "overpaid" ? "solid" : "outline"}
                   onClick={() => setDecision("overpaid")}
-                  style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-                >
+                  style={
+                    {
+                      "--border-radius": "14px",
+                      fontWeight: 950,
+                    } as CSSProperties
+                  }>
                   Pagó demás
                 </IonButton>
               </div>
@@ -11736,18 +13538,20 @@ function DriverCashCloseRideOverlay({
                   <IonItem
                     className="rapago-cash-close-input"
                     lines="none"
-                    style={{
-                      "--background": "var(--rp-field-bg)",
-                      "--color": "var(--rp-field-fg)",
-                      "--highlight-color-focused": "var(--rp-gold)",
-                      "--padding-start": "12px",
-                      "--inner-padding-end": "12px",
-                      border: "1px solid color-mix(in srgb, var(--rp-gold) 40%, transparent)",
-                      borderRadius: 18,
-                      background: "var(--rp-field-bg)",
-                      boxShadow: "0 12px 26px rgba(120,82,0,.10)",
-                    } as CSSProperties}
-                  >
+                    style={
+                      {
+                        "--background": "var(--rp-field-bg)",
+                        "--color": "var(--rp-field-fg)",
+                        "--highlight-color-focused": "var(--rp-gold)",
+                        "--padding-start": "12px",
+                        "--inner-padding-end": "12px",
+                        border:
+                          "1px solid color-mix(in srgb, var(--rp-gold) 40%, transparent)",
+                        borderRadius: 18,
+                        background: "var(--rp-field-bg)",
+                        boxShadow: "0 12px 26px rgba(120,82,0,.10)",
+                      } as CSSProperties
+                    }>
                     <IonLabel position="stacked" style={{ fontWeight: 950 }}>
                       ¿Cuánto pagó el cliente?
                     </IonLabel>
@@ -11756,15 +13560,24 @@ function DriverCashCloseRideOverlay({
                       type="tel"
                       inputmode="numeric"
                       placeholder="Ej: 10000"
-                      style={{
-                        "--color": "var(--rp-field-fg)",
-                        "--placeholder-color": "var(--rp-field-ph)",
-                        "--placeholder-opacity": "1",
-                        color: "var(--rp-field-fg)",
-                        fontWeight: 950,
-                        fontSize: "1rem",
-                      } as CSSProperties}
-                      onIonInput={(event) => setPaidAmountText(String(event.detail.value ?? "").replace(/[^0-9]/g, ""))}
+                      style={
+                        {
+                          "--color": "var(--rp-field-fg)",
+                          "--placeholder-color": "var(--rp-field-ph)",
+                          "--placeholder-opacity": "1",
+                          color: "var(--rp-field-fg)",
+                          fontWeight: 950,
+                          fontSize: "1rem",
+                        } as CSSProperties
+                      }
+                      onIonInput={(event) =>
+                        setPaidAmountText(
+                          String(event.detail.value ?? "").replace(
+                            /[^0-9]/g,
+                            "",
+                          ),
+                        )
+                      }
                     />
                   </IonItem>
 
@@ -11773,19 +13586,28 @@ function DriverCashCloseRideOverlay({
                       marginTop: 10,
                       borderRadius: 14,
                       padding: "10px 12px",
-                      background: paidAmountClp != null && paidAmountClp > fareClp ? "var(--rp-ok-bg)" : "var(--rp-warn-bg)",
-                      color: paidAmountClp != null && paidAmountClp > fareClp ? "var(--rp-ok-fg)" : "var(--rp-warn-fg)",
+                      background:
+                        paidAmountClp != null && paidAmountClp > fareClp
+                          ? "var(--rp-ok-bg)"
+                          : "var(--rp-warn-bg)",
+                      color:
+                        paidAmountClp != null && paidAmountClp > fareClp
+                          ? "var(--rp-ok-fg)"
+                          : "var(--rp-warn-fg)",
                       fontSize: ".78rem",
                       fontWeight: 900,
                       lineHeight: 1.35,
-                    }}
-                  >
+                    }}>
                     {paidAmountClp == null && "Ingresa el monto recibido."}
-                    {paidAmountClp != null && paidAmountClp <= fareClp && "Para 'pagó demás', el monto recibido debe ser mayor a la tarifa."}
+                    {paidAmountClp != null &&
+                      paidAmountClp <= fareClp &&
+                      "Para 'pagó demás', el monto recibido debe ser mayor a la tarifa."}
                     {paidAmountClp != null && paidAmountClp > fareClp && (
                       <>
-                        Recibido: {formatClp(paidAmountClp)} · Pagó demás: {formatClp(overpaidClp)}
-                        <br />Admin recibirá esta diferencia para revisión/cuadratura.
+                        Recibido: {formatClp(paidAmountClp)} · Pagó demás:{" "}
+                        {formatClp(overpaidClp)}
+                        <br />
+                        Admin recibirá esta diferencia para revisión/cuadratura.
                       </>
                     )}
                   </div>
@@ -11805,9 +13627,9 @@ function DriverCashCloseRideOverlay({
                 fontWeight: 900,
                 lineHeight: 1.35,
                 marginBottom: 12,
-              }}
-            >
-              Este viaje no está marcado como efectivo. Se cerrará sin pedir monto recibido.
+              }}>
+              Este viaje no está marcado como efectivo. Se cerrará sin pedir
+              monto recibido.
             </div>
           )}
         </div>
@@ -11830,16 +13652,16 @@ function DriverCashCloseRideOverlay({
             background: "var(--rp-surface)",
             borderTop: "1px solid var(--rp-border-c)",
             boxShadow: "0 -12px 28px rgba(0,0,0,.08)",
-          }}
-        >
+          }}>
           <IonButton
             expand="block"
             color="medium"
             fill="outline"
             disabled={loading}
             onClick={onCancel}
-            style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-          >
+            style={
+              { "--border-radius": "14px", fontWeight: 950 } as CSSProperties
+            }>
             Seguir viaje
           </IonButton>
           <IonButton
@@ -11847,9 +13669,16 @@ function DriverCashCloseRideOverlay({
             color="success"
             disabled={!canConfirm || loading}
             onClick={confirmClose}
-            style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-          >
-            {loading ? <IonSpinner name="dots" /> : isCash ? "Cerrar y enviar al admin" : "Cerrar carrera"}
+            style={
+              { "--border-radius": "14px", fontWeight: 950 } as CSSProperties
+            }>
+            {loading ? (
+              <IonSpinner name="dots" />
+            ) : isCash ? (
+              "Cerrar y enviar al admin"
+            ) : (
+              "Cerrar carrera"
+            )}
           </IonButton>
         </div>
       </div>
@@ -12001,8 +13830,15 @@ type DriverEarningsFilter = "today" | "week" | "month" | "all";
 type DriverEarningsRide = DriverRideData & Record<string, unknown>;
 
 function isDriverCompletedRide(ride: DriverEarningsRide): boolean {
-  const status = String(ride.status ?? "").toLowerCase().trim();
-  return status === "completed" || status === "complete" || status === "finished" || status === "done";
+  const status = String(ride.status ?? "")
+    .toLowerCase()
+    .trim();
+  return (
+    status === "completed" ||
+    status === "complete" ||
+    status === "finished" ||
+    status === "done"
+  );
 }
 
 function getDriverEarningsRideDateMs(ride: DriverEarningsRide): number {
@@ -12037,7 +13873,11 @@ function getDriverEarningsAmountClp(ride: DriverEarningsRide): number {
     if (parsed != null) return parsed;
   }
 
-  return getDriverEstimatedEarning(getRideDisplayFareClp(ride as RideWithFarePayload)) ?? 0;
+  return (
+    getDriverEstimatedEarning(
+      getRideDisplayFareClp(ride as RideWithFarePayload),
+    ) ?? 0
+  );
 }
 
 function readDriverEarningsLocalRides(user?: unknown): DriverEarningsRide[] {
@@ -12054,7 +13894,11 @@ function readDriverEarningsLocalRides(user?: unknown): DriverEarningsRide[] {
       const raw = localStorage.getItem(key);
       const parsed = raw ? (JSON.parse(raw) as unknown) : null;
       if (Array.isArray(parsed)) {
-        output.push(...parsed.filter((item) => item && typeof item === "object") as DriverEarningsRide[]);
+        output.push(
+          ...(parsed.filter(
+            (item) => item && typeof item === "object",
+          ) as DriverEarningsRide[]),
+        );
       }
     } catch {
       // Ignora storages antiguos o corruptos.
@@ -12063,23 +13907,35 @@ function readDriverEarningsLocalRides(user?: unknown): DriverEarningsRide[] {
 
   try {
     const raw = localStorage.getItem("rapago_last_accepted_ride");
-    const parsed = raw ? (JSON.parse(raw) as { ride?: DriverEarningsRide } | DriverEarningsRide) : null;
-    const ride = parsed && typeof parsed === "object" && "ride" in parsed ? parsed.ride : parsed;
-    if (ride && typeof ride === "object") output.push(ride as DriverEarningsRide);
+    const parsed = raw
+      ? (JSON.parse(raw) as { ride?: DriverEarningsRide } | DriverEarningsRide)
+      : null;
+    const ride =
+      parsed && typeof parsed === "object" && "ride" in parsed
+        ? parsed.ride
+        : parsed;
+    if (ride && typeof ride === "object")
+      output.push(ride as DriverEarningsRide);
   } catch {
     // No bloquea ganancias.
   }
 
-  const driverEmail = String(getDriverLiveUserField(user, "email") ?? "").trim().toLowerCase();
+  const driverEmail = String(getDriverLiveUserField(user, "email") ?? "")
+    .trim()
+    .toLowerCase();
 
   return output.filter((ride) => {
     if (!driverEmail) return true;
-    const rideDriverEmail = String(ride.driverEmail ?? ride.email ?? "").trim().toLowerCase();
+    const rideDriverEmail = String(ride.driverEmail ?? ride.email ?? "")
+      .trim()
+      .toLowerCase();
     return !rideDriverEmail || rideDriverEmail === driverEmail;
   });
 }
 
-function dedupeDriverEarningsRides(rides: DriverEarningsRide[]): DriverEarningsRide[] {
+function dedupeDriverEarningsRides(
+  rides: DriverEarningsRide[],
+): DriverEarningsRide[] {
   const byKey = new Map<string, DriverEarningsRide>();
 
   for (const ride of rides) {
@@ -12090,17 +13946,25 @@ function dedupeDriverEarningsRides(rides: DriverEarningsRide[]): DriverEarningsR
     );
 
     const current = byKey.get(key);
-    if (!current || getDriverEarningsRideDateMs(ride) >= getDriverEarningsRideDateMs(current)) {
+    if (
+      !current ||
+      getDriverEarningsRideDateMs(ride) >= getDriverEarningsRideDateMs(current)
+    ) {
       byKey.set(key, ride);
     }
   }
 
   return [...byKey.values()]
     .filter(isDriverCompletedRide)
-    .sort((a, b) => getDriverEarningsRideDateMs(b) - getDriverEarningsRideDateMs(a));
+    .sort(
+      (a, b) => getDriverEarningsRideDateMs(b) - getDriverEarningsRideDateMs(a),
+    );
 }
 
-function saveDriverCompletedRideForEarnings(ride: DriverEarningsRide, user?: unknown): void {
+function saveDriverCompletedRideForEarnings(
+  ride: DriverEarningsRide,
+  user?: unknown,
+): void {
   try {
     const now = new Date().toISOString();
     const completedRide: DriverEarningsRide = {
@@ -12114,10 +13978,21 @@ function saveDriverCompletedRideForEarnings(ride: DriverEarningsRide, user?: unk
     const raw = localStorage.getItem("rapago_driver_my_rides_v1");
     const parsed = raw ? (JSON.parse(raw) as DriverEarningsRide[]) : [];
     const current = Array.isArray(parsed) ? parsed : [];
-    const next = dedupeDriverEarningsRides([completedRide, ...current, ...readDriverEarningsLocalRides(user)]);
+    const next = dedupeDriverEarningsRides([
+      completedRide,
+      ...current,
+      ...readDriverEarningsLocalRides(user),
+    ]);
 
-    localStorage.setItem("rapago_driver_my_rides_v1", JSON.stringify(next.slice(0, 250)));
-    window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { ride: completedRide } }));
+    localStorage.setItem(
+      "rapago_driver_my_rides_v1",
+      JSON.stringify(next.slice(0, 250)),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-rides-updated", {
+        detail: { ride: completedRide },
+      }),
+    );
   } catch {
     // No bloquea la finalización si el navegador no permite guardar.
   }
@@ -12142,12 +14017,17 @@ function getDriverEarningsFilterStart(filter: DriverEarningsFilter): number {
 }
 
 function csvEscapeDriverEarnings(value: unknown): string {
-  const text = String(value ?? "").replace(/\r?\n/g, " ").trim();
+  const text = String(value ?? "")
+    .replace(/\r?\n/g, " ")
+    .trim();
   if (/[;"\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
   return text;
 }
 
-function exportDriverEarningsCsv(rides: DriverEarningsRide[], filter: DriverEarningsFilter): void {
+function exportDriverEarningsCsv(
+  rides: DriverEarningsRide[],
+  filter: DriverEarningsFilter,
+): void {
   const headers = [
     "Fecha completado",
     "ID viaje",
@@ -12178,14 +14058,31 @@ function exportDriverEarningsCsv(rides: DriverEarningsRide[], filter: DriverEarn
     ];
   });
 
-  const totalFare = rides.reduce((sum, ride) => sum + (getRideDisplayFareClp(ride as RideWithFarePayload) ?? 0), 0);
-  const totalEarning = rides.reduce((sum, ride) => sum + getDriverEarningsAmountClp(ride), 0);
+  const totalFare = rides.reduce(
+    (sum, ride) =>
+      sum + (getRideDisplayFareClp(ride as RideWithFarePayload) ?? 0),
+    0,
+  );
+  const totalEarning = rides.reduce(
+    (sum, ride) => sum + getDriverEarningsAmountClp(ride),
+    0,
+  );
 
   const csv = [
     headers,
     ...rows,
     [],
-    ["Totales", "", "", "", "", "", totalFare, totalEarning, Math.max(0, totalFare - totalEarning)],
+    [
+      "Totales",
+      "",
+      "",
+      "",
+      "",
+      "",
+      totalFare,
+      totalEarning,
+      Math.max(0, totalFare - totalEarning),
+    ],
   ]
     .map((row) => row.map(csvEscapeDriverEarnings).join(";"))
     .join("\r\n");
@@ -12484,7 +14381,9 @@ function showRideRequestSystemNotification(): void {
   }
 }
 
-function startRideRequestAlertSound(message?: string): RideRequestAlertController {
+function startRideRequestAlertSound(
+  message?: string,
+): RideRequestAlertController {
   let stopped = false;
   const intervals: number[] = [];
   const audioContext = getAlertAudioContext();
@@ -12514,7 +14413,8 @@ function startRideRequestAlertSound(message?: string): RideRequestAlertControlle
     }
   }
 
-  const voiceMessage = message || "Hay una solicitud de viaje nueva disponible.";
+  const voiceMessage =
+    message || "Hay una solicitud de viaje nueva disponible.";
 
   playAlarmCycle();
   speakRideRequestAlert(voiceMessage);
@@ -12522,7 +14422,9 @@ function startRideRequestAlertSound(message?: string): RideRequestAlertControlle
 
   // Alerta persistente mientras la solicitud siga disponible.
   intervals.push(window.setInterval(playAlarmCycle, 1200));
-  intervals.push(window.setInterval(() => speakRideRequestAlert(voiceMessage), 9000));
+  intervals.push(
+    window.setInterval(() => speakRideRequestAlert(voiceMessage), 9000),
+  );
   intervals.push(window.setInterval(showRideRequestSystemNotification, 18000));
 
   return {
@@ -12564,7 +14466,8 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
   const { session } = useAuth();
   const history = useHistory();
   const driverAvailabilityUser = session?.user as
-    DriverAvailabilityUser | undefined;
+    | DriverAvailabilityUser
+    | undefined;
   const driverConnection = useRapaGoConnectivityMonitor("driver");
 
   const [driverAvailability, setDriverAvailability] =
@@ -12586,7 +14489,8 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
   const globalAlertNextLoadAtRef = useRef(0);
   const globalAlertRateLimitedUntilRef = useRef(0);
 
-  const isDriverAvailable = driverAvailability === "available" && !driverConnection.blocked;
+  const isDriverAvailable =
+    driverAvailability === "available" && !driverConnection.blocked;
 
   const stopRideAlert = useCallback((clearRide = true): void => {
     rideAlertControllerRef.current?.stop();
@@ -12622,7 +14526,9 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
     (ride: DriverScheduledReservationOffer): void => {
       stopRideAlert(false);
       alertedScheduledReservationKeysRef.current.add(
-        getScheduledReservationAlertKey(ride as unknown as DriverAcceptedRideBridgeRecord),
+        getScheduledReservationAlertKey(
+          ride as unknown as DriverAcceptedRideBridgeRecord,
+        ),
       );
       setRideAlert(null);
       setScheduledReservationAlert(ride);
@@ -12635,13 +14541,22 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
 
   useEffect(() => {
     const stopFromAnywhere = (event: Event) => {
-      const rideId = String((event as CustomEvent<{ rideId?: string }>).detail?.rideId ?? "").trim();
+      const rideId = String(
+        (event as CustomEvent<{ rideId?: string }>).detail?.rideId ?? "",
+      ).trim();
       if (rideId) alertedRideIdsRef.current.add(rideId);
       stopRideAlert(true);
     };
 
-    window.addEventListener(RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT, stopFromAnywhere as EventListener);
-    return () => window.removeEventListener(RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT, stopFromAnywhere as EventListener);
+    window.addEventListener(
+      RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT,
+      stopFromAnywhere as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT,
+        stopFromAnywhere as EventListener,
+      );
   }, [stopRideAlert]);
 
   const loadAvailableRideForAlert = useCallback(async (): Promise<void> => {
@@ -12707,9 +14622,17 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
       const nextRide = Array.from(mergedById.values()).find(
         (ride) =>
           ride.status === "requested" &&
-          !driverRideWasSkippedByCurrentDriver(ride as unknown as Record<string, unknown>, session?.user) &&
-          !shouldHideFromNormalDriverRequestQueue(ride as unknown as Record<string, unknown>) &&
-          !driverRideRequestIsHandled(ride as unknown as Record<string, unknown>, session?.user) &&
+          !driverRideWasSkippedByCurrentDriver(
+            ride as unknown as Record<string, unknown>,
+            session?.user,
+          ) &&
+          !shouldHideFromNormalDriverRequestQueue(
+            ride as unknown as Record<string, unknown>,
+          ) &&
+          !driverRideRequestIsHandled(
+            ride as unknown as Record<string, unknown>,
+            session?.user,
+          ) &&
           !driverAvailableRideMatchesScheduledReservationForDriver(
             ride as unknown as Record<string, unknown>,
             session?.user,
@@ -12721,7 +14644,8 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
         startRideAlert(nextRide);
       }
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : String(caught ?? "");
+      const message =
+        caught instanceof Error ? caught.message : String(caught ?? "");
       if (/429|too many requests|demasiadas solicitudes/i.test(message)) {
         globalAlertRateLimitedUntilRef.current = Date.now() + 65_000;
       }
@@ -12808,28 +14732,54 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
     const interval = window.setInterval(tick, 15_000);
     document.addEventListener("visibilitychange", tick);
 
-    window.addEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, tick as EventListener);
-    window.addEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
-    window.addEventListener("rapago:driver-reservation-inbox-updated", tick as EventListener);
-    window.addEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
-    window.addEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, tick as EventListener);
+    window.addEventListener(
+      DRIVER_SCHEDULED_RESERVATION_EVENT,
+      tick as EventListener,
+    );
+    window.addEventListener(
+      DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT,
+      tick as EventListener,
+    );
+    window.addEventListener(
+      "rapago:driver-reservation-inbox-updated",
+      tick as EventListener,
+    );
+    window.addEventListener(
+      "rapago:admin-scheduled-rides-updated",
+      tick as EventListener,
+    );
+    window.addEventListener(
+      DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT,
+      tick as EventListener,
+    );
     window.addEventListener("storage", tick);
 
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", tick);
-      window.removeEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, tick as EventListener);
-      window.removeEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
-      window.removeEventListener("rapago:driver-reservation-inbox-updated", tick as EventListener);
-      window.removeEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
-      window.removeEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, tick as EventListener);
+      window.removeEventListener(
+        DRIVER_SCHEDULED_RESERVATION_EVENT,
+        tick as EventListener,
+      );
+      window.removeEventListener(
+        DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT,
+        tick as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:driver-reservation-inbox-updated",
+        tick as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:admin-scheduled-rides-updated",
+        tick as EventListener,
+      );
+      window.removeEventListener(
+        DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT,
+        tick as EventListener,
+      );
       window.removeEventListener("storage", tick);
     };
-  }, [
-    isDriverAvailable,
-    loadAvailableRideForAlert,
-    stopRideAlert,
-  ]);
+  }, [isDriverAvailable, loadAvailableRideForAlert, stopRideAlert]);
 
   useEffect(() => {
     return () => stopRideAlert(true);
@@ -12858,7 +14808,8 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
     markDriverRideRequestHandled(
       typeof ride === "string"
         ? ride
-        : (ride as unknown as Partial<AvailableRideData> & Record<string, unknown>),
+        : (ride as unknown as Partial<AvailableRideData> &
+            Record<string, unknown>),
       session?.user,
       "rejected",
     );
@@ -12875,9 +14826,13 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
     history.push(DRIVER_REQUESTS_VIEW_ROUTE);
   }
 
-  function dismissScheduledReservationAlert(ride: DriverScheduledReservationOffer): void {
+  function dismissScheduledReservationAlert(
+    ride: DriverScheduledReservationOffer,
+  ): void {
     alertedScheduledReservationKeysRef.current.add(
-      getScheduledReservationAlertKey(ride as unknown as DriverAcceptedRideBridgeRecord),
+      getScheduledReservationAlertKey(
+        ride as unknown as DriverAcceptedRideBridgeRecord,
+      ),
     );
     stopRideAlert(true);
   }
@@ -12891,7 +14846,9 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
     ride: DriverScheduledReservationOffer,
   ): Promise<void> {
     if (!isDriverAvailable) {
-      setAlertError("Estás en No disponible. Cambia a Disponible para aceptar esta reserva.");
+      setAlertError(
+        "Estás en No disponible. Cambia a Disponible para aceptar esta reserva.",
+      );
       return;
     }
 
@@ -12901,7 +14858,10 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
     const acceptWithLocation = async (
       location: { lat: number; lng: number } | null,
     ): Promise<void> => {
-      const accepted = startDriverScheduledReservationNavigationLocally(ride, session?.user);
+      const accepted = startDriverScheduledReservationNavigationLocally(
+        ride,
+        session?.user,
+      );
       const activeAccepted = getActiveScheduledReservationRideForDriver(
         accepted as unknown as DriverAcceptedRideBridgeRecord,
         session?.user,
@@ -12923,7 +14883,11 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
       }
 
       stopRideAlert(true);
-      history.replace(activeAccepted ? ROUTES.DRIVER.ACTIVE_RIDE : DRIVER_RESERVATIONS_VIEW_ROUTE);
+      history.replace(
+        activeAccepted
+          ? ROUTES.DRIVER.ACTIVE_RIDE
+          : DRIVER_RESERVATIONS_VIEW_ROUTE,
+      );
     };
 
     try {
@@ -12939,14 +14903,22 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
             lng: position.coords.longitude,
           })
             .catch((err) => {
-              setAlertError(err instanceof Error ? err.message : "No se pudo aceptar la reserva.");
+              setAlertError(
+                err instanceof Error
+                  ? err.message
+                  : "No se pudo aceptar la reserva.",
+              );
             })
             .finally(() => setAccepting(false));
         },
         () => {
           void acceptWithLocation(null)
             .catch((err) => {
-              setAlertError(err instanceof Error ? err.message : "No se pudo aceptar la reserva.");
+              setAlertError(
+                err instanceof Error
+                  ? err.message
+                  : "No se pudo aceptar la reserva.",
+              );
             })
             .finally(() => setAccepting(false));
         },
@@ -12954,7 +14926,9 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
       );
       return;
     } catch (err) {
-      setAlertError(err instanceof Error ? err.message : "No se pudo aceptar la reserva.");
+      setAlertError(
+        err instanceof Error ? err.message : "No se pudo aceptar la reserva.",
+      );
     } finally {
       if (!navigator.geolocation) setAccepting(false);
     }
@@ -12982,10 +14956,10 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
       let acceptedPayload: Record<string, unknown>;
 
       try {
-        acceptedPayload = await ridesService.acceptRideRequest(
+        acceptedPayload = (await ridesService.acceptRideRequest(
           session.accessToken!,
           ride.id,
-        ) as unknown as Record<string, unknown>;
+        )) as unknown as Record<string, unknown>;
       } catch (err) {
         const localRequeued = getAvailableRideById(ride.id, [ride]);
 
@@ -12994,7 +14968,8 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
         // Si pasa eso, aceptamos el viaje localmente y limpiamos la cola.
         if (
           !localRequeued ||
-          (!isCancelledRideConflictMessage(err) && !rideCanBeAcceptedLocallyAfterRequeue(localRequeued))
+          (!isCancelledRideConflictMessage(err) &&
+            !rideCanBeAcceptedLocallyAfterRequeue(localRequeued))
         ) {
           throw err;
         }
@@ -13011,10 +14986,17 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
       );
 
       const acceptedForDriver = currentActiveRide
-        ? saveDriverNextRideAfterCurrent(accepted, currentActiveRide, session?.user)
+        ? saveDriverNextRideAfterCurrent(
+            accepted,
+            currentActiveRide,
+            session?.user,
+          )
         : saveDriverActiveRideLocalMirror(accepted, session?.user);
 
-      publishAcceptedDriverVehicleToPassenger(acceptedForDriver as unknown as DriverAcceptedRideBridgeRecord, session?.user);
+      publishAcceptedDriverVehicleToPassenger(
+        acceptedForDriver as unknown as DriverAcceptedRideBridgeRecord,
+        session?.user,
+      );
       markDriverRideRequestHandled(
         acceptedForDriver as unknown as Record<string, unknown>,
         session?.user,
@@ -13041,8 +15023,16 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
         setAlertError(null);
 
         // No cambiamos de pantalla: la navegación actual sigue intacta.
-        window.dispatchEvent(new CustomEvent(RAPAGO_DRIVER_NEXT_RIDES_EVENT, { detail: { ride: acceptedForDriver } }));
-        window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { ride: acceptedForDriver } }));
+        window.dispatchEvent(
+          new CustomEvent(RAPAGO_DRIVER_NEXT_RIDES_EVENT, {
+            detail: { ride: acceptedForDriver },
+          }),
+        );
+        window.dispatchEvent(
+          new CustomEvent("rapago:driver-rides-updated", {
+            detail: { ride: acceptedForDriver },
+          }),
+        );
         return;
       }
 
@@ -13144,10 +15134,10 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
           display: "flex",
           alignItems: "flex-end",
           justifyContent: "center",
-          padding: "18px 18px calc(18px + env(safe-area-inset-bottom, 0px)) 18px",
+          padding:
+            "18px 18px calc(18px + env(safe-area-inset-bottom, 0px)) 18px",
           pointerEvents: "auto",
-        }}
-      >
+        }}>
         <div
           role="dialog"
           aria-modal="true"
@@ -13162,8 +15152,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
             border: "2px solid rgba(255,255,255,.65)",
             boxShadow: "0 28px 80px rgba(0,0,0,.55)",
             animation: "rapagoRideAlertIn .22s ease-out",
-          }}
-        >
+          }}>
           <div
             style={{
               padding: "16px 18px",
@@ -13173,8 +15162,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               alignItems: "center",
               justifyContent: "space-between",
               gap: 12,
-            }}
-          >
+            }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div
                 aria-hidden="true"
@@ -13188,17 +15176,26 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                   justifyContent: "center",
                   boxShadow: "0 0 26px rgba(255,211,61,.45)",
                   fontSize: 26,
-                }}
-              >
+                }}>
                 <IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />
               </div>
 
               <div>
-                <div id="rapago-driver-scheduled-alert-title" style={{ fontSize: "1.1rem", fontWeight: 950, lineHeight: 1.1 }}>
+                <div
+                  id="rapago-driver-scheduled-alert-title"
+                  style={{
+                    fontSize: "1.1rem",
+                    fontWeight: 950,
+                    lineHeight: 1.1,
+                  }}>
                   Viaje agendado listo
                 </div>
-                <div style={{ fontSize: ".78rem", opacity: 0.86, marginTop: 3 }}>
-                  Tenemos agendado tu viaje · {getScheduledReservationCountdownText(ride as unknown as DriverAcceptedRideBridgeRecord)}
+                <div
+                  style={{ fontSize: ".78rem", opacity: 0.86, marginTop: 3 }}>
+                  Tenemos agendado tu viaje ·{" "}
+                  {getScheduledReservationCountdownText(
+                    ride as unknown as DriverAcceptedRideBridgeRecord,
+                  )}
                 </div>
               </div>
             </div>
@@ -13208,16 +15205,26 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               color="light"
               onClick={() => dismissScheduledReservationAlert(ride)}
               aria-label="Cerrar aviso de viaje agendado"
-              style={{ "--border-radius": "999px" } as CSSProperties}
-            >
+              style={{ "--border-radius": "999px" } as CSSProperties}>
               <IonIcon icon={closeOutline} slot="icon-only" />
             </IonButton>
           </div>
 
           <div style={{ padding: "18px" }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginBottom: 14,
+              }}>
               <IonChip color="warning" style={{ fontWeight: 950 }}>
-                <IonIcon icon={calendarOutline} aria-hidden="true" style={{ fontSize: "1em" }} /> Reserva asignada
+                <IonIcon
+                  icon={calendarOutline}
+                  aria-hidden="true"
+                  style={{ fontSize: "1em" }}
+                />{" "}
+                Reserva asignada
               </IonChip>
               <IonChip color="success" style={{ fontWeight: 950 }}>
                 {vehicleEmoji} {vehicleLabel}
@@ -13227,7 +15234,11 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               </IonChip>
             </div>
 
-            <DriverFastSearchBadge ride={ride as unknown as RideWithFarePayload & Record<string, unknown>} />
+            <DriverFastSearchBadge
+              ride={
+                ride as unknown as RideWithFarePayload & Record<string, unknown>
+              }
+            />
             <PassengerRideNoteCard ride={ride} />
 
             <div
@@ -13237,13 +15248,21 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                 border: "1px solid rgba(210,164,58,.35)",
                 padding: "14px",
                 boxShadow: "0 10px 24px rgba(0,0,0,.10)",
-              }}
-            >
-              <div style={{ color: "#22c55e", fontSize: ".72rem", fontWeight: 950 }}>
+              }}>
+              <div
+                style={{
+                  color: "#22c55e",
+                  fontSize: ".72rem",
+                  fontWeight: 950,
+                }}>
                 VE A BUSCAR AL USUARIO
               </div>
-              <div style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3 }}>
-                {getDriverRidePointDisplayLabel(ride as unknown as Record<string, unknown>, "origin")}
+              <div
+                style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3 }}>
+                {getDriverRidePointDisplayLabel(
+                  ride as unknown as Record<string, unknown>,
+                  "origin",
+                )}
               </div>
 
               <div
@@ -13256,11 +15275,20 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                 }}
               />
 
-              <div style={{ color: "#ef4444", fontSize: ".72rem", fontWeight: 950 }}>
+              <div
+                style={{
+                  color: "#ef4444",
+                  fontSize: ".72rem",
+                  fontWeight: 950,
+                }}>
                 DESTINO DEL PASAJERO
               </div>
-              <div style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3 }}>
-                {cleanPointDisplayName(ride.destinationText, "Destino reservado")}
+              <div
+                style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3 }}>
+                {cleanPointDisplayName(
+                  ride.destinationText,
+                  "Destino reservado",
+                )}
               </div>
             </div>
 
@@ -13275,36 +15303,62 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                 justifyContent: "space-between",
                 alignItems: "center",
                 gap: 12,
-              }}
-            >
+              }}>
               <div>
-                <div style={{ fontSize: ".72rem", color: "#f6d98e", fontWeight: 950 }}>
+                <div
+                  style={{
+                    fontSize: ".72rem",
+                    color: "#f6d98e",
+                    fontWeight: 950,
+                  }}>
                   TARIFA RESERVADA
                 </div>
-                <div style={{ fontSize: "1.5rem", fontWeight: 950, marginTop: 2 }}>
+                <div
+                  style={{ fontSize: "1.5rem", fontWeight: 950, marginTop: 2 }}>
                   {formatClp(fareClp)}
                 </div>
               </div>
-              <div style={{ fontSize: ".78rem", fontWeight: 900, textAlign: "right" }}>
+              <div
+                style={{
+                  fontSize: ".78rem",
+                  fontWeight: 900,
+                  textAlign: "right",
+                }}>
                 Confirmada por admin
               </div>
             </div>
 
             {alertError && (
               <IonText color="danger">
-                <p style={{ margin: "10px 0 0", fontWeight: 900, fontSize: ".82rem" }}>
+                <p
+                  style={{
+                    margin: "10px 0 0",
+                    fontWeight: 900,
+                    fontSize: ".82rem",
+                  }}>
                   {alertError}
                 </p>
               </IonText>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "0.85fr 1.15fr", gap: 12, marginTop: 16 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "0.85fr 1.15fr",
+                gap: 12,
+                marginTop: 16,
+              }}>
               <IonButton
                 expand="block"
                 color="medium"
                 onClick={() => dismissScheduledReservationAlert(ride)}
-                style={{ "--border-radius": "17px", height: "54px", fontWeight: 950 } as CSSProperties}
-              >
+                style={
+                  {
+                    "--border-radius": "17px",
+                    height: "54px",
+                    fontWeight: 950,
+                  } as CSSProperties
+                }>
                 Ver después
               </IonButton>
 
@@ -13313,8 +15367,14 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                 color="warning"
                 disabled={accepting}
                 onClick={() => void acceptScheduledReservationFromAlert(ride)}
-                style={{ "--border-radius": "17px", height: "54px", "--color": "#111", fontWeight: 950 } as CSSProperties}
-              >
+                style={
+                  {
+                    "--border-radius": "17px",
+                    height: "54px",
+                    "--color": "#111",
+                    fontWeight: 950,
+                  } as CSSProperties
+                }>
                 {accepting ? <IonSpinner name="dots" /> : "Iniciar viaje"}
               </IonButton>
             </div>
@@ -13324,8 +15384,13 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               fill="clear"
               color="dark"
               onClick={goToScheduledReservations}
-              style={{ marginTop: 8, "--border-radius": "16px", fontWeight: 900 } as CSSProperties}
-            >
+              style={
+                {
+                  marginTop: 8,
+                  "--border-radius": "16px",
+                  fontWeight: 900,
+                } as CSSProperties
+              }>
               Ver en Reservas
             </IonButton>
           </div>
@@ -13364,8 +15429,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
         justifyContent: "center",
         padding: "18px 18px calc(18px + env(safe-area-inset-bottom, 0px)) 18px",
         pointerEvents: "auto",
-      }}
-    >
+      }}>
       <div
         role="dialog"
         aria-modal="true"
@@ -13383,8 +15447,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
           border: "2px solid rgba(255,255,255,.65)",
           boxShadow: "0 28px 80px rgba(0,0,0,.55)",
           animation: "rapagoRideAlertIn .22s ease-out",
-        }}
-      >
+        }}>
         <div
           style={{
             flex: "0 0 auto",
@@ -13395,8 +15458,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 12,
-          }}
-        >
+          }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
               aria-hidden="true"
@@ -13409,8 +15471,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                 alignItems: "center",
                 justifyContent: "center",
                 boxShadow: "0 0 26px rgba(255,211,61,.45)",
-              }}
-            >
+              }}>
               <IonIcon
                 icon={notificationsOutline}
                 style={{ fontSize: 28, color: "#ffd33d" }}
@@ -13420,9 +15481,14 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
             <div>
               <div
                 id="rapago-driver-ride-alert-title"
-                style={{ fontSize: "1.1rem", fontWeight: 950, lineHeight: 1.1 }}
-              >
-                {isNextServiceAlert ? "Nuevo servicio para continuar" : "Nueva solicitud de viaje"}
+                style={{
+                  fontSize: "1.1rem",
+                  fontWeight: 950,
+                  lineHeight: 1.1,
+                }}>
+                {isNextServiceAlert
+                  ? "Nuevo servicio para continuar"
+                  : "Nueva solicitud de viaje"}
               </div>
               <div style={{ fontSize: ".78rem", opacity: 0.84, marginTop: 3 }}>
                 {isNextServiceAlert
@@ -13442,21 +15508,25 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               fontSize: ".68rem",
               fontWeight: 950,
               whiteSpace: "nowrap",
-            }}
-          >
+            }}>
             RESPONDER
           </span>
         </div>
 
-        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "18px" }}>
+        <div
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflowY: "auto",
+            padding: "18px",
+          }}>
           <div
             style={{
               display: "flex",
               gap: 8,
               flexWrap: "wrap",
               marginBottom: 14,
-            }}
-          >
+            }}>
             <IonChip color="success" style={{ fontWeight: 950 }}>
               <IonIcon icon={volumeHighOutline} aria-hidden="true" />
               <IonLabel>Alerta activa</IonLabel>
@@ -13472,7 +15542,12 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
             </IonChip>
           </div>
 
-          <DriverFastSearchBadge ride={rideAlert as unknown as RideWithFarePayload & Record<string, unknown>} />
+          <DriverFastSearchBadge
+            ride={
+              rideAlert as unknown as RideWithFarePayload &
+                Record<string, unknown>
+            }
+          />
           <PassengerRideNoteCard ride={rideAlert} />
 
           <div
@@ -13482,11 +15557,9 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               border: "1px solid rgba(210,164,58,.35)",
               padding: "14px",
               boxShadow: "0 10px 24px rgba(0,0,0,.10)",
-            }}
-          >
+            }}>
             <div
-              style={{ color: "#22c55e", fontSize: ".72rem", fontWeight: 950 }}
-            >
+              style={{ color: "#22c55e", fontSize: ".72rem", fontWeight: 950 }}>
               RECOGER EN
             </div>
             <div style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3 }}>
@@ -13504,8 +15577,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
             />
 
             <div
-              style={{ color: "#ef4444", fontSize: ".72rem", fontWeight: 950 }}
-            >
+              style={{ color: "#ef4444", fontSize: ".72rem", fontWeight: 950 }}>
               DESTINO
             </div>
             <div style={{ fontWeight: 950, fontSize: "1.02rem", marginTop: 3 }}>
@@ -13524,21 +15596,18 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               justifyContent: "space-between",
               alignItems: "center",
               gap: 12,
-            }}
-          >
+            }}>
             <div>
               <div
                 style={{
                   fontSize: ".72rem",
                   color: "#f6d98e",
                   fontWeight: 950,
-                }}
-              >
+                }}>
                 PRECIO DEL VIAJE
               </div>
               <div
-                style={{ fontSize: "1.5rem", fontWeight: 950, marginTop: 2 }}
-              >
+                style={{ fontSize: "1.5rem", fontWeight: 950, marginTop: 2 }}>
                 {formatClp(fareClp)}
               </div>
             </div>
@@ -13548,8 +15617,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                 fontSize: ".78rem",
                 fontWeight: 900,
                 textAlign: "right",
-              }}
-            ></div>
+              }}></div>
           </div>
 
           {alertError && (
@@ -13559,8 +15627,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                   margin: "10px 0 0",
                   fontWeight: 900,
                   fontSize: ".82rem",
-                }}
-              >
+                }}>
                 {alertError}
               </p>
             </IonText>
@@ -13574,8 +15641,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               gridTemplateColumns: "0.85fr 1.15fr",
               gap: 12,
               marginTop: 16,
-            }}
-          >
+            }}>
             <IonButton
               expand="block"
               color="danger"
@@ -13586,8 +15652,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                   height: "54px",
                   fontWeight: 950,
                 } as CSSProperties
-              }
-            >
+              }>
               Rechazar
             </IonButton>
 
@@ -13603,9 +15668,14 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                   "--color": "#111",
                   fontWeight: 950,
                 } as CSSProperties
-              }
-            >
-              {accepting ? <IonSpinner name="dots" /> : isNextServiceAlert ? "Aceptar próximo" : "Aceptar viaje"}
+              }>
+              {accepting ? (
+                <IonSpinner name="dots" />
+              ) : isNextServiceAlert ? (
+                "Aceptar próximo"
+              ) : (
+                "Aceptar viaje"
+              )}
             </IonButton>
           </div>
 
@@ -13622,8 +15692,7 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               color: "#3f2a14",
               fontWeight: 900,
               cursor: "pointer",
-            }}
-          >
+            }}>
             Ver lista de solicitudes
           </button>
           <div
@@ -13633,9 +15702,9 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
               lineHeight: 1.35,
               color: "#5b4630",
               fontWeight: 850,
-            }}
-          >
-            Este aviso permanece hasta que aceptes, rechaces o la solicitud expire.
+            }}>
+            Este aviso permanece hasta que aceptes, rechaces o la solicitud
+            expire.
           </div>
         </div>
       </div>
@@ -13653,7 +15722,8 @@ function AssignedRidesPage({
   const history = useHistory();
   const location = useLocation();
   const driverAvailabilityUser = session?.user as
-    DriverAvailabilityUser | undefined;
+    | DriverAvailabilityUser
+    | undefined;
   const driverConnection = useRapaGoConnectivityMonitor("driver");
 
   const requestView = new URLSearchParams(location.search).get("view");
@@ -13665,8 +15735,7 @@ function AssignedRidesPage({
   const isActiveRidePage =
     location.pathname === ROUTES.DRIVER.ACTIVE_RIDE ||
     location.pathname.includes("/driver/active-ride");
-  const isDriverOperationPageActive =
-    isRequestsPageActive || isActiveRidePage;
+  const isDriverOperationPageActive = isRequestsPageActive || isActiveRidePage;
 
   type DriverRideData =
     import("../../features/rides/rides.service").DriverRideData;
@@ -13674,8 +15743,12 @@ function AssignedRidesPage({
     import("../../features/rides/rides.service").AvailableRideData;
 
   const [availableRides, setAvailableRides] = useState<AvailableRideData[]>([]);
-  const [reservationOffers, setReservationOffers] = useState<DriverScheduledReservationOffer[]>([]);
-  const [confirmedReservationOffers, setConfirmedReservationOffers] = useState<DriverScheduledReservationOffer[]>([]);
+  const [reservationOffers, setReservationOffers] = useState<
+    DriverScheduledReservationOffer[]
+  >([]);
+  const [confirmedReservationOffers, setConfirmedReservationOffers] = useState<
+    DriverScheduledReservationOffer[]
+  >([]);
   const [assignedRides, setAssignedRides] = useState<DriverRideData[]>([]);
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
@@ -13687,7 +15760,10 @@ function AssignedRidesPage({
     lng: number;
   } | null>(null);
   const driverLocationRef = useRef<{ lat: number; lng: number } | null>(null);
-  const lastPublishedDriverLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastPublishedDriverLocationRef = useRef<{
+    lat: number;
+    lng: number;
+  } | null>(null);
   const liveDriverHeadingRef = useRef<number | null>(null);
   const activeRideTrackingPayloadRef = useRef<DriverRideData | null>(null);
   const driverTrackingUserRef = useRef(session?.user);
@@ -13700,10 +15776,14 @@ function AssignedRidesPage({
   const [rideAlertSecondsLeft, setRideAlertSecondsLeft] = useState(60);
   const [scheduledReservationReadyAlert, setScheduledReservationReadyAlert] =
     useState<DriverScheduledReservationOffer | null>(null);
-  const [scheduledReservationAlertSecondsLeft, setScheduledReservationAlertSecondsLeft] =
-    useState(60);
-  const [cancelConfirmRide, setCancelConfirmRide] = useState<DriverRideData | null>(null);
-  const [completeConfirmRide, setCompleteConfirmRide] = useState<DriverRideData | null>(null);
+  const [
+    scheduledReservationAlertSecondsLeft,
+    setScheduledReservationAlertSecondsLeft,
+  ] = useState(60);
+  const [cancelConfirmRide, setCancelConfirmRide] =
+    useState<DriverRideData | null>(null);
+  const [completeConfirmRide, setCompleteConfirmRide] =
+    useState<DriverRideData | null>(null);
   const [passengerCancelNotice, setPassengerCancelNotice] = useState<{
     route: string;
     message: string;
@@ -13712,7 +15792,8 @@ function AssignedRidesPage({
   const rideAlertControllerRef = useRef<RideRequestAlertController | null>(
     null,
   );
-  const scheduledReservationAlertControllerRef = useRef<RideRequestAlertController | null>(null);
+  const scheduledReservationAlertControllerRef =
+    useRef<RideRequestAlertController | null>(null);
   const alertedRideIdsRef = useRef<Set<string>>(new Set());
   const alertedScheduledReservationKeysRef = useRef<Set<string>>(new Set());
   const requestsLoadInFlightRef = useRef(false);
@@ -13743,13 +15824,23 @@ function AssignedRidesPage({
     driverConnection.blocked,
   ]);
 
-  const isDriverAvailable = driverAvailability === "available" && !driverConnection.blocked;
-  const activeRide = assignedRides.find((ride) =>
-    driverScheduledReservationNavigationStarted(ride as unknown as Record<string, unknown>) ||
-    !driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>),
-  ) ?? null;
+  const isDriverAvailable =
+    driverAvailability === "available" && !driverConnection.blocked;
+  const activeRide =
+    assignedRides.find(
+      (ride) =>
+        driverScheduledReservationNavigationStarted(
+          ride as unknown as Record<string, unknown>,
+        ) ||
+        !driverRideLooksLikeScheduledReservation(
+          ride as unknown as Record<string, unknown>,
+        ),
+    ) ?? null;
   const displayedAvailableRides = showOnlyReservations ? [] : availableRides;
-  const nextQueuedRide = getDriverNextRideForActiveRide(activeRide, session?.user);
+  const nextQueuedRide = getDriverNextRideForActiveRide(
+    activeRide,
+    session?.user,
+  );
 
   useEffect(() => {
     if (!showActiveRideOnly || loading || activeRide) return;
@@ -13788,15 +15879,21 @@ function AssignedRidesPage({
   const [driverSosOpen, setDriverSosOpen] = useState(false);
 
   const driverWaitingPassengerAtPoint = activeRide?.status === "driver_arrived";
-  const [activeRideNoShowNowMs, setActiveRideNoShowNowMs] = useState(() => Date.now());
+  const [activeRideNoShowNowMs, setActiveRideNoShowNowMs] = useState(() =>
+    Date.now(),
+  );
 
   useEffect(() => {
     if (!driverWaitingPassengerAtPoint) return;
 
-    const interval = window.setInterval(() => setActiveRideNoShowNowMs(Date.now()), 1000);
+    const interval = window.setInterval(
+      () => setActiveRideNoShowNowMs(Date.now()),
+      1000,
+    );
     return () => window.clearInterval(interval);
   }, [driverWaitingPassengerAtPoint, activeRide?.id]);
-  const reservationsTotal = reservationOffers.length + confirmedReservationOffers.length;
+  const reservationsTotal =
+    reservationOffers.length + confirmedReservationOffers.length;
   const activeRideTrackingStatus = String(activeRide?.status ?? "");
   const activeRideTrackingId =
     activeRide &&
@@ -13810,208 +15907,22 @@ function AssignedRidesPage({
   driverTrackingUserRef.current = session?.user;
 
   useEffect(() => {
-    const refreshNextQueue = () => setNextRideQueueVersion((value) => value + 1);
-    window.addEventListener(RAPAGO_DRIVER_NEXT_RIDES_EVENT, refreshNextQueue as EventListener);
+    const refreshNextQueue = () =>
+      setNextRideQueueVersion((value) => value + 1);
+    window.addEventListener(
+      RAPAGO_DRIVER_NEXT_RIDES_EVENT,
+      refreshNextQueue as EventListener,
+    );
     window.addEventListener("storage", refreshNextQueue as EventListener);
     return () => {
-      window.removeEventListener(RAPAGO_DRIVER_NEXT_RIDES_EVENT, refreshNextQueue as EventListener);
+      window.removeEventListener(
+        RAPAGO_DRIVER_NEXT_RIDES_EVENT,
+        refreshNextQueue as EventListener,
+      );
       window.removeEventListener("storage", refreshNextQueue as EventListener);
     };
   }, []);
   void nextRideQueueVersion;
-
-  useEffect(() => {
-    const accessToken = session?.accessToken;
-    const rideId = activeRideTrackingId;
-
-    if (!accessToken || !rideId) {
-      void rideLocationService.stopNativeBackground();
-      return;
-    }
-
-    let cancelled = false;
-    let stopForegroundWatch: (() => Promise<void>) | null = null;
-    let publishing = false;
-    let pendingPoint: DriverRideLocationPoint | null = null;
-    let lastBackendWarningAt = 0;
-
-    const publishLatestPoint = async (
-      initialPoint: DriverRideLocationPoint,
-    ): Promise<void> => {
-      pendingPoint = initialPoint;
-      if (publishing) return;
-
-      publishing = true;
-
-      try {
-        while (!cancelled && pendingPoint) {
-          const point = pendingPoint;
-          pendingPoint = null;
-
-          try {
-            await rideLocationService.publish(accessToken, rideId, point);
-          } catch (caught) {
-            const now = Date.now();
-
-            if (now - lastBackendWarningAt >= 15_000) {
-              lastBackendWarningAt = now;
-              console.warn(
-                "[RAPA GO] No se pudo sincronizar una ubicación del conductor",
-                caught,
-              );
-            }
-          }
-        }
-      } finally {
-        publishing = false;
-      }
-    };
-
-    const applyRealDriverPoint = (point: DriverRideLocationPoint): void => {
-      if (cancelled) return;
-
-      const lat = Number(point.lat);
-      const lng = Number(point.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-
-      const nextLocation = { lat, lng };
-      const previousLocation = lastPublishedDriverLocationRef.current;
-      const movedMeters = previousLocation
-        ? distanceMetersForLiveDriverGps(previousLocation, nextLocation)
-        : Number.POSITIVE_INFINITY;
-
-      let heading =
-        point.headingDegrees != null &&
-        Number.isFinite(Number(point.headingDegrees))
-          ? Number(point.headingDegrees)
-          : liveDriverHeadingRef.current;
-
-      if (previousLocation && movedMeters >= 4) {
-        heading = bearingDegreesForLiveDriverGps(
-          previousLocation,
-          nextLocation,
-        );
-      }
-
-      liveDriverHeadingRef.current = heading ?? null;
-      lastPublishedDriverLocationRef.current = nextLocation;
-      driverLocationRef.current = nextLocation;
-      setDriverLocation(nextLocation);
-      setLocationError(null);
-
-      const trackedRide = activeRideTrackingPayloadRef.current;
-      if (trackedRide && String(trackedRide.id) === rideId) {
-        publishDriverLiveLocationForPassenger(
-          trackedRide,
-          {
-            lat,
-            lng,
-            heading: heading ?? null,
-            speed: point.speedMetersPerSecond ?? null,
-            accuracy: point.accuracyMeters ?? null,
-          },
-          heading ?? null,
-          driverTrackingUserRef.current,
-        );
-      }
-
-      try {
-        localStorage.setItem(
-          "rapago_current_driver_location",
-          JSON.stringify({
-            rideId,
-            lat,
-            lng,
-            heading: heading ?? null,
-            speed: point.speedMetersPerSecond ?? null,
-            accuracy: point.accuracyMeters ?? null,
-            updatedAt: point.capturedAt,
-            ...getDriverVehiclePublicPayload(driverTrackingUserRef.current),
-          }),
-        );
-      } catch {
-        // El backend sigue siendo la autoridad del GPS.
-      }
-
-      void publishLatestPoint({
-        ...point,
-        headingDegrees: heading ?? point.headingDegrees ?? null,
-      });
-    };
-
-    async function startTracking(): Promise<void> {
-      try {
-        const initialPoint = await rideLocationService.current();
-        applyRealDriverPoint(initialPoint);
-      } catch (caught) {
-        if (!cancelled) {
-          setLocationError(
-            caught instanceof Error
-              ? caught.message
-              : "No se pudo obtener la ubicación real del conductor.",
-          );
-        }
-      }
-
-      try {
-        const stop = await rideLocationService.watch(
-          applyRealDriverPoint,
-          (message) => {
-            if (!cancelled) {
-              setLocationError(
-                message || "Se interrumpió la señal GPS del conductor.",
-              );
-            }
-          },
-        );
-
-        if (cancelled) {
-          await stop();
-        } else {
-          stopForegroundWatch = stop;
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setLocationError(
-            caught instanceof Error
-              ? caught.message
-              : "No se pudo iniciar el seguimiento GPS.",
-          );
-        }
-      }
-
-      try {
-        await rideLocationService.startNativeBackground(
-          accessToken,
-          rideId,
-        );
-      } catch (caught) {
-        // El seguimiento foreground continúa. En Android/iOS se registra el
-        // problema para revisarlo sin ocultar el mapa al conductor.
-        console.warn(
-          "[RAPA GO] Seguimiento nativo en segundo plano no disponible",
-          caught,
-        );
-      }
-    }
-
-    void startTracking();
-
-    return () => {
-      cancelled = true;
-      pendingPoint = null;
-
-      if (stopForegroundWatch) {
-        void stopForegroundWatch();
-      }
-
-      void rideLocationService.stopNativeBackground();
-    };
-  }, [
-    activeRideTrackingId,
-    activeRideTrackingStatus,
-    session?.accessToken,
-  ]);
 
   const stopRideRequestAlert = useCallback((clearCurrentRide = true): void => {
     rideAlertControllerRef.current?.stop();
@@ -14024,43 +15935,83 @@ function AssignedRidesPage({
 
   useEffect(() => {
     const stopFromAnywhere = (event: Event) => {
-      const rideId = String((event as CustomEvent<{ rideId?: string }>).detail?.rideId ?? "").trim();
+      const rideId = String(
+        (event as CustomEvent<{ rideId?: string }>).detail?.rideId ?? "",
+      ).trim();
       if (rideId) alertedRideIdsRef.current.add(rideId);
       stopRideRequestAlert(true);
     };
 
-    window.addEventListener(RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT, stopFromAnywhere as EventListener);
-    return () => window.removeEventListener(RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT, stopFromAnywhere as EventListener);
+    window.addEventListener(
+      RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT,
+      stopFromAnywhere as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        RAPAGO_DRIVER_RIDE_ALERT_STOP_EVENT,
+        stopFromAnywhere as EventListener,
+      );
   }, [stopRideRequestAlert]);
 
   useEffect(() => {
-    if (!isDriverOperationPageActive || document.visibilityState !== "visible") return;
+    if (!isDriverOperationPageActive || document.visibilityState !== "visible")
+      return;
 
-    const notifyPassengerCancelled = (cancelledRide: Record<string, unknown>) => {
-      if (!claimDriverPassengerCancelNoticeOnce(cancelledRide, session?.user)) return;
+    const notifyPassengerCancelled = (
+      cancelledRide: Record<string, unknown>,
+    ) => {
+      if (!claimDriverPassengerCancelNoticeOnce(cancelledRide, session?.user))
+        return;
       markDriverRidePassengerCancelledLocally(cancelledRide);
       removeDriverRideAfterPassengerCancel(cancelledRide);
 
-      const cancelledTitle = getDriverRideRouteDisplayLabel(cancelledRide as {
-        originText?: string | null;
-        destinationText?: string | null;
-        notes?: string | null;
-      });
-      const cancellationReason = getPassengerCancellationReasonForDriver(cancelledRide);
+      const cancelledTitle = getDriverRideRouteDisplayLabel(
+        cancelledRide as {
+          originText?: string | null;
+          destinationText?: string | null;
+          notes?: string | null;
+        },
+      );
+      const cancellationReason =
+        getPassengerCancellationReasonForDriver(cancelledRide);
 
       stopRideRequestAlert(true);
       setRideAlert(null);
       setAssignedRides((prev) =>
-        prev.filter((ride) => !driverRideMatchesPassengerCancelledRecord(ride as unknown as Record<string, unknown>, cancelledRide)),
+        prev.filter(
+          (ride) =>
+            !driverRideMatchesPassengerCancelledRecord(
+              ride as unknown as Record<string, unknown>,
+              cancelledRide,
+            ),
+        ),
       );
       setAvailableRides((prev) =>
-        prev.filter((ride) => !driverRideMatchesPassengerCancelledRecord(ride as unknown as Record<string, unknown>, cancelledRide)),
+        prev.filter(
+          (ride) =>
+            !driverRideMatchesPassengerCancelledRecord(
+              ride as unknown as Record<string, unknown>,
+              cancelledRide,
+            ),
+        ),
       );
       setReservationOffers((prev) =>
-        prev.filter((ride) => !driverRideMatchesPassengerCancelledRecord(ride as unknown as Record<string, unknown>, cancelledRide)),
+        prev.filter(
+          (ride) =>
+            !driverRideMatchesPassengerCancelledRecord(
+              ride as unknown as Record<string, unknown>,
+              cancelledRide,
+            ),
+        ),
       );
       setConfirmedReservationOffers((prev) =>
-        prev.filter((ride) => !driverRideMatchesPassengerCancelledRecord(ride as unknown as Record<string, unknown>, cancelledRide)),
+        prev.filter(
+          (ride) =>
+            !driverRideMatchesPassengerCancelledRecord(
+              ride as unknown as Record<string, unknown>,
+              cancelledRide,
+            ),
+        ),
       );
 
       setError(`El pasajero canceló el viaje. Motivo: ${cancellationReason}`);
@@ -14080,25 +16031,42 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
     };
 
     const checkPassengerCancelled = (event?: Event) => {
-      const detail = (event as CustomEvent<{ cancelled?: unknown; ride?: unknown }> | undefined)?.detail;
+      const detail = (
+        event as
+          | CustomEvent<{ cancelled?: unknown; ride?: unknown }>
+          | undefined
+      )?.detail;
       const eventRecord =
         detail?.cancelled && typeof detail.cancelled === "object"
-          ? detail.cancelled as Record<string, unknown>
+          ? (detail.cancelled as Record<string, unknown>)
           : detail?.ride && typeof detail.ride === "object"
-            ? detail.ride as Record<string, unknown>
+            ? (detail.ride as Record<string, unknown>)
             : null;
 
       const candidates: Array<Record<string, unknown>> = [
-        ...assignedRides.map((ride) => ride as unknown as Record<string, unknown>),
-        ...availableRides.map((ride) => ride as unknown as Record<string, unknown>),
+        ...assignedRides.map(
+          (ride) => ride as unknown as Record<string, unknown>,
+        ),
+        ...availableRides.map(
+          (ride) => ride as unknown as Record<string, unknown>,
+        ),
         ...(rideAlert ? [rideAlert as unknown as Record<string, unknown>] : []),
-        ...(scheduledReservationReadyAlert ? [scheduledReservationReadyAlert as unknown as Record<string, unknown>] : []),
+        ...(scheduledReservationReadyAlert
+          ? [
+              scheduledReservationReadyAlert as unknown as Record<
+                string,
+                unknown
+              >,
+            ]
+          : []),
       ];
 
       if (eventRecord && isRidePassengerCancelledForDriver(eventRecord)) {
         const matchesVisibleRide =
           candidates.length === 0 ||
-          candidates.some((ride) => driverRideMatchesPassengerCancelledRecord(ride, eventRecord));
+          candidates.some((ride) =>
+            driverRideMatchesPassengerCancelledRecord(ride, eventRecord),
+          );
 
         if (matchesVisibleRide) {
           notifyPassengerCancelled(eventRecord);
@@ -14119,19 +16087,49 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
 
     const timerId = window.setInterval(checkPassengerCancelled, 1200);
 
-    window.addEventListener("rapago:passenger-rides-updated", checkPassengerCancelled as EventListener);
-    window.addEventListener("rapago:driver-available-rides-updated", checkPassengerCancelled as EventListener);
-    window.addEventListener(RAPAGO_REQUEUED_RIDES_EVENT, checkPassengerCancelled as EventListener);
-    window.addEventListener(RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT, checkPassengerCancelled as EventListener);
-    window.addEventListener("storage", checkPassengerCancelled as EventListener);
+    window.addEventListener(
+      "rapago:passenger-rides-updated",
+      checkPassengerCancelled as EventListener,
+    );
+    window.addEventListener(
+      "rapago:driver-available-rides-updated",
+      checkPassengerCancelled as EventListener,
+    );
+    window.addEventListener(
+      RAPAGO_REQUEUED_RIDES_EVENT,
+      checkPassengerCancelled as EventListener,
+    );
+    window.addEventListener(
+      RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT,
+      checkPassengerCancelled as EventListener,
+    );
+    window.addEventListener(
+      "storage",
+      checkPassengerCancelled as EventListener,
+    );
 
     return () => {
       window.clearInterval(timerId);
-      window.removeEventListener("rapago:passenger-rides-updated", checkPassengerCancelled as EventListener);
-      window.removeEventListener("rapago:driver-available-rides-updated", checkPassengerCancelled as EventListener);
-      window.removeEventListener(RAPAGO_REQUEUED_RIDES_EVENT, checkPassengerCancelled as EventListener);
-      window.removeEventListener(RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT, checkPassengerCancelled as EventListener);
-      window.removeEventListener("storage", checkPassengerCancelled as EventListener);
+      window.removeEventListener(
+        "rapago:passenger-rides-updated",
+        checkPassengerCancelled as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:driver-available-rides-updated",
+        checkPassengerCancelled as EventListener,
+      );
+      window.removeEventListener(
+        RAPAGO_REQUEUED_RIDES_EVENT,
+        checkPassengerCancelled as EventListener,
+      );
+      window.removeEventListener(
+        RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT,
+        checkPassengerCancelled as EventListener,
+      );
+      window.removeEventListener(
+        "storage",
+        checkPassengerCancelled as EventListener,
+      );
     };
   }, [
     assignedRides,
@@ -14159,15 +16157,18 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
     [activeRide, stopRideRequestAlert],
   );
 
-  const stopScheduledReservationReadyAlert = useCallback((clearAlert = true): void => {
-    scheduledReservationAlertControllerRef.current?.stop();
-    scheduledReservationAlertControllerRef.current = null;
+  const stopScheduledReservationReadyAlert = useCallback(
+    (clearAlert = true): void => {
+      scheduledReservationAlertControllerRef.current?.stop();
+      scheduledReservationAlertControllerRef.current = null;
 
-    if (clearAlert) {
-      setScheduledReservationReadyAlert(null);
-      setScheduledReservationAlertSecondsLeft(60);
-    }
-  }, []);
+      if (clearAlert) {
+        setScheduledReservationReadyAlert(null);
+        setScheduledReservationAlertSecondsLeft(60);
+      }
+    },
+    [],
+  );
 
   const startScheduledReservationReadyAlert = useCallback(
     (ride: DriverScheduledReservationOffer): void => {
@@ -14175,11 +16176,14 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
       stopRideRequestAlert(true);
 
       alertedScheduledReservationKeysRef.current.add(
-        getScheduledReservationAlertKey(ride as unknown as DriverAcceptedRideBridgeRecord),
+        getScheduledReservationAlertKey(
+          ride as unknown as DriverAcceptedRideBridgeRecord,
+        ),
       );
       setScheduledReservationReadyAlert(ride);
       setScheduledReservationAlertSecondsLeft(60);
-      scheduledReservationAlertControllerRef.current = startScheduledReservationAlertSound();
+      scheduledReservationAlertControllerRef.current =
+        startScheduledReservationAlertSound();
     },
     [stopRideRequestAlert, stopScheduledReservationReadyAlert],
   );
@@ -14190,7 +16194,8 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
     markDriverRideRequestHandled(
       typeof ride === "string"
         ? ride
-        : (ride as unknown as Partial<AvailableRideData> & Record<string, unknown>),
+        : (ride as unknown as Partial<AvailableRideData> &
+            Record<string, unknown>),
       session?.user,
       "rejected",
     );
@@ -14209,7 +16214,8 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
         prev,
         typeof ride === "string"
           ? ride
-          : (ride as unknown as Partial<AvailableRideData> & Record<string, unknown>),
+          : (ride as unknown as Partial<AvailableRideData> &
+              Record<string, unknown>),
       ),
     );
   }
@@ -14242,7 +16248,9 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
     if (!scheduledReservationReadyAlert) return;
 
     const countdown = window.setInterval(() => {
-      setScheduledReservationAlertSecondsLeft((current) => Math.max(0, current - 1));
+      setScheduledReservationAlertSecondsLeft((current) =>
+        Math.max(0, current - 1),
+      );
     }, 1000);
 
     return () => window.clearInterval(countdown);
@@ -14280,20 +16288,50 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
     tick();
 
     const timerId = window.setInterval(tick, 15_000);
-    window.addEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, tick as EventListener);
-    window.addEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
-    window.addEventListener("rapago:driver-reservation-inbox-updated", tick as EventListener);
-    window.addEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
-    window.addEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, tick as EventListener);
+    window.addEventListener(
+      DRIVER_SCHEDULED_RESERVATION_EVENT,
+      tick as EventListener,
+    );
+    window.addEventListener(
+      DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT,
+      tick as EventListener,
+    );
+    window.addEventListener(
+      "rapago:driver-reservation-inbox-updated",
+      tick as EventListener,
+    );
+    window.addEventListener(
+      "rapago:admin-scheduled-rides-updated",
+      tick as EventListener,
+    );
+    window.addEventListener(
+      DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT,
+      tick as EventListener,
+    );
     window.addEventListener("storage", tick as EventListener);
 
     return () => {
       window.clearInterval(timerId);
-      window.removeEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, tick as EventListener);
-      window.removeEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, tick as EventListener);
-      window.removeEventListener("rapago:driver-reservation-inbox-updated", tick as EventListener);
-      window.removeEventListener("rapago:admin-scheduled-rides-updated", tick as EventListener);
-      window.removeEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, tick as EventListener);
+      window.removeEventListener(
+        DRIVER_SCHEDULED_RESERVATION_EVENT,
+        tick as EventListener,
+      );
+      window.removeEventListener(
+        DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT,
+        tick as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:driver-reservation-inbox-updated",
+        tick as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:admin-scheduled-rides-updated",
+        tick as EventListener,
+      );
+      window.removeEventListener(
+        DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT,
+        tick as EventListener,
+      );
       window.removeEventListener("storage", tick as EventListener);
     };
   }, [
@@ -14323,7 +16361,10 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
       (ride) =>
         ride.status === "requested" &&
         !alertedRideIdsRef.current.has(ride.id) &&
-        !driverRideRequestIsHandled(ride as unknown as Record<string, unknown>, session?.user),
+        !driverRideRequestIsHandled(
+          ride as unknown as Record<string, unknown>,
+          session?.user,
+        ),
     );
 
     if (nextRide && activeRide) {
@@ -14437,256 +16478,343 @@ La solicitud fue retirada de tu pantalla. No debes continuar hacia la recogida.`
     };
   }, []);
 
-  const loadRides = useCallback(async (background = false) => {
-    if (
-      !session?.accessToken ||
-      !isDriverOperationPageActive ||
-      document.visibilityState !== "visible" ||
-      requestsLoadInFlightRef.current ||
-      Date.now() < requestsNextLoadAtRef.current
-    ) {
-      return;
-    }
-
-    requestsLoadInFlightRef.current = true;
-    requestsNextLoadAtRef.current = Date.now() + 2_000;
-
-    if (!background) {
-      setLoading(true);
-      setError(null);
-    }
-
-    try {
-      if (!readSelectedDriverVehicleId(session?.user)) {
-        await hydrateApprovedDriverProfileFromServer(
-          session.accessToken,
-          session?.user,
-        ).catch(() => null);
+  const loadRides = useCallback(
+    async (background = false) => {
+      if (
+        !session?.accessToken ||
+        !isDriverOperationPageActive ||
+        document.visibilityState !== "visible" ||
+        requestsLoadInFlightRef.current ||
+        Date.now() < requestsNextLoadAtRef.current
+      ) {
+        return;
       }
 
-      const mine = await ridesService.listDriverRides(session.accessToken);
+      requestsLoadInFlightRef.current = true;
+      requestsNextLoadAtRef.current = Date.now() + 2_000;
 
-      const recentPassengerCancellation = mine
-        .map((ride) => ride as unknown as Record<string, unknown>)
-        .filter((ride) => isRecentServerPassengerCancellationForDriver(ride))
-        .filter((ride) => !wasDriverRidePassengerCancelledLocally(ride))
-        .sort((a, b) => {
-          const bTime = new Date(String(b.cancelledAt ?? b.updatedAt ?? "")).getTime();
-          const aTime = new Date(String(a.cancelledAt ?? a.updatedAt ?? "")).getTime();
-          return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
-        })[0];
+      if (!background) {
+        setLoading(true);
+        setError(null);
+      }
 
-      if (recentPassengerCancellation) {
-        const shouldShowPassengerCancelNotice = claimDriverPassengerCancelNoticeOnce(
-          recentPassengerCancellation,
-          session?.user,
-        );
-        markDriverRidePassengerCancelledLocally(recentPassengerCancellation);
-        removeDriverRideAfterPassengerCancel(recentPassengerCancellation);
-        stopRideRequestAlert(true);
-        setRideAlert(null);
+      try {
+        if (!readSelectedDriverVehicleId(session?.user)) {
+          await hydrateApprovedDriverProfileFromServer(
+            session.accessToken,
+            session?.user,
+          ).catch(() => null);
+        }
 
-        const route = getDriverRideRouteDisplayLabel(recentPassengerCancellation as {
-          originText?: string | null;
-          destinationText?: string | null;
-          notes?: string | null;
-        });
-        const reason = getPassengerCancellationReasonForDriver(recentPassengerCancellation);
+        const mine = await ridesService.listDriverRides(session.accessToken);
 
-        setAssignedRides((current) =>
-          current.filter((ride) =>
-            !driverRideMatchesPassengerCancelledRecord(
-              ride as unknown as Record<string, unknown>,
+        const recentPassengerCancellation = mine
+          .map((ride) => ride as unknown as Record<string, unknown>)
+          .filter((ride) => isRecentServerPassengerCancellationForDriver(ride))
+          .filter((ride) => !wasDriverRidePassengerCancelledLocally(ride))
+          .sort((a, b) => {
+            const bTime = new Date(
+              String(b.cancelledAt ?? b.updatedAt ?? ""),
+            ).getTime();
+            const aTime = new Date(
+              String(a.cancelledAt ?? a.updatedAt ?? ""),
+            ).getTime();
+            return (
+              (Number.isFinite(bTime) ? bTime : 0) -
+              (Number.isFinite(aTime) ? aTime : 0)
+            );
+          })[0];
+
+        if (recentPassengerCancellation) {
+          const shouldShowPassengerCancelNotice =
+            claimDriverPassengerCancelNoticeOnce(
               recentPassengerCancellation,
-            ),
-          ),
-        );
-        setAvailableRides((current) =>
-          current.filter((ride) =>
-            !driverRideMatchesPassengerCancelledRecord(
-              ride as unknown as Record<string, unknown>,
-              recentPassengerCancellation,
-            ),
-          ),
-        );
-        setReservationOffers((current) =>
-          current.filter((ride) =>
-            !driverRideMatchesPassengerCancelledRecord(
-              ride as unknown as Record<string, unknown>,
-              recentPassengerCancellation,
-            ),
-          ),
-        );
-        setConfirmedReservationOffers((current) =>
-          current.filter((ride) =>
-            !driverRideMatchesPassengerCancelledRecord(
-              ride as unknown as Record<string, unknown>,
-              recentPassengerCancellation,
-            ),
-          ),
-        );
+              session?.user,
+            );
+          markDriverRidePassengerCancelledLocally(recentPassengerCancellation);
+          removeDriverRideAfterPassengerCancel(recentPassengerCancellation);
+          stopRideRequestAlert(true);
+          setRideAlert(null);
 
-        if (shouldShowPassengerCancelNotice) {
-          setPassengerCancelNotice({
-            route,
-            message: `El pasajero canceló la reserva.
+          const route = getDriverRideRouteDisplayLabel(
+            recentPassengerCancellation as {
+              originText?: string | null;
+              destinationText?: string | null;
+              notes?: string | null;
+            },
+          );
+          const reason = getPassengerCancellationReasonForDriver(
+            recentPassengerCancellation,
+          );
+
+          setAssignedRides((current) =>
+            current.filter(
+              (ride) =>
+                !driverRideMatchesPassengerCancelledRecord(
+                  ride as unknown as Record<string, unknown>,
+                  recentPassengerCancellation,
+                ),
+            ),
+          );
+          setAvailableRides((current) =>
+            current.filter(
+              (ride) =>
+                !driverRideMatchesPassengerCancelledRecord(
+                  ride as unknown as Record<string, unknown>,
+                  recentPassengerCancellation,
+                ),
+            ),
+          );
+          setReservationOffers((current) =>
+            current.filter(
+              (ride) =>
+                !driverRideMatchesPassengerCancelledRecord(
+                  ride as unknown as Record<string, unknown>,
+                  recentPassengerCancellation,
+                ),
+            ),
+          );
+          setConfirmedReservationOffers((current) =>
+            current.filter(
+              (ride) =>
+                !driverRideMatchesPassengerCancelledRecord(
+                  ride as unknown as Record<string, unknown>,
+                  recentPassengerCancellation,
+                ),
+            ),
+          );
+
+          if (shouldShowPassengerCancelNotice) {
+            setPassengerCancelNotice({
+              route,
+              message: `El pasajero canceló la reserva.
 
 Motivo informado: ${reason}
 
 La reserva fue retirada. No continúes hacia la recogida.`,
-          });
-          setError(`El pasajero canceló la reserva. Motivo: ${reason}`);
+            });
+            setError(`El pasajero canceló la reserva. Motivo: ${reason}`);
 
-          try {
-            if ("vibrate" in navigator) navigator.vibrate?.([240, 90, 240]);
-          } catch {
-            // No bloquea el aviso.
+            try {
+              if ("vibrate" in navigator) navigator.vibrate?.([240, 90, 240]);
+            } catch {
+              // No bloquea el aviso.
+            }
           }
         }
-      }
 
-      // Solo las reservas que el conductor inició desde la alerta especial
-      // se convierten en mapa/ruta dentro de Solicitudes.
-      const activeLocalScheduledRides = readActiveScheduledReservationRidesForDriver(session?.user);
-      const activeLocalRideMirrors = readActiveDriverLocalRideMirrorsForDriver(session?.user);
-      const activeServerRides = mine.filter((ride) => {
-        if (wasDriverRideCancelledLocally(ride as unknown as Record<string, unknown>, session?.user)) return false;
-        if (findPassengerCancelledRideForDriver(ride as unknown as Record<string, unknown>)) return false;
+        // Solo las reservas que el conductor inició desde la alerta especial
+        // se convierten en mapa/ruta dentro de Solicitudes.
+        const activeLocalScheduledRides =
+          readActiveScheduledReservationRidesForDriver(session?.user);
+        const activeLocalRideMirrors =
+          readActiveDriverLocalRideMirrorsForDriver(session?.user);
+        const activeServerRides = mine.filter((ride) => {
+          if (
+            wasDriverRideCancelledLocally(
+              ride as unknown as Record<string, unknown>,
+              session?.user,
+            )
+          )
+            return false;
+          if (
+            findPassengerCancelledRideForDriver(
+              ride as unknown as Record<string, unknown>,
+            )
+          )
+            return false;
 
-        const isActiveStatus = [
-          "accepted",
-          "driver_en_route",
-          "driver_arrived",
-          "in_progress",
-        ].includes(ride.status);
+          const isActiveStatus = [
+            "accepted",
+            "driver_en_route",
+            "driver_arrived",
+            "in_progress",
+          ].includes(ride.status);
 
-        if (!isActiveStatus) return false;
+          if (!isActiveStatus) return false;
 
-        // Las reservas agendadas solo se muestran como ruta si el conductor tocó
-        // "Iniciar viaje" en la alerta especial.
-        if (driverRideLooksLikeScheduledReservation(ride as unknown as Record<string, unknown>)) {
-          return driverScheduledReservationNavigationStarted(ride as unknown as Record<string, unknown>);
+          // Las reservas agendadas solo se muestran como ruta si el conductor tocó
+          // "Iniciar viaje" en la alerta especial.
+          if (
+            driverRideLooksLikeScheduledReservation(
+              ride as unknown as Record<string, unknown>,
+            )
+          ) {
+            return driverScheduledReservationNavigationStarted(
+              ride as unknown as Record<string, unknown>,
+            );
+          }
+
+          return true;
+        });
+        const activeByKey = new Map<string, DriverRideData>();
+        for (const ride of [
+          ...activeLocalScheduledRides,
+          ...activeLocalRideMirrors,
+          ...activeServerRides,
+        ]) {
+          const key =
+            getDriverScheduledReservationDedupeKey(
+              ride as unknown as DriverAcceptedRideBridgeRecord,
+            ) || String(ride.id);
+          activeByKey.set(key, ride as DriverRideData);
+        }
+        setAssignedRides(Array.from(activeByKey.values()));
+
+        const hasSelectedVehicleForWork = Boolean(
+          readSelectedDriverVehicleId(session?.user),
+        );
+        if (!hasSelectedVehicleForWork) {
+          setReservationOffers([]);
+          setConfirmedReservationOffers([]);
+          setAvailableRides([]);
+          setError(
+            "Debes elegir un vehículo activo en tu perfil para ver solicitudes o reservas.",
+          );
+          return;
         }
 
-        return true;
-      });
-      const activeByKey = new Map<string, DriverRideData>();
-      for (const ride of [...activeLocalScheduledRides, ...activeLocalRideMirrors, ...activeServerRides]) {
-        const key = getDriverScheduledReservationDedupeKey(ride as unknown as DriverAcceptedRideBridgeRecord) || String(ride.id);
-        activeByKey.set(key, ride as DriverRideData);
-      }
-      setAssignedRides(Array.from(activeByKey.values()));
+        setReservationOffers(
+          readDriverScheduledReservationOffers(
+            session?.user,
+            isDriverAvailable,
+          ),
+        );
+        setConfirmedReservationOffers(
+          readConfirmedWaitingScheduledReservationsForDriver(session?.user),
+        );
 
-      const hasSelectedVehicleForWork = Boolean(readSelectedDriverVehicleId(session?.user));
-      if (!hasSelectedVehicleForWork) {
-        setReservationOffers([]);
-        setConfirmedReservationOffers([]);
-        setAvailableRides([]);
-        setError("Debes elegir un vehículo activo en tu perfil para ver solicitudes o reservas.");
-        return;
-      }
-
-      setReservationOffers(
-        readDriverScheduledReservationOffers(session?.user, isDriverAvailable),
-      );
-      setConfirmedReservationOffers(
-        readConfirmedWaitingScheduledReservationsForDriver(session?.user),
-      );
-
-      if (!isDriverAvailable) {
-        setAvailableRides([]);
-        return;
-      }
-
-      const available = await ridesService.listAvailableRides(
-        session.accessToken,
-      );
-      const mergedAvailable = [...available, ...readRequeuedAvailableRides()];
-      const byId = new Map<string, AvailableRideData>();
-      for (const ride of mergedAvailable) {
-        if (ride.status === "requested") {
-          byId.set(ride.id, ride);
+        if (!isDriverAvailable) {
+          setAvailableRides([]);
+          return;
         }
-      }
-      setAvailableRides(
-        Array.from(byId.values()).filter(
-          (ride) =>
-            !driverRideWasSkippedByCurrentDriver(ride as unknown as Record<string, unknown>, session?.user) &&
-            !findPassengerCancelledRideForDriver(ride as unknown as Record<string, unknown>) &&
-            !shouldHideFromNormalDriverRequestQueue(ride as unknown as Record<string, unknown>) &&
-            !driverRideRequestIsHandled(ride as unknown as Record<string, unknown>, session?.user),
-        ),
-      );
-    } catch (err) {
-      // Si falla una consulta secundaria de la API, nunca eliminamos el viaje
-      // que el conductor acaba de aceptar. Recuperamos el mapa desde los espejos
-      // locales seguros y mantenemos la ruta activa.
-      const activeLocalScheduledRides = readActiveScheduledReservationRidesForDriver(session?.user);
-      const activeLocalRideMirrors = readActiveDriverLocalRideMirrorsForDriver(session?.user);
-      const recoveredByKey = new Map<string, DriverRideData>();
 
-      for (const ride of [...activeLocalScheduledRides, ...activeLocalRideMirrors]) {
-        if (findPassengerCancelledRideForDriver(ride as unknown as Record<string, unknown>)) continue;
-
-        const key =
-          getDriverScheduledReservationDedupeKey(
-            ride as unknown as DriverAcceptedRideBridgeRecord,
-          ) || String(ride.id);
-
-        if (key) recoveredByKey.set(key, ride as DriverRideData);
-      }
-
-      const recoveredActiveRides = Array.from(recoveredByKey.values());
-      setAssignedRides(recoveredActiveRides);
-      setReservationOffers(
-        readDriverScheduledReservationOffers(session?.user, isDriverAvailable),
-      );
-      setConfirmedReservationOffers(
-        readConfirmedWaitingScheduledReservationsForDriver(session?.user),
-      );
-
-      if (isDriverAvailable && !readSelectedDriverVehicleId(session?.user)) {
-        setAvailableRides([]);
-        setError("Debes elegir un vehículo activo en tu perfil para ver solicitudes o reservas.");
-        return;
-      }
-
-      if (isDriverAvailable) {
+        const available = await ridesService.listAvailableRides(
+          session.accessToken,
+        );
+        const mergedAvailable = [...available, ...readRequeuedAvailableRides()];
+        const byId = new Map<string, AvailableRideData>();
+        for (const ride of mergedAvailable) {
+          if (ride.status === "requested") {
+            byId.set(ride.id, ride);
+          }
+        }
         setAvailableRides(
-          readRequeuedAvailableRides().filter(
+          Array.from(byId.values()).filter(
             (ride) =>
-              ride.status === "requested" &&
-              !driverRideWasSkippedByCurrentDriver(ride as unknown as Record<string, unknown>, session?.user) &&
-              !findPassengerCancelledRideForDriver(ride as unknown as Record<string, unknown>) &&
-              !shouldHideFromNormalDriverRequestQueue(ride as unknown as Record<string, unknown>) &&
-              !driverRideRequestIsHandled(ride as unknown as Record<string, unknown>, session?.user) &&
-              !driverAvailableRideMatchesScheduledReservationForDriver(
+              !driverRideWasSkippedByCurrentDriver(
+                ride as unknown as Record<string, unknown>,
+                session?.user,
+              ) &&
+              !findPassengerCancelledRideForDriver(
+                ride as unknown as Record<string, unknown>,
+              ) &&
+              !shouldHideFromNormalDriverRequestQueue(
+                ride as unknown as Record<string, unknown>,
+              ) &&
+              !driverRideRequestIsHandled(
                 ride as unknown as Record<string, unknown>,
                 session?.user,
               ),
           ),
         );
-      }
-      if (recoveredActiveRides.length > 0) {
-        // El viaje ya está aceptado y el mapa puede seguir funcionando aunque
-        // haya fallado la carga de nuevas solicitudes disponibles.
-        setError(null);
-      } else {
-        setError(
-          err instanceof Error ? err.message : "Error al cargar solicitudes.",
+      } catch (err) {
+        // Si falla una consulta secundaria de la API, nunca eliminamos el viaje
+        // que el conductor acaba de aceptar. Recuperamos el mapa desde los espejos
+        // locales seguros y mantenemos la ruta activa.
+        const activeLocalScheduledRides =
+          readActiveScheduledReservationRidesForDriver(session?.user);
+        const activeLocalRideMirrors =
+          readActiveDriverLocalRideMirrorsForDriver(session?.user);
+        const recoveredByKey = new Map<string, DriverRideData>();
+
+        for (const ride of [
+          ...activeLocalScheduledRides,
+          ...activeLocalRideMirrors,
+        ]) {
+          if (
+            findPassengerCancelledRideForDriver(
+              ride as unknown as Record<string, unknown>,
+            )
+          )
+            continue;
+
+          const key =
+            getDriverScheduledReservationDedupeKey(
+              ride as unknown as DriverAcceptedRideBridgeRecord,
+            ) || String(ride.id);
+
+          if (key) recoveredByKey.set(key, ride as DriverRideData);
+        }
+
+        const recoveredActiveRides = Array.from(recoveredByKey.values());
+        setAssignedRides(recoveredActiveRides);
+        setReservationOffers(
+          readDriverScheduledReservationOffers(
+            session?.user,
+            isDriverAvailable,
+          ),
         );
+        setConfirmedReservationOffers(
+          readConfirmedWaitingScheduledReservationsForDriver(session?.user),
+        );
+
+        if (isDriverAvailable && !readSelectedDriverVehicleId(session?.user)) {
+          setAvailableRides([]);
+          setError(
+            "Debes elegir un vehículo activo en tu perfil para ver solicitudes o reservas.",
+          );
+          return;
+        }
+
+        if (isDriverAvailable) {
+          setAvailableRides(
+            readRequeuedAvailableRides().filter(
+              (ride) =>
+                ride.status === "requested" &&
+                !driverRideWasSkippedByCurrentDriver(
+                  ride as unknown as Record<string, unknown>,
+                  session?.user,
+                ) &&
+                !findPassengerCancelledRideForDriver(
+                  ride as unknown as Record<string, unknown>,
+                ) &&
+                !shouldHideFromNormalDriverRequestQueue(
+                  ride as unknown as Record<string, unknown>,
+                ) &&
+                !driverRideRequestIsHandled(
+                  ride as unknown as Record<string, unknown>,
+                  session?.user,
+                ) &&
+                !driverAvailableRideMatchesScheduledReservationForDriver(
+                  ride as unknown as Record<string, unknown>,
+                  session?.user,
+                ),
+            ),
+          );
+        }
+        if (recoveredActiveRides.length > 0) {
+          // El viaje ya está aceptado y el mapa puede seguir funcionando aunque
+          // haya fallado la carga de nuevas solicitudes disponibles.
+          setError(null);
+        } else {
+          setError(
+            err instanceof Error ? err.message : "Error al cargar solicitudes.",
+          );
+        }
+      } finally {
+        requestsLoadInFlightRef.current = false;
+        if (!background) setLoading(false);
       }
-    } finally {
-      requestsLoadInFlightRef.current = false;
-      if (!background) setLoading(false);
-    }
-  }, [
-    isDriverAvailable,
-    isDriverOperationPageActive,
-    session?.accessToken,
-    session?.user,
-    stopRideRequestAlert,
-  ]);
+    },
+    [
+      isDriverAvailable,
+      isDriverOperationPageActive,
+      session?.accessToken,
+      session?.user,
+      stopRideRequestAlert,
+    ],
+  );
 
   useEffect(() => {
     if (isDriverOperationPageActive) void loadRides();
@@ -14713,23 +16841,65 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       void loadRides();
     };
 
-    window.addEventListener(RAPAGO_REQUEUED_RIDES_EVENT, refreshAvailableAfterRequeue as EventListener);
-    window.addEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, refreshAvailableAfterRequeue as EventListener);
-    window.addEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, refreshAvailableAfterRequeue as EventListener);
-    window.addEventListener("rapago:driver-reservation-inbox-updated", refreshAvailableAfterRequeue as EventListener);
-    window.addEventListener("rapago:admin-scheduled-rides-updated", refreshAvailableAfterRequeue as EventListener);
-    window.addEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, refreshAvailableAfterRequeue as EventListener);
-    window.addEventListener("rapago:driver-available-rides-updated", refreshAvailableAfterRequeue as EventListener);
+    window.addEventListener(
+      RAPAGO_REQUEUED_RIDES_EVENT,
+      refreshAvailableAfterRequeue as EventListener,
+    );
+    window.addEventListener(
+      DRIVER_SCHEDULED_RESERVATION_EVENT,
+      refreshAvailableAfterRequeue as EventListener,
+    );
+    window.addEventListener(
+      DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT,
+      refreshAvailableAfterRequeue as EventListener,
+    );
+    window.addEventListener(
+      "rapago:driver-reservation-inbox-updated",
+      refreshAvailableAfterRequeue as EventListener,
+    );
+    window.addEventListener(
+      "rapago:admin-scheduled-rides-updated",
+      refreshAvailableAfterRequeue as EventListener,
+    );
+    window.addEventListener(
+      DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT,
+      refreshAvailableAfterRequeue as EventListener,
+    );
+    window.addEventListener(
+      "rapago:driver-available-rides-updated",
+      refreshAvailableAfterRequeue as EventListener,
+    );
     window.addEventListener("storage", refreshAvailableAfterRequeue);
 
     return () => {
-      window.removeEventListener(RAPAGO_REQUEUED_RIDES_EVENT, refreshAvailableAfterRequeue as EventListener);
-      window.removeEventListener(DRIVER_SCHEDULED_RESERVATION_EVENT, refreshAvailableAfterRequeue as EventListener);
-      window.removeEventListener(DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT, refreshAvailableAfterRequeue as EventListener);
-      window.removeEventListener("rapago:driver-reservation-inbox-updated", refreshAvailableAfterRequeue as EventListener);
-      window.removeEventListener("rapago:admin-scheduled-rides-updated", refreshAvailableAfterRequeue as EventListener);
-      window.removeEventListener(DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT, refreshAvailableAfterRequeue as EventListener);
-      window.removeEventListener("rapago:driver-available-rides-updated", refreshAvailableAfterRequeue as EventListener);
+      window.removeEventListener(
+        RAPAGO_REQUEUED_RIDES_EVENT,
+        refreshAvailableAfterRequeue as EventListener,
+      );
+      window.removeEventListener(
+        DRIVER_SCHEDULED_RESERVATION_EVENT,
+        refreshAvailableAfterRequeue as EventListener,
+      );
+      window.removeEventListener(
+        DRIVER_ASSIGNED_SCHEDULED_RIDE_EVENT,
+        refreshAvailableAfterRequeue as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:driver-reservation-inbox-updated",
+        refreshAvailableAfterRequeue as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:admin-scheduled-rides-updated",
+        refreshAvailableAfterRequeue as EventListener,
+      );
+      window.removeEventListener(
+        DRIVER_ADMIN_RESERVATION_AUTO_ASSIGNED_EVENT,
+        refreshAvailableAfterRequeue as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:driver-available-rides-updated",
+        refreshAvailableAfterRequeue as EventListener,
+      );
       window.removeEventListener("storage", refreshAvailableAfterRequeue);
     };
   }, [loadRides]);
@@ -14742,7 +16912,6 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     if (rideAlert?.id === rideId) {
       stopRideRequestAlert(true);
     }
-
 
     if (!isDriverAvailable) {
       setError(
@@ -14758,24 +16927,38 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
     try {
       const accepted = enrichRideWithSelectedDriverVehicle(
-        await ridesService.acceptRideRequest(
+        (await ridesService.acceptRideRequest(
           session.accessToken,
           rideId,
-        ) as unknown as Record<string, unknown>,
+        )) as unknown as Record<string, unknown>,
         session?.user,
       );
       const activeAccepted = activeRide
         ? saveDriverNextRideAfterCurrent(accepted, activeRide, session?.user)
         : saveDriverActiveRideLocalMirror(accepted, session?.user);
 
-      publishAcceptedDriverVehicleToPassenger(activeAccepted as unknown as DriverAcceptedRideBridgeRecord, session?.user);
-      markDriverRideRequestHandled(activeAccepted as unknown as Record<string, unknown>, session?.user, activeRide ? "accepted_next" : "accepted");
+      publishAcceptedDriverVehicleToPassenger(
+        activeAccepted as unknown as DriverAcceptedRideBridgeRecord,
+        session?.user,
+      );
+      markDriverRideRequestHandled(
+        activeAccepted as unknown as Record<string, unknown>,
+        session?.user,
+        activeRide ? "accepted_next" : "accepted",
+      );
       stopAllDriverRideRequestAlerts(rideId);
 
       if (activeRide) {
-        setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAccepted as unknown as Record<string, unknown>));
+        setAvailableRides((prev) =>
+          removeHandledRideFromAvailableList(
+            prev,
+            activeAccepted as unknown as Record<string, unknown>,
+          ),
+        );
         setRideAlert(null);
-        setError("Próximo servicio aceptado. Se activará cuando cierres el viaje actual.");
+        setError(
+          "Próximo servicio aceptado. Se activará cuando cierres el viaje actual.",
+        );
         return;
       }
 
@@ -14810,7 +16993,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       }
 
       removeRequeuedRide(rideId);
-      setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAccepted as unknown as Record<string, unknown>));
+      setAvailableRides((prev) =>
+        removeHandledRideFromAvailableList(
+          prev,
+          activeAccepted as unknown as Record<string, unknown>,
+        ),
+      );
       setAssignedRides([activeAccepted as DriverRideData]);
       setRideAlert(null);
       setError(null);
@@ -14831,25 +17019,44 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
       if (
         fallbackAvailable &&
-        (isCancelledRideConflictMessage(err) || rideCanBeAcceptedLocallyAfterRequeue(fallbackAvailable))
+        (isCancelledRideConflictMessage(err) ||
+          rideCanBeAcceptedLocallyAfterRequeue(fallbackAvailable))
       ) {
         const acceptedLocal = buildLocalAcceptedRideFromAvailable(
           fallbackAvailable,
           session?.user,
         );
         const activeAcceptedLocal = activeRide
-          ? saveDriverNextRideAfterCurrent(acceptedLocal, activeRide, session?.user)
+          ? saveDriverNextRideAfterCurrent(
+              acceptedLocal,
+              activeRide,
+              session?.user,
+            )
           : saveDriverActiveRideLocalMirror(acceptedLocal, session?.user);
 
-        publishAcceptedDriverVehicleToPassenger(activeAcceptedLocal as unknown as Record<string, unknown>, session?.user);
-        markDriverRideRequestHandled(activeAcceptedLocal as unknown as Record<string, unknown>, session?.user, activeRide ? "accepted_next" : "accepted");
+        publishAcceptedDriverVehicleToPassenger(
+          activeAcceptedLocal as unknown as Record<string, unknown>,
+          session?.user,
+        );
+        markDriverRideRequestHandled(
+          activeAcceptedLocal as unknown as Record<string, unknown>,
+          session?.user,
+          activeRide ? "accepted_next" : "accepted",
+        );
         stopAllDriverRideRequestAlerts(rideId);
 
         if (activeRide) {
           removeRequeuedRide(rideId);
-          setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAcceptedLocal as unknown as Record<string, unknown>));
+          setAvailableRides((prev) =>
+            removeHandledRideFromAvailableList(
+              prev,
+              activeAcceptedLocal as unknown as Record<string, unknown>,
+            ),
+          );
           setRideAlert(null);
-          setError("Próximo servicio aceptado. Se activará cuando cierres el viaje actual.");
+          setError(
+            "Próximo servicio aceptado. Se activará cuando cierres el viaje actual.",
+          );
           return;
         }
 
@@ -14884,7 +17091,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         }
 
         removeRequeuedRide(rideId);
-        setAvailableRides((prev) => removeHandledRideFromAvailableList(prev, activeAcceptedLocal as unknown as Record<string, unknown>));
+        setAvailableRides((prev) =>
+          removeHandledRideFromAvailableList(
+            prev,
+            activeAcceptedLocal as unknown as Record<string, unknown>,
+          ),
+        );
         setAssignedRides([activeAcceptedLocal]);
         setRideAlert(null);
         setError(null);
@@ -14901,7 +17113,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       if (isCancelledRideConflictMessage(err)) {
         removeRequeuedRide(rideId);
         setAvailableRides((prev) => prev.filter((ride) => ride.id !== rideId));
-        setError("Esta solicitud ya estaba cancelada en el servidor. La quitamos de la lista para que no vuelva a aparecer.");
+        setError(
+          "Esta solicitud ya estaba cancelada en el servidor. La quitamos de la lista para que no vuelva a aparecer.",
+        );
         void loadRides();
         return;
       }
@@ -14942,8 +17156,10 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           driverArrivedAt: arrivedAt,
           arrivedAt,
           noShowCountdownStartedAt: arrivedAt,
-          passengerNotice: "Tu conductor llegó al punto. Sal ahora para evitar No show.",
-          passengerNotification: "Tu conductor llegó al punto. Tienes 5 minutos para presentarte antes de No show.",
+          passengerNotice:
+            "Tu conductor llegó al punto. Sal ahora para evitar No show.",
+          passengerNotification:
+            "Tu conductor llegó al punto. Tienes 5 minutos para presentarte antes de No show.",
         },
         session?.user,
       );
@@ -14985,10 +17201,17 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     if (!rideId) return;
 
     try {
-      const completed = await ridesService.completeRide(session.accessToken, rideId);
-      const currentRide = assignedRides.find((item) => item.id === rideId) ?? ride;
+      const completed = await ridesService.completeRide(
+        session.accessToken,
+        rideId,
+      );
+      const currentRide =
+        assignedRides.find((item) => item.id === rideId) ?? ride;
       const completedAt = new Date().toISOString();
-      const cashPatch = buildDriverCashClosureRidePatch(currentRide, cashClosure);
+      const cashPatch = buildDriverCashClosureRidePatch(
+        currentRide,
+        cashClosure,
+      );
 
       let cashBackendWarning: string | null = null;
       if (cashClosure) {
@@ -15002,7 +17225,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         }
 
         persistDriverCashClosureForAdmin(
-          { ...(currentRide as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
+          {
+            ...(currentRide as unknown as Record<string, unknown>),
+            ...cashPatch,
+            completedAt,
+            closedByDriverAt: completedAt,
+          },
           cashClosure,
           session?.user,
         );
@@ -15023,9 +17251,18 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       );
 
       clearDriverLiveLocationForPassenger(rideId);
-      removeDriverActiveRideLocalMirror({ ...(currentRide as unknown as Record<string, unknown>), ...cashPatch }, session?.user);
+      removeDriverActiveRideLocalMirror(
+        {
+          ...(currentRide as unknown as Record<string, unknown>),
+          ...cashPatch,
+        },
+        session?.user,
+      );
 
-      const nextActive = promoteDriverNextRideAfterCompletion(rideId, session?.user);
+      const nextActive = promoteDriverNextRideAfterCompletion(
+        rideId,
+        session?.user,
+      );
       const currentLocation = driverLocationRef.current ?? driverLocation;
 
       if (cashBackendWarning) {
@@ -15033,7 +17270,10 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       }
 
       if (nextActive && currentLocation) {
-        publishAcceptedDriverVehicleToPassenger(nextActive as unknown as Record<string, unknown>, session?.user);
+        publishAcceptedDriverVehicleToPassenger(
+          nextActive as unknown as Record<string, unknown>,
+          session?.user,
+        );
         publishDriverLiveLocationForPassenger(
           nextActive,
           {
@@ -15056,7 +17296,11 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         setError(cashBackendWarning);
       }
 
-      window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId, status: "completed", cashClosure } }));
+      window.dispatchEvent(
+        new CustomEvent("rapago:passenger-rides-updated", {
+          detail: { rideId, status: "completed", cashClosure },
+        }),
+      );
       await loadRides();
     } catch (err) {
       setError(
@@ -15094,7 +17338,17 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     clearDriverActiveRideLocalMirrors(cancelledRide);
 
     setAssignedRides((prev) =>
-      prev.filter((item) => (!wasDriverRideCancelledLocally(item as unknown as Record<string, unknown>, session?.user) && !wasDriverRideNoShowCompletedLocally(item as unknown as Record<string, unknown>, session?.user))),
+      prev.filter(
+        (item) =>
+          !wasDriverRideCancelledLocally(
+            item as unknown as Record<string, unknown>,
+            session?.user,
+          ) &&
+          !wasDriverRideNoShowCompletedLocally(
+            item as unknown as Record<string, unknown>,
+            session?.user,
+          ),
+      ),
     );
     setCancelConfirmRide(null);
     setError(null);
@@ -15104,7 +17358,11 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     try {
       requeued = requeueRideAfterDriverCancel(ride, session?.user);
 
-      if (driverRideLooksLikeScheduledReservation(requeued as unknown as Record<string, unknown>)) {
+      if (
+        driverRideLooksLikeScheduledReservation(
+          requeued as unknown as Record<string, unknown>,
+        )
+      ) {
         const nextAssignment = resolveScheduledReservationNextDriverAssignment(
           requeued as unknown as DriverAcceptedRideBridgeRecord,
           session?.user,
@@ -15127,7 +17385,14 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               item as unknown as Record<string, unknown>,
               requeued as unknown as Record<string, unknown>,
             ) &&
-            (!wasDriverRideCancelledLocally(item as unknown as Record<string, unknown>, session?.user) && !wasDriverRideNoShowCompletedLocally(item as unknown as Record<string, unknown>, session?.user)),
+            !wasDriverRideCancelledLocally(
+              item as unknown as Record<string, unknown>,
+              session?.user,
+            ) &&
+            !wasDriverRideNoShowCompletedLocally(
+              item as unknown as Record<string, unknown>,
+              session?.user,
+            ),
         ),
       );
     }
@@ -15140,8 +17405,16 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       }
     }
 
-    window.dispatchEvent(new CustomEvent("rapago:driver-active-ride-cancelled", { detail: { rideId, ride: cancelledRide } }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-rides-updated", { detail: { rideId, status: "cancelled" } }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-active-ride-cancelled", {
+        detail: { rideId, ride: cancelledRide },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-rides-updated", {
+        detail: { rideId, status: "cancelled" },
+      }),
+    );
     window.setTimeout(() => void loadRides(), 450);
   }
 
@@ -15153,9 +17426,13 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     const rideId = String(ride.id ?? "").trim();
     if (!rideId) return;
 
-    const noShowState = getDriverNoShowState(ride as DriverRideData & Record<string, unknown>);
+    const noShowState = getDriverNoShowState(
+      ride as DriverRideData & Record<string, unknown>,
+    );
     if (!noShowState.allowed) {
-      setError(`Debes esperar 5 minutos desde que llegaste al punto. Falta ${formatDriverNoShowRemaining(noShowState.remainingMs)}.`);
+      setError(
+        `Debes esperar 5 minutos desde que llegaste al punto. Falta ${formatDriverNoShowRemaining(noShowState.remainingMs)}.`,
+      );
       return;
     }
 
@@ -15191,11 +17468,13 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       }
 
       try {
-        removeDriverActiveRideLocalMirror(noShowClosedRide as unknown as Record<string, unknown>, session?.user);
+        removeDriverActiveRideLocalMirror(
+          noShowClosedRide as unknown as Record<string, unknown>,
+          session?.user,
+        );
       } catch {
         // No bloquea cierre visual.
       }
-
 
       setAssignedRides((prev) =>
         prev.filter(
@@ -15207,17 +17486,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         ),
       );
 
-
-
-
-
-
       if (session?.accessToken) {
         try {
-          await declareDriverNoShowInBackend(
-            session.accessToken,
-            rideId,
-          );
+          await declareDriverNoShowInBackend(session.accessToken, rideId);
         } catch (backendError) {
           console.error(
             "[RAPA GO] No Show local cerrado, pero backend falló",
@@ -15260,26 +17531,39 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         }),
       );
 
-      setError("No show registrado. El viaje fue cerrado y retirado de tus viajes activos.");
+      setError(
+        "No show registrado. El viaje fue cerrado y retirado de tus viajes activos.",
+      );
     } catch (err) {
       console.error("[RAPA GO] Error cerrando No show", err);
-      setError(err instanceof Error ? err.message : "No se pudo cerrar el No show.");
+      setError(
+        err instanceof Error ? err.message : "No se pudo cerrar el No show.",
+      );
     } finally {
       setAcceptingId(null);
     }
   }
 
-  async function handleStartReadyScheduledReservation(ride: DriverScheduledReservationOffer): Promise<void> {
+  async function handleStartReadyScheduledReservation(
+    ride: DriverScheduledReservationOffer,
+  ): Promise<void> {
     if (!isDriverAvailable) {
-      setError("Estás no disponible. Activa disponible para iniciar esta reserva.");
+      setError(
+        "Estás no disponible. Activa disponible para iniciar esta reserva.",
+      );
       return;
     }
 
     setAcceptingId(String(ride.id));
     setError(null);
 
-    const startWithLocation = async (point: { lat: number; lng: number } | null): Promise<void> => {
-      const started = startDriverScheduledReservationNavigationLocally(ride, session?.user);
+    const startWithLocation = async (
+      point: { lat: number; lng: number } | null,
+    ): Promise<void> => {
+      const started = startDriverScheduledReservationNavigationLocally(
+        ride,
+        session?.user,
+      );
       const activeStarted = getActiveScheduledReservationRideForDriver(
         started as unknown as DriverAcceptedRideBridgeRecord,
         session?.user,
@@ -15336,17 +17620,24 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       );
       return;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo iniciar la reserva.");
+      setError(
+        err instanceof Error ? err.message : "No se pudo iniciar la reserva.",
+      );
     } finally {
-      if (!navigator.geolocation || driverLocationRef.current || driverLocation) setAcceptingId(null);
+      if (!navigator.geolocation || driverLocationRef.current || driverLocation)
+        setAcceptingId(null);
     }
   }
 
-  async function handleAcceptScheduledReservation(ride: DriverScheduledReservationOffer): Promise<void> {
+  async function handleAcceptScheduledReservation(
+    ride: DriverScheduledReservationOffer,
+  ): Promise<void> {
     // Las reservas asignadas por admin se aceptan localmente aunque la sesión
     // de desarrollo no traiga accessToken. No debe quedarse silencioso.
     if (!isDriverAvailable) {
-      setError("Estás no disponible. Activa disponible para confirmar esta reserva.");
+      setError(
+        "Estás no disponible. Activa disponible para confirmar esta reserva.",
+      );
       return;
     }
 
@@ -15354,16 +17645,24 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     setError(null);
 
     try {
-      const accepted = acceptDriverScheduledReservationLocally(ride, session?.user);
-      const acceptedRecord = accepted as unknown as DriverAcceptedRideBridgeRecord;
+      const accepted = acceptDriverScheduledReservationLocally(
+        ride,
+        session?.user,
+      );
+      const acceptedRecord =
+        accepted as unknown as DriverAcceptedRideBridgeRecord;
 
-      setReservationOffers((prev) => prev.filter((item) => !isSameDriverAcceptedRide(item, ride)));
+      setReservationOffers((prev) =>
+        prev.filter((item) => !isSameDriverAcceptedRide(item, ride)),
+      );
 
       // Si la reserva ya está en hora de activación, al aceptar debe abrirse la ruta
       // de inmediato. Si todavía falta tiempo, queda en "Reservas aceptadas" esperando
       // el aviso especial de salida.
       if (driverScheduledReservationIsActiveNow(acceptedRecord)) {
-        setConfirmedReservationOffers(readConfirmedWaitingScheduledReservationsForDriver(session?.user));
+        setConfirmedReservationOffers(
+          readConfirmedWaitingScheduledReservationsForDriver(session?.user),
+        );
         await handleStartReadyScheduledReservation(accepted);
         return;
       }
@@ -15373,7 +17672,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         session?.user,
       );
 
-      setConfirmedReservationOffers(readConfirmedWaitingScheduledReservationsForDriver(session?.user));
+      setConfirmedReservationOffers(
+        readConfirmedWaitingScheduledReservationsForDriver(session?.user),
+      );
 
       if (activeAccepted) {
         setAssignedRides([activeAccepted]);
@@ -15404,7 +17705,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
       window.setTimeout(() => void loadRides(), 300);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo confirmar la reserva.");
+      setError(
+        err instanceof Error ? err.message : "No se pudo confirmar la reserva.",
+      );
     } finally {
       setAcceptingId(null);
     }
@@ -15456,7 +17759,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
       window.setTimeout(() => void loadRides(), 500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo rechazar la reserva.");
+      setError(
+        err instanceof Error ? err.message : "No se pudo rechazar la reserva.",
+      );
     } finally {
       setAcceptingId(null);
     }
@@ -15499,10 +17804,10 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           // iPhone ni para la propia tab bar (que ahora queda por debajo,
           // pero no hace daño reservarle el mismo aire que a las otras dos
           // alertas de pantalla completa de este archivo).
-          padding: "18px 18px calc(18px + env(safe-area-inset-bottom, 0px)) 18px",
+          padding:
+            "18px 18px calc(18px + env(safe-area-inset-bottom, 0px)) 18px",
           pointerEvents: "auto",
-        }}
-      >
+        }}>
         <div
           role="dialog"
           aria-modal="true"
@@ -15516,8 +17821,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             color: "var(--rp-text)",
             border: "2px solid var(--rp-border-c)",
             boxShadow: "var(--rp-shadow)",
-          }}
-        >
+          }}>
           <div
             style={{
               padding: "16px 18px",
@@ -15527,8 +17831,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               alignItems: "center",
               justifyContent: "space-between",
               gap: 12,
-            }}
-          >
+            }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div
                 aria-hidden="true"
@@ -15541,8 +17844,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   alignItems: "center",
                   justifyContent: "center",
                   boxShadow: "0 0 24px rgba(255,211,61,.35)",
-                }}
-              >
+                }}>
                 <IonIcon
                   icon={notificationsOutline}
                   style={{ fontSize: 28, color: "#ffd33d" }}
@@ -15556,14 +17858,16 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     fontSize: "1.08rem",
                     fontWeight: 950,
                     lineHeight: 1.1,
-                  }}
-                >
-                  {activeRide ? "Nuevo servicio para continuar" : "Nueva solicitud de viaje"}
+                  }}>
+                  {activeRide
+                    ? "Nuevo servicio para continuar"
+                    : "Nueva solicitud de viaje"}
                 </div>
                 <div
-                  style={{ fontSize: ".78rem", opacity: 0.82, marginTop: 3 }}
-                >
-                  {activeRide ? "Aparece sobre tu trayecto actual · " : "Alerta sonora activa por "}
+                  style={{ fontSize: ".78rem", opacity: 0.82, marginTop: 3 }}>
+                  {activeRide
+                    ? "Aparece sobre tu trayecto actual · "
+                    : "Alerta sonora activa por "}
                   {formatRideAlertSeconds(rideAlertSecondsLeft)}
                 </div>
               </div>
@@ -15578,8 +17882,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 fontSize: ".68rem",
                 fontWeight: 950,
                 whiteSpace: "nowrap",
-              }}
-            >
+              }}>
               RESPONDER
             </span>
           </div>
@@ -15591,8 +17894,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 gap: 8,
                 flexWrap: "wrap",
                 marginBottom: 14,
-              }}
-            >
+              }}>
               <IonChip color="success" style={{ fontWeight: 950 }}>
                 <IonIcon icon={volumeHighOutline} aria-hidden="true" />
                 <IonLabel>Sonando</IonLabel>
@@ -15608,7 +17910,11 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               </IonChip>
             </div>
 
-            <DriverFastSearchBadge ride={ride as unknown as RideWithFarePayload & Record<string, unknown>} />
+            <DriverFastSearchBadge
+              ride={
+                ride as unknown as RideWithFarePayload & Record<string, unknown>
+              }
+            />
             <PassengerRideNoteCard ride={ride} />
 
             <div
@@ -15617,8 +17923,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 background: "var(--rp-surface-soft)",
                 border: "var(--rp-border-w) solid var(--rp-border-c)",
                 padding: "14px",
-              }}
-            >
+              }}>
               <div style={{ display: "grid", gap: 10 }}>
                 <div>
                   <div
@@ -15626,13 +17931,11 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                       color: "var(--rp-ok-fg)",
                       fontSize: ".72rem",
                       fontWeight: 950,
-                    }}
-                  >
+                    }}>
                     RECOGER EN
                   </div>
                   <div
-                    style={{ fontWeight: 950, fontSize: "1rem", marginTop: 3 }}
-                  >
+                    style={{ fontWeight: 950, fontSize: "1rem", marginTop: 3 }}>
                     {getDriverRidePointDisplayLabel(ride, "origin")}
                   </div>
                 </div>
@@ -15641,7 +17944,8 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   style={{
                     width: 2,
                     height: 28,
-                    background: "linear-gradient(180deg,var(--rp-ok-fg),var(--rp-err-fg))",
+                    background:
+                      "linear-gradient(180deg,var(--rp-ok-fg),var(--rp-err-fg))",
                     borderRadius: 999,
                     marginLeft: 7,
                   }}
@@ -15653,13 +17957,11 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                       color: "var(--rp-err-fg)",
                       fontSize: ".72rem",
                       fontWeight: 950,
-                    }}
-                  >
+                    }}>
                     DESTINO
                   </div>
                   <div
-                    style={{ fontWeight: 950, fontSize: "1rem", marginTop: 3 }}
-                  >
+                    style={{ fontWeight: 950, fontSize: "1rem", marginTop: 3 }}>
                     {getDriverRidePointDisplayLabel(ride, "destination")}
                   </div>
                 </div>
@@ -15677,21 +17979,18 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 justifyContent: "space-between",
                 alignItems: "center",
                 gap: 12,
-              }}
-            >
+              }}>
               <div>
                 <div
                   style={{
                     fontSize: ".72rem",
                     color: "var(--rp-label)",
                     fontWeight: 950,
-                  }}
-                >
+                  }}>
                   PRECIO DEL VIAJE
                 </div>
                 <div
-                  style={{ fontSize: "1.5rem", fontWeight: 950, marginTop: 2 }}
-                >
+                  style={{ fontSize: "1.5rem", fontWeight: 950, marginTop: 2 }}>
                   {formatClp(fareClp)}
                 </div>
               </div>
@@ -15701,8 +18000,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   fontSize: ".78rem",
                   fontWeight: 900,
                   textAlign: "right",
-                }}
-              >
+                }}>
                 {tripTypeEmoji} {tripTypeLabel}
                 <br />
                 La alerta se apaga al aceptar o rechazar.
@@ -15715,8 +18013,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 gridTemplateColumns: "0.85fr 1.15fr",
                 gap: 12,
                 marginTop: 16,
-              }}
-            >
+              }}>
               <IonButton
                 expand="block"
                 color="danger"
@@ -15727,8 +18024,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     height: "54px",
                     fontWeight: 950,
                   } as CSSProperties
-                }
-              >
+                }>
                 Rechazar
               </IonButton>
 
@@ -15748,12 +18044,15 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     "--color": "var(--rp-btn-primary-fg)",
                     fontWeight: 950,
                   } as CSSProperties
-                }
-              >
+                }>
                 {acceptingId === ride.id ? (
                   <IonSpinner name="dots" />
                 ) : driverLocation ? (
-                  activeRide ? "Aceptar próximo" : "Aceptar viaje"
+                  activeRide ? (
+                    "Aceptar próximo"
+                  ) : (
+                    "Aceptar viaje"
+                  )
                 ) : (
                   "Activa GPS"
                 )}
@@ -15773,14 +18072,19 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     const fareClp = getRideDisplayFareClp(ride as RideWithFarePayload);
     const paymentLabel = getRidePaymentMethodLabel(String(ride.notes ?? ""));
     const paymentIcon = getRidePaymentIcon(String(ride.notes ?? ""));
-    const rideVehicleCategory = getRideVehicleCategory(ride as RideWithFarePayload);
+    const rideVehicleCategory = getRideVehicleCategory(
+      ride as RideWithFarePayload,
+    );
     const rideVehicleLabel = getRideVehicleLabel(rideVehicleCategory);
     const rideVehicleEmoji = getRideVehicleEmoji(rideVehicleCategory);
     const scheduledText = getDriverScheduledReservationDateText(ride);
     const activationText = formatDriverScheduledReservationDate(
       ride.scheduleActivationAt ?? ride.driverVisibleAt ?? ride.autoAssignAt,
     );
-    const assignedToThisDriver = driverScheduledReservationMatchesDriver(ride, session?.user);
+    const assignedToThisDriver = driverScheduledReservationMatchesDriver(
+      ride,
+      session?.user,
+    );
 
     return (
       <IonCard
@@ -15793,8 +18097,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           color: "var(--rp-text)",
           border: "var(--rp-border-w) solid var(--rp-border-c)",
           boxShadow: "var(--rp-shadow)",
-        }}
-      >
+        }}>
         <IonCardContent style={{ padding: 0 }}>
           <div
             style={{
@@ -15804,8 +18107,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               justifyContent: "space-between",
               gap: 12,
               alignItems: "flex-start",
-            }}
-          >
+            }}>
             <div style={{ minWidth: 0 }}>
               <div
                 style={{
@@ -15822,12 +18124,21 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   textTransform: "uppercase",
                   letterSpacing: ".05em",
                   marginBottom: 10,
-                }}
-              >
-                <IonIcon icon={calendarOutline} aria-hidden="true" style={{ fontSize: "1em" }} />Viaje agendado asignado
+                }}>
+                <IonIcon
+                  icon={calendarOutline}
+                  aria-hidden="true"
+                  style={{ fontSize: "1em" }}
+                />
+                Viaje agendado asignado
               </div>
 
-              <div style={{ fontWeight: 950, fontSize: "1.12rem", lineHeight: 1.15 }}>
+              <div
+                style={{
+                  fontWeight: 950,
+                  fontSize: "1.12rem",
+                  lineHeight: 1.15,
+                }}>
                 {getDriverRideRouteDisplayLabel(ride)}
               </div>
               <div
@@ -15837,9 +18148,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   fontSize: ".78rem",
                   fontWeight: 800,
                   lineHeight: 1.35,
-                }}
-              >
-                "Tenemos agendado tu viaje. La reserva queda congelada aquí y solo sonará cuando corresponda ir a buscar al usuario."
+                }}>
+                "Tenemos agendado tu viaje. La reserva queda congelada aquí y
+                solo sonará cuando corresponda ir a buscar al usuario."
               </div>
             </div>
 
@@ -15853,12 +18164,18 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 textAlign: "right",
                 fontWeight: 950,
                 boxShadow: "0 10px 26px rgba(0,0,0,.25)",
-              }}
-            >
-              <div style={{ fontSize: ".64rem", color: "var(--rp-label)", textTransform: "uppercase" }}>
+              }}>
+              <div
+                style={{
+                  fontSize: ".64rem",
+                  color: "var(--rp-label)",
+                  textTransform: "uppercase",
+                }}>
                 Tarifa
               </div>
-              <div style={{ fontSize: "1rem", marginTop: 1 }}>{formatClp(fareClp)}</div>
+              <div style={{ fontSize: "1rem", marginTop: 1 }}>
+                {formatClp(fareClp)}
+              </div>
             </div>
           </div>
 
@@ -15869,20 +18186,26 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 gridTemplateColumns: "1fr 1fr",
                 gap: 10,
                 marginBottom: 12,
-              }}
-            >
+              }}>
               <div
                 style={{
                   borderRadius: 18,
                   background: "var(--rp-surface-soft)",
                   border: "var(--rp-border-w) solid var(--rp-border-c)",
                   padding: "11px 12px",
-                }}
-              >
-                <div style={{ color: "var(--rp-label)", fontSize: ".68rem", fontWeight: 950 }}>
+                }}>
+                <div
+                  style={{
+                    color: "var(--rp-label)",
+                    fontSize: ".68rem",
+                    fontWeight: 950,
+                  }}>
                   RECOGIDA
                 </div>
-                <div style={{ marginTop: 4, fontWeight: 950, lineHeight: 1.25 }}>{scheduledText}</div>
+                <div
+                  style={{ marginTop: 4, fontWeight: 950, lineHeight: 1.25 }}>
+                  {scheduledText}
+                </div>
               </div>
 
               <div
@@ -15891,16 +18214,29 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   background: "var(--rp-surface-soft)",
                   border: "var(--rp-border-w) solid var(--rp-border-c)",
                   padding: "11px 12px",
-                }}
-              >
-                <div style={{ color: "var(--rp-label)", fontSize: ".68rem", fontWeight: 950 }}>
+                }}>
+                <div
+                  style={{
+                    color: "var(--rp-label)",
+                    fontSize: ".68rem",
+                    fontWeight: 950,
+                  }}>
                   SE ABRE A CONDUCTORES
                 </div>
-                <div style={{ marginTop: 4, fontWeight: 950, lineHeight: 1.25 }}>{activationText}</div>
+                <div
+                  style={{ marginTop: 4, fontWeight: 950, lineHeight: 1.25 }}>
+                  {activationText}
+                </div>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 13 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginBottom: 13,
+              }}>
               <IonChip color="warning" style={{ fontWeight: 950 }}>
                 Reserva
               </IonChip>
@@ -15912,16 +18248,20 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               </IonChip>
             </div>
 
-            <DriverFastSearchBadge ride={ride as unknown as RideWithFarePayload & Record<string, unknown>} compact />
-          <PassengerRideNoteCard ride={ride} compact />
+            <DriverFastSearchBadge
+              ride={
+                ride as unknown as RideWithFarePayload & Record<string, unknown>
+              }
+              compact
+            />
+            <PassengerRideNoteCard ride={ride} compact />
 
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "0.88fr 1.12fr",
                 gap: 10,
-              }}
-            >
+              }}>
               <IonButton
                 expand="block"
                 fill="outline"
@@ -15935,8 +18275,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     fontWeight: 950,
                   } as CSSProperties
                 }
-                onClick={() => setPendingReservationReject(ride)}
-              >
+                onClick={() => setPendingReservationReject(ride)}>
                 Rechazar
               </IonButton>
 
@@ -15944,9 +18283,14 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 expand="block"
                 color="warning"
                 disabled={acceptingId === String(ride.id) || !isDriverAvailable}
-                style={{ "--border-radius": "16px", height: "50px", fontWeight: 950 } as CSSProperties}
-                onClick={() => void handleAcceptScheduledReservation(ride)}
-              >
+                style={
+                  {
+                    "--border-radius": "16px",
+                    height: "50px",
+                    fontWeight: 950,
+                  } as CSSProperties
+                }
+                onClick={() => void handleAcceptScheduledReservation(ride)}>
                 {acceptingId === String(ride.id) ? (
                   <IonSpinner name="dots" />
                 ) : isDriverAvailable ? (
@@ -15972,8 +18316,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     const activationText = formatDriverScheduledReservationDate(
       ride.scheduleActivationAt ?? ride.driverVisibleAt ?? ride.autoAssignAt,
     );
-    const readyToStart = driverScheduledReservationIsActiveNow(ride as unknown as DriverAcceptedRideBridgeRecord);
-    const countdownText = getScheduledReservationCountdownText(ride as unknown as DriverAcceptedRideBridgeRecord);
+    const readyToStart = driverScheduledReservationIsActiveNow(
+      ride as unknown as DriverAcceptedRideBridgeRecord,
+    );
+    const countdownText = getScheduledReservationCountdownText(
+      ride as unknown as DriverAcceptedRideBridgeRecord,
+    );
 
     return (
       <IonCard
@@ -15985,59 +18333,162 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           color: "var(--rp-text)",
           border: "var(--rp-border-w) solid var(--rp-border-c)",
           boxShadow: "var(--rp-shadow)",
-        }}
-      >
+        }}>
         <IonCardContent style={{ padding: "15px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "flex-start",
+            }}>
             <div style={{ minWidth: 0 }}>
-              <IonBadge color="success" style={{ marginBottom: 8, fontWeight: 950 }}>
+              <IonBadge
+                color="success"
+                style={{ marginBottom: 8, fontWeight: 950 }}>
                 Reserva aceptada
               </IonBadge>
-              <div style={{ fontWeight: 950, fontSize: "1.05rem", lineHeight: 1.18 }}>
+              <div
+                style={{
+                  fontWeight: 950,
+                  fontSize: "1.05rem",
+                  lineHeight: 1.18,
+                }}>
                 {getDriverRideRouteDisplayLabel(ride)}
               </div>
-              <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 850, color: "var(--rp-muted)", lineHeight: 1.35 }}>
-                Ya aceptaste esta reserva. Espera la hora indicada: te llegará una notificación para iniciar el viaje y se abrirá la ruta.
+              <div
+                style={{
+                  marginTop: 7,
+                  fontSize: ".82rem",
+                  fontWeight: 850,
+                  color: "var(--rp-muted)",
+                  lineHeight: 1.35,
+                }}>
+                Ya aceptaste esta reserva. Espera la hora indicada: te llegará
+                una notificación para iniciar el viaje y se abrirá la ruta.
               </div>
             </div>
             <div style={{ minWidth: 82, textAlign: "right", fontWeight: 950 }}>
-              <div style={{ color: "var(--rp-label)", fontSize: ".66rem", textTransform: "uppercase" }}>Tarifa</div>
+              <div
+                style={{
+                  color: "var(--rp-label)",
+                  fontSize: ".66rem",
+                  textTransform: "uppercase",
+                }}>
+                Tarifa
+              </div>
               <div style={{ fontSize: "1rem" }}>{formatClp(fareClp)}</div>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 13 }}>
-            <div style={{ borderRadius: 16, background: "var(--rp-surface-soft)", padding: "10px 11px" }}>
-              <div style={{ fontSize: ".66rem", color: "var(--rp-label)", fontWeight: 950 }}>RECOGIDA</div>
-              <div style={{ marginTop: 3, fontWeight: 950 }}>{scheduledText}</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+              marginTop: 13,
+            }}>
+            <div
+              style={{
+                borderRadius: 16,
+                background: "var(--rp-surface-soft)",
+                padding: "10px 11px",
+              }}>
+              <div
+                style={{
+                  fontSize: ".66rem",
+                  color: "var(--rp-label)",
+                  fontWeight: 950,
+                }}>
+                RECOGIDA
+              </div>
+              <div style={{ marginTop: 3, fontWeight: 950 }}>
+                {scheduledText}
+              </div>
             </div>
-            <div style={{ borderRadius: 16, background: "var(--rp-surface-soft)", padding: "10px 11px" }}>
-              <div style={{ fontSize: ".66rem", color: "var(--rp-label)", fontWeight: 950 }}>AVISO PARA SALIR</div>
-              <div style={{ marginTop: 3, fontWeight: 950 }}>{activationText}</div>
+            <div
+              style={{
+                borderRadius: 16,
+                background: "var(--rp-surface-soft)",
+                padding: "10px 11px",
+              }}>
+              <div
+                style={{
+                  fontSize: ".66rem",
+                  color: "var(--rp-label)",
+                  fontWeight: 950,
+                }}>
+                AVISO PARA SALIR
+              </div>
+              <div style={{ marginTop: 3, fontWeight: 950 }}>
+                {activationText}
+              </div>
             </div>
           </div>
 
-          <DriverFastSearchBadge ride={ride as unknown as RideWithFarePayload & Record<string, unknown>} compact />
+          <DriverFastSearchBadge
+            ride={
+              ride as unknown as RideWithFarePayload & Record<string, unknown>
+            }
+            compact
+          />
           <PassengerRideNoteCard ride={ride} compact />
 
           {readyToStart ? (
             <div style={{ marginTop: 12 }}>
-              <div style={{ marginBottom: 10, borderRadius: 16, background: "var(--rp-ok-bg)", border: "1px solid var(--rp-ok-bd)", padding: "10px 12px", fontWeight: 950, fontSize: ".82rem", lineHeight: 1.35, color: "var(--rp-ok-fg)" }}>
-                <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> Reserva lista. Ya puedes iniciar la ruta hacia el pasajero.
+              <div
+                style={{
+                  marginBottom: 10,
+                  borderRadius: 16,
+                  background: "var(--rp-ok-bg)",
+                  border: "1px solid var(--rp-ok-bd)",
+                  padding: "10px 12px",
+                  fontWeight: 950,
+                  fontSize: ".82rem",
+                  lineHeight: 1.35,
+                  color: "var(--rp-ok-fg)",
+                }}>
+                <IonIcon
+                  icon={checkmarkCircleOutline}
+                  aria-hidden="true"
+                  style={{ fontSize: "1em", verticalAlign: "-0.125em" }}
+                />{" "}
+                Reserva lista. Ya puedes iniciar la ruta hacia el pasajero.
               </div>
               <IonButton
                 expand="block"
                 color="warning"
                 disabled={acceptingId === String(ride.id) || !isDriverAvailable}
                 onClick={() => void handleStartReadyScheduledReservation(ride)}
-                style={{ "--border-radius": "16px", height: "50px", fontWeight: 950, color: "var(--rp-btn-primary-fg)" } as CSSProperties}
-              >
-                {acceptingId === String(ride.id) ? <IonSpinner name="dots" /> : "Iniciar viaje ahora"}
+                style={
+                  {
+                    "--border-radius": "16px",
+                    height: "50px",
+                    fontWeight: 950,
+                    color: "var(--rp-btn-primary-fg)",
+                  } as CSSProperties
+                }>
+                {acceptingId === String(ride.id) ? (
+                  <IonSpinner name="dots" />
+                ) : (
+                  "Iniciar viaje ahora"
+                )}
               </IonButton>
             </div>
           ) : (
-            <div style={{ marginTop: 12, borderRadius: 16, background: "var(--rp-ok-bg)", border: "1px solid var(--rp-ok-bd)", padding: "10px 12px", fontWeight: 900, fontSize: ".80rem", lineHeight: 1.35 }}>
-              ⏱ {countdownText}. Cuando llegue el momento, te avisaremos: “Tenemos agendado tu viaje, ve a buscar al usuario”.
+            <div
+              style={{
+                marginTop: 12,
+                borderRadius: 16,
+                background: "var(--rp-ok-bg)",
+                border: "1px solid var(--rp-ok-bd)",
+                padding: "10px 12px",
+                fontWeight: 900,
+                fontSize: ".80rem",
+                lineHeight: 1.35,
+              }}>
+              ⏱ {countdownText}. Cuando llegue el momento, te avisaremos:
+              “Tenemos agendado tu viaje, ve a buscar al usuario”.
             </div>
           )}
         </IonCardContent>
@@ -16075,8 +18526,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         <div style={styles.darkLayer} />
 
         <IonCardContent
-          style={{ position: "relative", zIndex: 1, padding: "16px" }}
-        >
+          style={{ position: "relative", zIndex: 1, padding: "16px" }}>
           {/* Encabezado */}
           <div
             style={{
@@ -16084,8 +18534,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               justifyContent: "space-between",
               alignItems: "flex-start",
               gap: 12,
-            }}
-          >
+            }}>
             <div style={{ minWidth: 0 }}>
               <div
                 style={{
@@ -16102,8 +18551,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   marginBottom: 10,
                   textTransform: "uppercase",
                   letterSpacing: ".45px",
-                }}
-              >
+                }}>
                 <span
                   style={{
                     width: 8,
@@ -16122,8 +18570,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   fontSize: "1.22rem",
                   lineHeight: 1.08,
                   color: "var(--rp-text)",
-                }}
-              >
+                }}>
                 Solicitud cercana
               </div>
               <div
@@ -16132,8 +18579,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   color: "var(--rp-muted)",
                   fontSize: ".78rem",
                   lineHeight: 1.35,
-                }}
-              >
+                }}>
                 Revisa origen, destino y pago antes de aceptar.
               </div>
             </div>
@@ -16148,16 +18594,19 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 color: "var(--rp-ok-fg)",
                 fontSize: ".68rem",
                 fontWeight: 950,
-              }}
-            >
+              }}>
               PENDIENTE
             </span>
           </div>
 
           {/* Chips */}
           <div
-            style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}
-          >
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              marginTop: 14,
+            }}>
             <div style={styles.pill}>
               <IonIcon
                 icon={timeOutline}
@@ -16179,11 +18628,16 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             </div>
             <div style={styles.pill}>
               <IonIcon
-                icon={paymentLabel === "Mercado Pago" ? cardOutline : cashOutline}
+                icon={
+                  paymentLabel === "Mercado Pago" ? cardOutline : cashOutline
+                }
                 aria-hidden="true"
                 style={{
                   fontSize: 15,
-                  color: paymentLabel === "Mercado Pago" ? "var(--rp-info-fg)" : "var(--rp-ok-fg)",
+                  color:
+                    paymentLabel === "Mercado Pago"
+                      ? "var(--rp-info-fg)"
+                      : "var(--rp-ok-fg)",
                 }}
               />
               {paymentIcon} {paymentLabel}
@@ -16206,9 +18660,10 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 gridTemplateColumns: "24px 1fr",
                 gap: "10px",
                 alignItems: "start",
-              }}
-            >
-              <div style={{ ...styles.routeDot, background: "var(--rp-ok-fg)" }} />
+              }}>
+              <div
+                style={{ ...styles.routeDot, background: "var(--rp-ok-fg)" }}
+              />
               <div style={{ minWidth: 0 }}>
                 <div
                   style={{
@@ -16216,8 +18671,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     fontSize: ".72rem",
                     fontWeight: 950,
                     letterSpacing: ".35px",
-                  }}
-                >
+                  }}>
                   RECOGER EN
                 </div>
                 <div
@@ -16227,8 +18681,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     marginTop: 3,
                     lineHeight: 1.25,
                     color: "var(--rp-text)",
-                  }}
-                >
+                  }}>
                   {getDriverRidePointDisplayLabel(ride, "origin")}
                 </div>
                 <div
@@ -16237,8 +18690,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     fontSize: ".78rem",
                     marginTop: 5,
                     lineHeight: 1.35,
-                  }}
-                >
+                  }}>
                   <IonIcon
                     icon={walkOutline}
                     aria-hidden="true"
@@ -16257,14 +18709,17 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 style={{
                   width: 2,
                   height: 34,
-                  background: "linear-gradient(180deg, var(--rp-ok-fg), var(--rp-err-fg))",
+                  background:
+                    "linear-gradient(180deg, var(--rp-ok-fg), var(--rp-err-fg))",
                   marginLeft: 6,
                   borderRadius: 999,
                 }}
               />
               <div />
 
-              <div style={{ ...styles.routeDot, background: "var(--rp-err-fg)" }} />
+              <div
+                style={{ ...styles.routeDot, background: "var(--rp-err-fg)" }}
+              />
               <div style={{ minWidth: 0 }}>
                 <div
                   style={{
@@ -16272,8 +18727,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     fontSize: ".72rem",
                     fontWeight: 950,
                     letterSpacing: ".35px",
-                  }}
-                >
+                  }}>
                   DESTINO
                 </div>
                 <div
@@ -16283,16 +18737,19 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     marginTop: 3,
                     lineHeight: 1.25,
                     color: "var(--rp-text)",
-                  }}
-                >
+                  }}>
                   {getDriverRidePointDisplayLabel(ride, "destination")}
                 </div>
               </div>
             </div>
           </div>
 
-          <DriverFastSearchBadge ride={ride as unknown as RideWithFarePayload & Record<string, unknown>} />
-            <PassengerRideNoteCard ride={ride} />
+          <DriverFastSearchBadge
+            ride={
+              ride as unknown as RideWithFarePayload & Record<string, unknown>
+            }
+          />
+          <PassengerRideNoteCard ride={ride} />
 
           {/* Resumen precio */}
           <div
@@ -16306,16 +18763,14 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               alignItems: "center",
               justifyContent: "space-between",
               gap: 12,
-            }}
-          >
+            }}>
             <div>
               <div
                 style={{
                   color: "var(--rp-muted)",
                   fontSize: ".72rem",
                   fontWeight: 900,
-                }}
-              >
+                }}>
                 PRECIO DEL VIAJE
               </div>
               <div
@@ -16325,8 +18780,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   fontSize: "1.48rem",
                   lineHeight: 1.05,
                   marginTop: 4,
-                }}
-              >
+                }}>
                 {formatClp(displayFareClp)}
               </div>
               <div
@@ -16335,8 +18789,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   fontSize: ".74rem",
                   marginTop: 4,
                   fontWeight: 800,
-                }}
-              >
+                }}>
                 {paymentIcon} Método de pago: {paymentLabel}
               </div>
               <div
@@ -16345,8 +18798,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   fontSize: ".74rem",
                   marginTop: 3,
                   fontWeight: 900,
-                }}
-              >
+                }}>
                 {rideVehicleEmoji} Vehículo: {rideVehicleLabel}
               </div>
               <div
@@ -16355,8 +18807,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   fontSize: ".74rem",
                   marginTop: 3,
                   fontWeight: 900,
-                }}
-              >
+                }}>
                 {tripTypeEmoji} Tipo de viaje: {tripTypeLabel}
               </div>
               {driverEarningClp != null && (
@@ -16365,8 +18816,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     color: "var(--rp-muted)",
                     fontSize: ".72rem",
                     marginTop: 3,
-                  }}
-                >
+                  }}>
                   Tu ganancia aprox.: {formatClp(driverEarningClp)}
                 </div>
               )}
@@ -16386,8 +18836,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 fontWeight: 950,
                 fontSize: "1.22rem",
                 flexShrink: 0,
-              }}
-            >
+              }}>
               $
             </div>
           </div>
@@ -16399,33 +18848,32 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               gridTemplateColumns: "0.86fr 1.14fr",
               gap: 12,
               marginTop: 16,
-            }}
-          >
+            }}>
             <IonButton
               expand="block"
               fill="solid"
               style={styles.secondaryButton}
-              onClick={() => dismissAvailableRide(ride)}
-            >
+              onClick={() => dismissAvailableRide(ride)}>
               Rechazar
             </IonButton>
 
             <IonButton
               expand="block"
               disabled={
-                acceptingId === ride.id ||
-                !driverLocation ||
-                !isDriverAvailable
+                acceptingId === ride.id || !driverLocation || !isDriverAvailable
               }
               style={styles.primaryButton}
-              onClick={() => void handleAcceptRide(ride.id)}
-            >
+              onClick={() => void handleAcceptRide(ride.id)}>
               {acceptingId === ride.id ? (
                 <IonSpinner name="dots" />
               ) : !isDriverAvailable ? (
                 "No disponible"
               ) : driverLocation ? (
-                activeRide ? "Aceptar próximo" : "Aceptar viaje"
+                activeRide ? (
+                  "Aceptar próximo"
+                ) : (
+                  "Aceptar viaje"
+                )
               ) : (
                 "Activa GPS"
               )}
@@ -16444,12 +18892,15 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
   function ActiveRideScreen({ ride }: { ride: DriverRideData }): JSX.Element {
     const nextOfferWhileActive = !nextQueuedRide
-      ? availableRides.find(
+      ? (availableRides.find(
           (item) =>
             item.status === "requested" &&
             item.id !== ride.id &&
-            !driverRideRequestIsHandled(item as unknown as Record<string, unknown>, session?.user),
-        ) ?? null
+            !driverRideRequestIsHandled(
+              item as unknown as Record<string, unknown>,
+              session?.user,
+            ),
+        ) ?? null)
       : null;
     const statusText =
       ride.status === "driver_arrived"
@@ -16508,24 +18959,21 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           ? checkmarkCircleOutline
           : flagOutline;
 
-    /* La acción principal ("Llegué al punto" / "Iniciar viaje" / "Finalizar
-       viaje") se movió a la cabecera de la hoja (sheetHeader, más abajo),
-       igual que el atajo "Confirmar" del pasajero: fija en la esquina
-       superior derecha del panel, visible aunque el resto de la hoja se
-       desplace o quede plegada al mínimo. Aquí sólo queda Cancelar. */
-    const sheetActions = (
-      <div className="rapago-driver-sheet-actions rapago-driver-sheet-actions--single">
-        <IonButton
-          expand="block"
-          fill="outline"
-          className="rapago-driver-sheet-actions__cancel"
-          aria-label="Cancelar el viaje"
-          onClick={() => requestCancelActiveRide(ride)}
-        >
-          <IonIcon icon={closeOutline} slot="start" aria-hidden="true" />
-          Cancelar
-        </IonButton>
-      </div>
+    /* Cancelar deja de ser una píldora gemela de la acción principal y baja a
+       texto, dentro del dock. Regla del sistema de Uber: un solo primario
+       sólido por vista. Tenerlos idénticos ponía una acción destructiva al
+       mismo peso visual que confirmar, y en movimiento eso se toca por error.
+       Sigue a un toque de distancia y conserva 44px de alto táctil. */
+    const sheetActions = null;
+    const sheetCancelAction = (
+      <button
+        type="button"
+        className="rapago-driver-nav-sheet__cancel-link"
+        aria-label="Cancelar el viaje"
+        onClick={() => requestCancelActiveRide(ride)}>
+        <IonIcon icon={closeOutline} aria-hidden="true" />
+        <span>Cancelar viaje</span>
+      </button>
     );
 
     /* Estado del viaje. Antes era un disco verde de 46px con un check dentro
@@ -16555,8 +19003,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       <div
         className={`rapago-driver-sheet-status rapago-driver-sheet-status--${sheetStatusTone}`}
         aria-live="polite"
-        aria-atomic="true"
-      >
+        aria-atomic="true">
         <span className="rapago-driver-sheet-status__icon" aria-hidden="true">
           <IonIcon icon={sheetStatusIcon} />
         </span>
@@ -16573,20 +19020,30 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     );
 
     /* Acción principal ("Llegué al punto" / "Iniciar viaje" / "Finalizar
-       viaje"), en la esquina superior derecha de la hoja completa —junto al
-       asa de arrastre, no dentro de la tarjeta de estado—, igual que el atajo
-       "Confirmar" del pasajero (rp-request-map-head-confirm). Se pasa como
-       prop aparte (sheetPrimaryAction) porque UberDriverNavigationMap es quien
-       controla esa zona absoluta de la hoja. */
+       viaje"). Antes era una píldora de 172px flotando en la esquina superior;
+       ahora ocupa el ancho completo del dock, al pie del núcleo de la hoja.
+       El objetivo pasa de una esquina estrecha a toda la franja, que es lo que
+       hace falta para acertarle sin mirar. Se sigue pasando como prop porque
+       UberDriverNavigationMap es quien compone la hoja. */
+    /* Un color por etapa. El icono ya distinguía las tres acciones, pero de
+       reojo —única forma de mirar esto conduciendo— el botón era siempre el
+       mismo dorado. "Llegué al punto" se queda sin modificador por ser el
+       paso por defecto. */
+    const sheetPrimaryTone =
+      ride.status === "driver_arrived"
+        ? " rapago-driver-nav-sheet__confirm--go"
+        : ride.status === "in_progress"
+          ? " rapago-driver-nav-sheet__confirm--finish"
+          : "";
+
     const sheetPrimaryAction = (
       <button
         type="button"
-        className="rapago-driver-nav-sheet__confirm"
+        className={`rapago-driver-nav-sheet__confirm${sheetPrimaryTone}`}
         // El texto visible puede recortarse con ellipsis en pantallas
         // angostas; aria-label conserva siempre la etiqueta completa.
         aria-label={sheetPrimaryLabel}
-        onClick={runSheetPrimary}
-      >
+        onClick={runSheetPrimary}>
         <IonIcon icon={sheetPrimaryIcon} aria-hidden="true" />
         <span>{sheetPrimaryLabel}</span>
       </button>
@@ -16607,7 +19064,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div className="rapago-driver-sheet-note__text">
               <strong>Próximo servicio aceptado</strong>
               <span>{getDriverRideRouteDisplayLabel(nextQueuedRide)}</span>
-              <small>Se activará cuando confirmes que llegaste al destino actual.</small>
+              <small>
+                Se activará cuando confirmes que llegaste al destino actual.
+              </small>
             </div>
           </div>
         )}
@@ -16619,7 +19078,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             </span>
             <div className="rapago-driver-sheet-note__text">
               <strong>Nuevo servicio para continuar</strong>
-              <span>{getDriverRideRouteDisplayLabel(nextOfferWhileActive)}</span>
+              <span>
+                {getDriverRideRouteDisplayLabel(nextOfferWhileActive)}
+              </span>
 
               <div className="rapago-driver-sheet-note__actions">
                 <IonButton
@@ -16627,22 +19088,32 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   fill="outline"
                   className="rapago-driver-sheet-ghost"
                   disabled={acceptingId === nextOfferWhileActive.id}
-                  onClick={() => dismissAvailableRide(nextOfferWhileActive)}
-                >
-                  <IonIcon icon={closeOutline} slot="start" aria-hidden="true" />
+                  onClick={() => dismissAvailableRide(nextOfferWhileActive)}>
+                  <IonIcon
+                    icon={closeOutline}
+                    slot="start"
+                    aria-hidden="true"
+                  />
                   Rechazar
                 </IonButton>
                 <IonButton
                   size="small"
                   className="rapago-driver-sheet-actions__primary"
-                  disabled={acceptingId === nextOfferWhileActive.id || !driverLocation}
-                  onClick={() => void handleAcceptRide(nextOfferWhileActive.id)}
-                >
+                  disabled={
+                    acceptingId === nextOfferWhileActive.id || !driverLocation
+                  }
+                  onClick={() =>
+                    void handleAcceptRide(nextOfferWhileActive.id)
+                  }>
                   {acceptingId === nextOfferWhileActive.id ? (
                     <IonSpinner name="dots" />
                   ) : (
                     <>
-                      <IonIcon icon={checkmarkCircleOutline} slot="start" aria-hidden="true" />
+                      <IonIcon
+                        icon={checkmarkCircleOutline}
+                        slot="start"
+                        aria-hidden="true"
+                      />
                       Aceptar
                     </>
                   )}
@@ -16667,8 +19138,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                 "--rp-noshow-progress": `${getDriverNoShowProgressPercent(driverNoShowState)}%`,
               } as CSSProperties
             }
-            onClick={() => void handleDriverNoShowRide(ride)}
-          >
+            onClick={() => void handleDriverNoShowRide(ride)}>
             <IonIcon
               icon={driverNoShowState.allowed ? flagOutline : timeOutline}
               slot="start"
@@ -16702,6 +19172,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           sheetBody={sheetBody}
           sheetActions={sheetActions}
           sheetPrimaryAction={sheetPrimaryAction}
+          sheetCancelAction={sheetCancelAction}
         />
 
         {/* SOS. Fuera de la hoja a propósito: es el único control que debe
@@ -16713,8 +19184,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           type="button"
           className="rapago-driver-sos"
           onClick={() => setDriverSosOpen(true)}
-          aria-label="Emergencia y reporte de accidente"
-        >
+          aria-label="Emergencia y reporte de accidente">
           <IonIcon icon={alertCircleOutline} aria-hidden="true" />
           <span>SOS</span>
         </button>
@@ -16758,8 +19228,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           {
             "--background": "transparent",
           } as CSSProperties
-        }
-      >
+        }>
         {showActiveRideOnly && activeRide ? (
           // Llamada, no <ActiveRideScreen/>: como se declara en el cuerpo de
           // esta página, su identidad de función cambia en cada render y React
@@ -16775,8 +19244,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               placeItems: "center",
               textAlign: "center",
               padding: 24,
-            }}
-          >
+            }}>
             <div>
               {loading ? (
                 <IonSpinner name="crescent" />
@@ -16786,7 +19254,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                     icon={carOutline}
                     style={{ fontSize: 44, color: "var(--rp-accent)" }}
                   />
-                  <h2 style={{ margin: "12px 0 6px" }}>No hay un viaje activo</h2>
+                  <h2 style={{ margin: "12px 0 6px" }}>
+                    No hay un viaje activo
+                  </h2>
                   <p style={{ margin: 0, color: "var(--rp-muted)" }}>
                     Cuando aceptes una solicitud, el mapa grande se abrirá aquí.
                   </p>
@@ -16800,8 +19270,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               slot="fixed"
               onIonRefresh={(event) => {
                 void loadRides().then(() => event.detail.complete());
-              }}
-            >
+              }}>
               <IonRefresherContent />
             </IonRefresher>
 
@@ -16816,8 +19285,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   display: "flex",
                   justifyContent: "center",
                   paddingTop: "40px",
-                }}
-              >
+                }}>
                 <IonSpinner name="crescent" />
               </div>
             )}
@@ -16837,53 +19305,56 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   background: "var(--rp-surface)",
                   color: "var(--rp-text)",
                   border: "var(--rp-border-w) solid var(--rp-border-c)",
-                }}
-              >
+                }}>
                 <IonCardContent
                   style={{
                     padding: "12px 14px",
                     fontWeight: 900,
                     fontSize: ".82rem",
-                  }}
-                >
-                  <IonIcon icon={locationOutline} aria-hidden="true" style={{ fontSize: "1em", verticalAlign: "-0.125em" }} /> {locationError}
+                  }}>
+                  <IonIcon
+                    icon={locationOutline}
+                    aria-hidden="true"
+                    style={{ fontSize: "1em", verticalAlign: "-0.125em" }}
+                  />{" "}
+                  {locationError}
                 </IonCardContent>
               </IonCard>
             )}
 
-            {!loading && !showOnlyReservations && !isDriverAvailable && displayedAvailableRides.length === 0 && (
-              <IonCard
-                className="rapago-driver-card"
-                style={{
-                  margin: "10px 0 14px",
-                  borderRadius: "22px",
-                  background: "var(--rp-surface)",
-                  color: "var(--rp-text)",
-                  border: "var(--rp-border-w) solid var(--rp-border-c)",
-                  boxShadow: "var(--rp-shadow)",
-                }}
-              >
-                <IonCardContent
-                  style={{ padding: "18px", textAlign: "center" }}
-                >
-                  <div style={{ fontSize: "1.05rem", fontWeight: 950 }}>
-                    Estás no disponible
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: ".82rem",
-                      fontWeight: 750,
-                      opacity: 0.84,
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    No te aparecerán solicitudes de viaje hasta que cambies tu
-                    estado a disponible desde el inicio del conductor.
-                  </div>
-                </IonCardContent>
-              </IonCard>
-            )}
+            {!loading &&
+              !showOnlyReservations &&
+              !isDriverAvailable &&
+              displayedAvailableRides.length === 0 && (
+                <IonCard
+                  className="rapago-driver-card"
+                  style={{
+                    margin: "10px 0 14px",
+                    borderRadius: "22px",
+                    background: "var(--rp-surface)",
+                    color: "var(--rp-text)",
+                    border: "var(--rp-border-w) solid var(--rp-border-c)",
+                    boxShadow: "var(--rp-shadow)",
+                  }}>
+                  <IonCardContent
+                    style={{ padding: "18px", textAlign: "center" }}>
+                    <div style={{ fontSize: "1.05rem", fontWeight: 950 }}>
+                      Estás no disponible
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: ".82rem",
+                        fontWeight: 750,
+                        opacity: 0.84,
+                        lineHeight: 1.4,
+                      }}>
+                      No te aparecerán solicitudes de viaje hasta que cambies tu
+                      estado a disponible desde el inicio del conductor.
+                    </div>
+                  </IonCardContent>
+                </IonCard>
+              )}
 
             {!loading && showOnlyReservations && reservationsTotal === 0 && (
               <div style={{ textAlign: "center", paddingTop: 40 }}>
@@ -16893,251 +19364,397 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               </div>
             )}
 
-            {!loading && !showOnlyReservations && isDriverAvailable && displayedAvailableRides.length === 0 && (
-              <div style={{ textAlign: "center", paddingTop: 40 }}>
-                <IonText color="medium">
-                  <p>No hay solicitudes disponibles.</p>
-                </IonText>
-              </div>
-            )}
-
-            {!loading && showOnlyReservations && reservationOffers.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                  paddingBottom: displayedAvailableRides.length > 0 || confirmedReservationOffers.length > 0 ? 16 : 90,
-                  maxWidth: 520,
-                  margin: "0 auto 16px",
-                }}
-              >
-                <div
-                  style={{
-                    color: "var(--rp-text)",
-                    fontWeight: 950,
-                    fontSize: "1rem",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <span>Reservas asignadas</span>
-                  <IonBadge color="warning">{reservationOffers.length}</IonBadge>
+            {!loading &&
+              !showOnlyReservations &&
+              isDriverAvailable &&
+              displayedAvailableRides.length === 0 && (
+                <div style={{ textAlign: "center", paddingTop: 40 }}>
+                  <IonText color="medium">
+                    <p>No hay solicitudes disponibles.</p>
+                  </IonText>
                 </div>
-                {reservationOffers.map((ride) => (
-                  <ScheduledReservationCard key={String(ride.id)} ride={ride} />
-                ))}
-              </div>
-            )}
+              )}
 
-            {!loading && showOnlyReservations && confirmedReservationOffers.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                  paddingBottom: displayedAvailableRides.length > 0 ? 16 : 90,
-                  maxWidth: 520,
-                  margin: "0 auto 16px",
-                }}
-              >
+            {!loading &&
+              showOnlyReservations &&
+              reservationOffers.length > 0 && (
                 <div
                   style={{
-                    color: "var(--rp-text)",
-                    fontWeight: 950,
-                    fontSize: "1rem",
                     display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <span>Reservas aceptadas</span>
-                  <IonBadge color="success">{confirmedReservationOffers.length}</IonBadge>
-                </div>
-                {confirmedReservationOffers.map((ride) => (
-                  <ConfirmedScheduledReservationCard key={String(ride.id)} ride={ride} />
-                ))}
-              </div>
-            )}
-
-            {!loading && !showOnlyReservations && isDriverAvailable && displayedAvailableRides.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 16,
-                  paddingBottom: "calc(90px + env(safe-area-inset-bottom, 0px))",
-                  maxWidth: 520,
-                  margin: "0 auto",
-                }}
-              >
-                {displayedAvailableRides.map((ride) => (
-                  <AvailableRideCard key={ride.id} ride={ride} />
-                ))}
-              </div>
-            )}
-
-            {scheduledReservationReadyAlert && isDriverAvailable && !activeRide && (
-              <div
-                style={{
-                  position: "fixed",
-                  inset: 0,
-                  zIndex: "var(--rp-z-above-tabbar)",
-                  background: "rgba(0,0,0,.58)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 16,
-                }}
-              >
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="rapago-driver-scheduled-ready-alert-title"
-                  style={{
-                    width: "min(430px, 100%)",
-                    borderRadius: 22,
-                    overflow: "hidden",
-                    background: "var(--rp-surface)",
-                    color: "var(--rp-text)",
-                    boxShadow: "var(--rp-shadow)",
-                    border: "var(--rp-border-w) solid var(--rp-border-c)",
-                  }}
-                >
+                    flexDirection: "column",
+                    gap: 12,
+                    paddingBottom:
+                      displayedAvailableRides.length > 0 ||
+                      confirmedReservationOffers.length > 0
+                        ? 16
+                        : 90,
+                    maxWidth: 520,
+                    margin: "0 auto 16px",
+                  }}>
                   <div
                     style={{
-                      background: "linear-gradient(135deg,#2A1A18,#8F3F25)",
-                      color: "#fff",
-                      padding: "16px 18px",
+                      color: "var(--rp-text)",
+                      fontWeight: 950,
+                      fontSize: "1rem",
                       display: "flex",
-                      gap: 12,
+                      justifyContent: "space-between",
                       alignItems: "center",
-                    }}
-                  >
-                    <div
-                      aria-hidden="true"
-                      style={{
-                        width: 46,
-                        height: 46,
-                        borderRadius: 999,
-                        background: "rgba(210,164,58,.22)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "1.35rem",
-                      }}
-                    >
-                      <IonIcon icon={calendarOutline} style={{ fontSize: "1em" }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div id="rapago-driver-scheduled-ready-alert-title" style={{ fontWeight: 950, fontSize: "1.08rem" }}>
-                        Viaje agendado listo
-                      </div>
-                      <div style={{ marginTop: 2, fontSize: ".75rem", opacity: .9 }}>
-                        Sonando por 0:{String(scheduledReservationAlertSecondsLeft).padStart(2, "0")} · ve a buscar al pasajero
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => stopScheduledReservationReadyAlert(true)}
-                      style={{
-                        border: 0,
-                        background: "transparent",
-                        color: "#fff",
-                        fontSize: 22,
-                        cursor: "pointer",
-                      }}
-                      aria-label="Cerrar alerta"
-                    >
-                      <span aria-hidden="true">×</span>
-                    </button>
+                      gap: 10,
+                    }}>
+                    <span>Reservas asignadas</span>
+                    <IonBadge color="warning">
+                      {reservationOffers.length}
+                    </IonBadge>
                   </div>
+                  {reservationOffers.map((ride) => (
+                    <ScheduledReservationCard
+                      key={String(ride.id)}
+                      ride={ride}
+                    />
+                  ))}
+                </div>
+              )}
 
-                  <div style={{ padding: 18 }}>
+            {!loading &&
+              showOnlyReservations &&
+              confirmedReservationOffers.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    paddingBottom: displayedAvailableRides.length > 0 ? 16 : 90,
+                    maxWidth: 520,
+                    margin: "0 auto 16px",
+                  }}>
+                  <div
+                    style={{
+                      color: "var(--rp-text)",
+                      fontWeight: 950,
+                      fontSize: "1rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                    }}>
+                    <span>Reservas aceptadas</span>
+                    <IonBadge color="success">
+                      {confirmedReservationOffers.length}
+                    </IonBadge>
+                  </div>
+                  {confirmedReservationOffers.map((ride) => (
+                    <ConfirmedScheduledReservationCard
+                      key={String(ride.id)}
+                      ride={ride}
+                    />
+                  ))}
+                </div>
+              )}
+
+            {!loading &&
+              !showOnlyReservations &&
+              isDriverAvailable &&
+              displayedAvailableRides.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 16,
+                    paddingBottom:
+                      "calc(90px + env(safe-area-inset-bottom, 0px))",
+                    maxWidth: 520,
+                    margin: "0 auto",
+                  }}>
+                  {displayedAvailableRides.map((ride) => (
+                    <AvailableRideCard key={ride.id} ride={ride} />
+                  ))}
+                </div>
+              )}
+
+            {scheduledReservationReadyAlert &&
+              isDriverAvailable &&
+              !activeRide && (
+                <div
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    zIndex: "var(--rp-z-above-tabbar)",
+                    background: "rgba(0,0,0,.58)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 16,
+                  }}>
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="rapago-driver-scheduled-ready-alert-title"
+                    style={{
+                      width: "min(430px, 100%)",
+                      borderRadius: 22,
+                      overflow: "hidden",
+                      background: "var(--rp-surface)",
+                      color: "var(--rp-text)",
+                      boxShadow: "var(--rp-shadow)",
+                      border: "var(--rp-border-w) solid var(--rp-border-c)",
+                    }}>
                     <div
                       style={{
+                        background: "linear-gradient(135deg,#2A1A18,#8F3F25)",
+                        color: "#fff",
+                        padding: "16px 18px",
                         display: "flex",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        marginBottom: 14,
-                      }}
-                    >
-                      <span style={{ border: "var(--rp-border-w) solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={calendarOutline} aria-hidden="true" style={{ fontSize: "1em" }} />Reserva lista</span>
-                      <span style={{ border: "1px solid var(--rp-ok-bd)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={carOutline} aria-hidden="true" style={{ fontSize: "1em" }} />Estándar</span>
-                      <span style={{ border: "var(--rp-border-w) solid var(--rp-border-c)", borderRadius: 999, padding: "7px 10px", fontWeight: 950, display: "inline-flex", alignItems: "center", gap: 6 }}><IonIcon icon={cashOutline} aria-hidden="true" style={{ fontSize: "1em" }} />Efectivo</span>
-                    </div>
-
-                    <div
-                      style={{
-                        background: "var(--rp-surface-soft)",
-                        borderRadius: 18,
-                        padding: 16,
-                        marginBottom: 14,
-                        boxShadow: "inset 0 0 0 1px rgba(0,0,0,.04)",
-                      }}
-                    >
-                      <div style={{ color: "var(--rp-ok-fg)", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
-                        Ve a buscar al usuario
-                      </div>
-                      <div style={{ marginTop: 5, fontSize: "1rem", fontWeight: 950 }}>
-                        {cleanPointDisplayName(scheduledReservationReadyAlert.originText, "Punto de recogida")}
-                      </div>
-                      <div style={{ width: 2, height: 28, background: "linear-gradient(var(--rp-ok-fg),var(--rp-err-fg))", margin: "10px 0 10px 10px" }} />
-                      <div style={{ color: "var(--rp-err-fg)", fontSize: ".70rem", fontWeight: 950, textTransform: "uppercase" }}>
-                        Destino del pasajero
-                      </div>
-                      <div style={{ marginTop: 5, fontSize: "1rem", fontWeight: 950 }}>
-                        {cleanPointDisplayName(scheduledReservationReadyAlert.destinationText, "Destino")}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        background: "var(--rp-surface-soft)",
-                        color: "var(--rp-text)",
-                        borderRadius: 16,
-                        padding: "13px 14px",
-                        marginBottom: 14,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
                         gap: 12,
-                      }}
-                    >
-                      <div style={{ fontSize: ".72rem", fontWeight: 950, color: "var(--rp-label)" }}>
-                        TARIFA RESERVADA
+                        alignItems: "center",
+                      }}>
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          width: 46,
+                          height: 46,
+                          borderRadius: 999,
+                          background: "rgba(210,164,58,.22)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "1.35rem",
+                        }}>
+                        <IonIcon
+                          icon={calendarOutline}
+                          style={{ fontSize: "1em" }}
+                        />
                       </div>
-                      <div style={{ fontSize: "1.25rem", fontWeight: 950 }}>
-                        {formatCLPDriver(getRideDisplayFareClp(scheduledReservationReadyAlert as RideWithFarePayload))}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          id="rapago-driver-scheduled-ready-alert-title"
+                          style={{ fontWeight: 950, fontSize: "1.08rem" }}>
+                          Viaje agendado listo
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 2,
+                            fontSize: ".75rem",
+                            opacity: 0.9,
+                          }}>
+                          Sonando por 0:
+                          {String(
+                            scheduledReservationAlertSecondsLeft,
+                          ).padStart(2, "0")}{" "}
+                          · ve a buscar al pasajero
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => stopScheduledReservationReadyAlert(true)}
+                        style={{
+                          border: 0,
+                          background: "transparent",
+                          color: "#fff",
+                          fontSize: 22,
+                          cursor: "pointer",
+                        }}
+                        aria-label="Cerrar alerta">
+                        <span aria-hidden="true">×</span>
+                      </button>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.15fr", gap: 10 }}>
-                      <IonButton
-                        expand="block"
-                        color="medium"
-                        onClick={() => stopScheduledReservationReadyAlert(true)}
-                        style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-                      >
-                        Ver después
-                      </IonButton>
-                      <IonButton
-                        expand="block"
-                        color="warning"
-                        disabled={acceptingId === String(scheduledReservationReadyAlert.id)}
-                        onClick={() => void handleStartReadyScheduledReservation(scheduledReservationReadyAlert)}
-                        style={{ "--border-radius": "14px", fontWeight: 950, color: "var(--rp-btn-primary-fg)" } as CSSProperties}
-                      >
-                        Iniciar viaje
-                      </IonButton>
+                    <div style={{ padding: 18 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          marginBottom: 14,
+                        }}>
+                        <span
+                          style={{
+                            border:
+                              "var(--rp-border-w) solid var(--rp-border-c)",
+                            borderRadius: 999,
+                            padding: "7px 10px",
+                            fontWeight: 950,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}>
+                          <IonIcon
+                            icon={calendarOutline}
+                            aria-hidden="true"
+                            style={{ fontSize: "1em" }}
+                          />
+                          Reserva lista
+                        </span>
+                        <span
+                          style={{
+                            border: "1px solid var(--rp-ok-bd)",
+                            borderRadius: 999,
+                            padding: "7px 10px",
+                            fontWeight: 950,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}>
+                          <IonIcon
+                            icon={carOutline}
+                            aria-hidden="true"
+                            style={{ fontSize: "1em" }}
+                          />
+                          Estándar
+                        </span>
+                        <span
+                          style={{
+                            border:
+                              "var(--rp-border-w) solid var(--rp-border-c)",
+                            borderRadius: 999,
+                            padding: "7px 10px",
+                            fontWeight: 950,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}>
+                          <IonIcon
+                            icon={cashOutline}
+                            aria-hidden="true"
+                            style={{ fontSize: "1em" }}
+                          />
+                          Efectivo
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "var(--rp-surface-soft)",
+                          borderRadius: 18,
+                          padding: 16,
+                          marginBottom: 14,
+                          boxShadow: "inset 0 0 0 1px rgba(0,0,0,.04)",
+                        }}>
+                        <div
+                          style={{
+                            color: "var(--rp-ok-fg)",
+                            fontSize: ".70rem",
+                            fontWeight: 950,
+                            textTransform: "uppercase",
+                          }}>
+                          Ve a buscar al usuario
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 5,
+                            fontSize: "1rem",
+                            fontWeight: 950,
+                          }}>
+                          {cleanPointDisplayName(
+                            scheduledReservationReadyAlert.originText,
+                            "Punto de recogida",
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            width: 2,
+                            height: 28,
+                            background:
+                              "linear-gradient(var(--rp-ok-fg),var(--rp-err-fg))",
+                            margin: "10px 0 10px 10px",
+                          }}
+                        />
+                        <div
+                          style={{
+                            color: "var(--rp-err-fg)",
+                            fontSize: ".70rem",
+                            fontWeight: 950,
+                            textTransform: "uppercase",
+                          }}>
+                          Destino del pasajero
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 5,
+                            fontSize: "1rem",
+                            fontWeight: 950,
+                          }}>
+                          {cleanPointDisplayName(
+                            scheduledReservationReadyAlert.destinationText,
+                            "Destino",
+                          )}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          background: "var(--rp-surface-soft)",
+                          color: "var(--rp-text)",
+                          borderRadius: 16,
+                          padding: "13px 14px",
+                          marginBottom: 14,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 12,
+                        }}>
+                        <div
+                          style={{
+                            fontSize: ".72rem",
+                            fontWeight: 950,
+                            color: "var(--rp-label)",
+                          }}>
+                          TARIFA RESERVADA
+                        </div>
+                        <div style={{ fontSize: "1.25rem", fontWeight: 950 }}>
+                          {formatCLPDriver(
+                            getRideDisplayFareClp(
+                              scheduledReservationReadyAlert as RideWithFarePayload,
+                            ),
+                          )}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1.15fr",
+                          gap: 10,
+                        }}>
+                        <IonButton
+                          expand="block"
+                          color="medium"
+                          onClick={() =>
+                            stopScheduledReservationReadyAlert(true)
+                          }
+                          style={
+                            {
+                              "--border-radius": "14px",
+                              fontWeight: 950,
+                            } as CSSProperties
+                          }>
+                          Ver después
+                        </IonButton>
+                        <IonButton
+                          expand="block"
+                          color="warning"
+                          disabled={
+                            acceptingId ===
+                            String(scheduledReservationReadyAlert.id)
+                          }
+                          onClick={() =>
+                            void handleStartReadyScheduledReservation(
+                              scheduledReservationReadyAlert,
+                            )
+                          }
+                          style={
+                            {
+                              "--border-radius": "14px",
+                              fontWeight: 950,
+                              color: "var(--rp-btn-primary-fg)",
+                            } as CSSProperties
+                          }>
+                          Iniciar viaje
+                        </IonButton>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* La alerta sonora global está fuera de Solicitudes. Aquí solo quedan las tarjetas normales. */}
             {false && rideAlert && isDriverAvailable && !activeRide && (
@@ -17283,7 +19900,7 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 
       <IonAlert
         isOpen={Boolean(cancelConfirmRide)}
-        header="¿Estás seguro de cancelar?"
+        header="¿Estás seguro de querer cancelar tu viaje?"
         message="El viaje volverá a estar disponible y se notificará al pasajero que buscaremos otro conductor."
         cssClass="rapago-danger-alert"
         onDidDismiss={() => setCancelConfirmRide(null)}
@@ -17343,45 +19960,85 @@ La reserva fue retirada. No continúes hacia la recogida.`,
 // or destination (in_progress). Requires driver position from Geolocation.
 
 const DRIVER_ROUTE_LABEL: Record<string, string> = {
-  accepted:        "Ruta hacia el pasajero",
+  accepted: "Ruta hacia el pasajero",
   driver_en_route: "Ruta hacia el pasajero",
-  in_progress:     "Ruta hacia el destino",
+  in_progress: "Ruta hacia el destino",
 };
 
-function DriverRideRouteMap({ status, driverPos, originLat, originLng, destinationLat, destinationLng }: {
+function DriverRideRouteMap({
+  status,
+  driverPos,
+  originLat,
+  originLng,
+  destinationLat,
+  destinationLng,
+}: {
   status: string;
   driverPos: LatLng | null;
-  originLat: number | null; originLng: number | null;
-  destinationLat: number | null; destinationLng: number | null;
+  originLat: number | null;
+  originLng: number | null;
+  destinationLat: number | null;
+  destinationLng: number | null;
 }): JSX.Element | null {
-  const route  = useDirectionsRoute();
+  const route = useDirectionsRoute();
   const mapRef = useRef<GoogleMapInstance | null>(null);
 
-  if (!["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(status)) return null;
+  if (
+    !["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(
+      status,
+    )
+  )
+    return null;
 
   if (status === "driver_arrived") {
     return (
-      <div style={{ marginTop: "8px", padding: "8px 10px", background: "var(--ion-color-secondary-tint)", borderRadius: "8px", fontSize: "0.8rem", color: "var(--ion-color-secondary-shade)" }}>
-        Ya llegaste al punto de recogida. Inicia el viaje cuando el pasajero esté a bordo.
+      <div
+        style={{
+          marginTop: "8px",
+          padding: "8px 10px",
+          background: "var(--ion-color-secondary-tint)",
+          borderRadius: "8px",
+          fontSize: "0.8rem",
+          color: "var(--ion-color-secondary-shade)",
+        }}>
+        Ya llegaste al punto de recogida. Inicia el viaje cuando el pasajero
+        esté a bordo.
       </div>
     );
   }
 
   if (!driverPos) {
     return (
-      <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
+      <div
+        style={{
+          marginTop: "8px",
+          fontSize: "0.78rem",
+          color: "var(--ion-color-medium)",
+          fontStyle: "italic",
+        }}>
         Actualiza tu ubicación para ver la ruta.
       </div>
     );
   }
 
-  const target: LatLng | null = status === "in_progress"
-    ? (destinationLat && destinationLng ? { lat: destinationLat, lng: destinationLng } : null)
-    : (originLat && originLng ? { lat: originLat, lng: originLng } : null);
+  const target: LatLng | null =
+    status === "in_progress"
+      ? destinationLat && destinationLng
+        ? { lat: destinationLat, lng: destinationLng }
+        : null
+      : originLat && originLng
+        ? { lat: originLat, lng: originLng }
+        : null;
 
   if (!target) {
     return (
-      <div style={{ marginTop: "8px", fontSize: "0.78rem", color: "var(--ion-color-medium)", fontStyle: "italic" }}>
+      <div
+        style={{
+          marginTop: "8px",
+          fontSize: "0.78rem",
+          color: "var(--ion-color-medium)",
+          fontStyle: "italic",
+        }}>
         Sin coordenadas suficientes para mostrar ruta.
       </div>
     );
@@ -17394,7 +20051,13 @@ function DriverRideRouteMap({ status, driverPos, originLat, originLng, destinati
 
   return (
     <div style={{ marginTop: "8px" }}>
-      <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--ion-color-dark)", marginBottom: "6px" }}>
+      <div
+        style={{
+          fontSize: "0.78rem",
+          fontWeight: 600,
+          color: "var(--ion-color-dark)",
+          marginBottom: "6px",
+        }}>
         {DRIVER_ROUTE_LABEL[status] ?? "Ruta"}
       </div>
       <MapView
@@ -17404,17 +20067,39 @@ function DriverRideRouteMap({ status, driverPos, originLat, originLng, destinati
         onMapReady={handleMapReady}
       />
       {route.status === "loading" && (
-        <div style={{ fontSize: "0.72rem", color: "var(--ion-color-medium)", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
-          <IonSpinner name="dots" style={{ width: "12px", height: "12px" }} /> Calculando ruta…
+        <div
+          style={{
+            fontSize: "0.72rem",
+            color: "var(--ion-color-medium)",
+            marginTop: "4px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}>
+          <IonSpinner name="dots" style={{ width: "12px", height: "12px" }} />{" "}
+          Calculando ruta…
         </div>
       )}
       {route.status === "success" && route.summary && (
-        <div style={{ fontSize: "0.75rem", color: "var(--ion-color-primary)", marginTop: "4px", fontWeight: 600 }}>
+        <div
+          style={{
+            fontSize: "0.75rem",
+            color: "var(--ion-color-primary)",
+            marginTop: "4px",
+            fontWeight: 600,
+          }}>
           {route.summary.distanceText} · {route.summary.durationText}
         </div>
       )}
       {route.status === "error" && route.error && (
-        <div style={{ fontSize: "0.72rem", color: "var(--ion-color-danger)", marginTop: "4px" }}>{route.error}</div>
+        <div
+          style={{
+            fontSize: "0.72rem",
+            color: "var(--ion-color-danger)",
+            marginTop: "4px",
+          }}>
+          {route.error}
+        </div>
       )}
     </div>
   );
@@ -17424,8 +20109,11 @@ function DriverRideRouteMap({ status, driverPos, originLat, originLng, destinati
 
 function fmtScheduledPickup(iso: string): string {
   return new Date(iso).toLocaleString("es-CL", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -17437,13 +20125,21 @@ function isPickupSoon(iso: string): boolean {
 
 function useCountdown(expiresAt: string | null): number {
   const [seconds, setSeconds] = useState<number>(() =>
-    expiresAt ? Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)) : 0,
+    expiresAt
+      ? Math.max(
+          0,
+          Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000),
+        )
+      : 0,
   );
 
   useEffect(() => {
     if (!expiresAt) return;
     const tick = () => {
-      const remaining = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      const remaining = Math.max(
+        0,
+        Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000),
+      );
       setSeconds(remaining);
     };
     tick();
@@ -17454,7 +20150,13 @@ function useCountdown(expiresAt: string | null): number {
   return seconds;
 }
 
-function QueuedOfferModal({ offer, onAccept, onReject, onExpire, loading }: {
+function QueuedOfferModal({
+  offer,
+  onAccept,
+  onReject,
+  onExpire,
+  loading,
+}: {
   offer: ActiveRideOfferData;
   onAccept: () => void;
   onReject: () => void;
@@ -17468,45 +20170,72 @@ function QueuedOfferModal({ offer, onAccept, onReject, onExpire, loading }: {
     if (countdown === 0) onExpire();
   }, [countdown, onExpire]);
 
-  const countdownColor = countdown <= 5 ? "var(--ion-color-danger)" : countdown <= 10 ? "var(--ion-color-warning-shade)" : "var(--ion-color-success-shade)";
+  const countdownColor =
+    countdown <= 5
+      ? "var(--ion-color-danger)"
+      : countdown <= 10
+        ? "var(--ion-color-warning-shade)"
+        : "var(--ion-color-success-shade)";
 
   return (
     <div style={{ padding: "16px" }}>
       {/* Header */}
-      <div style={{
-        background:   "var(--ion-color-success)",
-        color:        "white",
-        borderRadius: "12px 12px 0 0",
-        padding:      "14px 16px",
-        margin:       "-16px -16px 0",
-      }}>
-        <div style={{ fontWeight: 700, fontSize: "1rem" }}>Próximo viaje disponible</div>
+      <div
+        style={{
+          background: "var(--ion-color-success)",
+          color: "white",
+          borderRadius: "12px 12px 0 0",
+          padding: "14px 16px",
+          margin: "-16px -16px 0",
+        }}>
+        <div style={{ fontWeight: 700, fontSize: "1rem" }}>
+          Próximo viaje disponible
+        </div>
         <div style={{ fontSize: "0.8rem", opacity: 0.9, marginTop: "2px" }}>
           Este viaje comenzará después de terminar tu viaje actual.
         </div>
       </div>
 
       {/* Countdown */}
-      <div style={{
-        textAlign: "center", padding: "14px 0 8px",
-        fontWeight: 800, fontSize: "2.2rem", color: countdownColor,
-        letterSpacing: "-1px",
-      }}>
+      <div
+        style={{
+          textAlign: "center",
+          padding: "14px 0 8px",
+          fontWeight: 800,
+          fontSize: "2.2rem",
+          color: countdownColor,
+          letterSpacing: "-1px",
+        }}>
         {countdown}s
       </div>
 
       {/* Ride details */}
-      <div style={{
-        background: "var(--ion-color-light)", borderRadius: "10px",
-        padding: "12px 14px", marginBottom: "12px",
-      }}>
-        <div style={{ fontWeight: 600, fontSize: "0.92rem", marginBottom: "6px" }}>
+      <div
+        style={{
+          background: "var(--ion-color-light)",
+          borderRadius: "10px",
+          padding: "12px 14px",
+          marginBottom: "12px",
+        }}>
+        <div
+          style={{ fontWeight: 600, fontSize: "0.92rem", marginBottom: "6px" }}>
           {getDriverRideRouteDisplayLabel(ride)}
         </div>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", fontSize: "0.8rem", color: "var(--ion-color-medium-shade)" }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "10px",
+            fontSize: "0.8rem",
+            color: "var(--ion-color-medium-shade)",
+          }}>
           {ride.estimatedFareClp != null && (
-            <span style={{ fontWeight: 600, color: "var(--ion-color-success-shade)" }}>
+            <span
+              style={{
+                fontWeight: 600,
+                color: "var(--ion-color-success-shade)",
+              }}>
               ${ride.estimatedFareClp.toLocaleString("es-CL")} CLP
             </span>
           )}
@@ -17519,26 +20248,40 @@ function QueuedOfferModal({ offer, onAccept, onReject, onExpire, loading }: {
         </div>
 
         {ride.rideType === "scheduled" && ride.scheduledPickupAt && (
-          <div style={{
-            marginTop: "8px", padding: "6px 10px",
-            background: "var(--ion-color-warning-tint)", borderRadius: "6px",
-            fontSize: "0.78rem", color: "var(--ion-color-warning-shade)", fontWeight: 600,
-          }}>
+          <div
+            style={{
+              marginTop: "8px",
+              padding: "6px 10px",
+              background: "var(--ion-color-warning-tint)",
+              borderRadius: "6px",
+              fontSize: "0.78rem",
+              color: "var(--ion-color-warning-shade)",
+              fontWeight: 600,
+            }}>
             Programado: {fmtScheduledPickup(ride.scheduledPickupAt)}
           </div>
         )}
 
         {ride.priorityFeeClp != null && ride.priorityFeeClp > 0 && (
-          <div style={{
-            marginTop: "6px", fontSize: "0.78rem",
-            color: "var(--ion-color-warning-shade)", fontWeight: 600,
-          }}>
-            Recargo prioritario: ${ride.priorityFeeClp.toLocaleString("es-CL")} CLP
+          <div
+            style={{
+              marginTop: "6px",
+              fontSize: "0.78rem",
+              color: "var(--ion-color-warning-shade)",
+              fontWeight: 600,
+            }}>
+            Recargo prioritario: ${ride.priorityFeeClp.toLocaleString("es-CL")}{" "}
+            CLP
           </div>
         )}
 
         {ride.flightNumber && (
-          <div style={{ marginTop: "4px", fontSize: "0.78rem", color: "var(--ion-color-medium)" }}>
+          <div
+            style={{
+              marginTop: "4px",
+              fontSize: "0.78rem",
+              color: "var(--ion-color-medium)",
+            }}>
             Vuelo: {ride.flightNumber}
           </div>
         )}
@@ -17552,8 +20295,7 @@ function QueuedOfferModal({ offer, onAccept, onReject, onExpire, loading }: {
           color="medium"
           style={{ flex: 1 }}
           disabled={loading}
-          onClick={onReject}
-        >
+          onClick={onReject}>
           Rechazar
         </IonButton>
         <IonButton
@@ -17561,9 +20303,12 @@ function QueuedOfferModal({ offer, onAccept, onReject, onExpire, loading }: {
           color="success"
           style={{ flex: 1 }}
           disabled={loading || countdown === 0}
-          onClick={onAccept}
-        >
-          {loading ? <IonSpinner name="dots" style={{ width: "18px", height: "18px" }} /> : "Aceptar"}
+          onClick={onAccept}>
+          {loading ? (
+            <IonSpinner name="dots" style={{ width: "18px", height: "18px" }} />
+          ) : (
+            "Aceptar"
+          )}
         </IonButton>
       </div>
     </div>
@@ -17600,7 +20345,8 @@ function DriverMyRidesPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [completeConfirmRide, setCompleteConfirmRide] = useState<DriverRideData | null>(null);
+  const [completeConfirmRide, setCompleteConfirmRide] =
+    useState<DriverRideData | null>(null);
   const [passengerCancelNotice, setPassengerCancelNotice] = useState<{
     route: string;
     message: string;
@@ -17609,50 +20355,54 @@ function DriverMyRidesPage(): JSX.Element {
   const tripsLoadInFlightRef = useRef(false);
   const tripsNextLoadAtRef = useRef(0);
 
-  const loadRides = useCallback(async (background = false) => {
-    if (
-      !session?.accessToken ||
-      !isTripsPageActive ||
-      document.visibilityState !== "visible" ||
-      tripsLoadInFlightRef.current ||
-      Date.now() < tripsNextLoadAtRef.current
-    ) {
-      return;
-    }
+  const loadRides = useCallback(
+    async (background = false) => {
+      if (
+        !session?.accessToken ||
+        !isTripsPageActive ||
+        document.visibilityState !== "visible" ||
+        tripsLoadInFlightRef.current ||
+        Date.now() < tripsNextLoadAtRef.current
+      ) {
+        return;
+      }
 
-    tripsLoadInFlightRef.current = true;
-    tripsNextLoadAtRef.current = Date.now() + 2_000;
+      tripsLoadInFlightRef.current = true;
+      tripsNextLoadAtRef.current = Date.now() + 2_000;
 
-    if (!background) {
-      setLoading(true);
-      setLoadError(null);
-    }
+      if (!background) {
+        setLoading(true);
+        setLoadError(null);
+      }
 
-    try {
-      const data = await ridesService.listDriverRides(session.accessToken);
-      const noShowCompleted = readDriverNoShowCompletedRides() as unknown as DriverRideData[];
-      const merged = [
-        ...noShowCompleted,
-        ...data.filter(
-          (ride) =>
-            !noShowCompleted.some((closedRide) =>
-              driverRideNoShowCompletedIdentityMatches(
-                closedRide as unknown as Record<string, unknown>,
-                ride as unknown as Record<string, unknown>,
+      try {
+        const data = await ridesService.listDriverRides(session.accessToken);
+        const noShowCompleted =
+          readDriverNoShowCompletedRides() as unknown as DriverRideData[];
+        const merged = [
+          ...noShowCompleted,
+          ...data.filter(
+            (ride) =>
+              !noShowCompleted.some((closedRide) =>
+                driverRideNoShowCompletedIdentityMatches(
+                  closedRide as unknown as Record<string, unknown>,
+                  ride as unknown as Record<string, unknown>,
+                ),
               ),
-            ),
-        ),
-      ];
-      setRides(merged);
-    } catch (err) {
-      setLoadError(
-        err instanceof Error ? err.message : "Error al cargar tus viajes.",
-      );
-    } finally {
-      tripsLoadInFlightRef.current = false;
-      if (!background) setLoading(false);
-    }
-  }, [isTripsPageActive, session?.accessToken]);
+          ),
+        ];
+        setRides(merged);
+      } catch (err) {
+        setLoadError(
+          err instanceof Error ? err.message : "Error al cargar tus viajes.",
+        );
+      } finally {
+        tripsLoadInFlightRef.current = false;
+        if (!background) setLoading(false);
+      }
+    },
+    [isTripsPageActive, session?.accessToken],
+  );
 
   useEffect(() => {
     if (isTripsPageActive) void loadRides();
@@ -17687,18 +20437,22 @@ function DriverMyRidesPage(): JSX.Element {
         getPassengerCancellationReasonForDriver(cancelledRide),
       ].join("|");
 
-      if (noticeKey && passengerCancelNoticeKeyRef.current === noticeKey) return;
-      if (!claimDriverPassengerCancelNoticeOnce(cancelledRide, session?.user)) return;
+      if (noticeKey && passengerCancelNoticeKeyRef.current === noticeKey)
+        return;
+      if (!claimDriverPassengerCancelNoticeOnce(cancelledRide, session?.user))
+        return;
       passengerCancelNoticeKeyRef.current = noticeKey;
 
       markDriverRidePassengerCancelledLocally(cancelledRide);
       removeDriverRideAfterPassengerCancel(cancelledRide);
 
-      const route = getDriverRideRouteDisplayLabel(cancelledRide as {
-        originText?: string | null;
-        destinationText?: string | null;
-        notes?: string | null;
-      });
+      const route = getDriverRideRouteDisplayLabel(
+        cancelledRide as {
+          originText?: string | null;
+          destinationText?: string | null;
+          notes?: string | null;
+        },
+      );
       const reason = getPassengerCancellationReasonForDriver(cancelledRide);
 
       setRides((current) =>
@@ -17779,10 +20533,7 @@ function DriverMyRidesPage(): JSX.Element {
 
     checkPassengerCancelledInTrips();
 
-    const timerId = window.setInterval(
-      checkPassengerCancelledInTrips,
-      1200,
-    );
+    const timerId = window.setInterval(checkPassengerCancelledInTrips, 1200);
 
     window.addEventListener(
       RAPAGO_PASSENGER_CANCELLED_RIDE_EVENT,
@@ -17822,10 +20573,19 @@ function DriverMyRidesPage(): JSX.Element {
     };
   }, [isTripsPageActive, rides, session?.user]);
 
-  const activeRide = rides.find((ride) =>
-    ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(
-      ride.status,
-    ) && (!wasDriverRideCancelledLocally(ride as unknown as Record<string, unknown>, session?.user) && !wasDriverRideNoShowCompletedLocally(ride as unknown as Record<string, unknown>, session?.user)),
+  const activeRide = rides.find(
+    (ride) =>
+      ["accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(
+        ride.status,
+      ) &&
+      !wasDriverRideCancelledLocally(
+        ride as unknown as Record<string, unknown>,
+        session?.user,
+      ) &&
+      !wasDriverRideNoShowCompletedLocally(
+        ride as unknown as Record<string, unknown>,
+        session?.user,
+      ),
   );
 
   const historyRides = rides.filter(
@@ -17872,7 +20632,9 @@ function DriverMyRidesPage(): JSX.Element {
     }
   }
 
-  async function cancelActiveRideFromMyRides(ride: DriverRideData): Promise<void> {
+  async function cancelActiveRideFromMyRides(
+    ride: DriverRideData,
+  ): Promise<void> {
     if (!ride?.id) return;
 
     const rideId = ride.id;
@@ -17914,14 +20676,20 @@ function DriverMyRidesPage(): JSX.Element {
 
         for (const key of storageKeys) {
           const raw = localStorage.getItem(key);
-          const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+          const parsed = raw
+            ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+            : [];
           if (!Array.isArray(parsed)) continue;
 
           localStorage.setItem(
             key,
             JSON.stringify(
               parsed
-                .map((item) => String(item.id ?? "") === rideId ? { ...item, ...cancelledRide } : item)
+                .map((item) =>
+                  String(item.id ?? "") === rideId
+                    ? { ...item, ...cancelledRide }
+                    : item,
+                )
                 .filter((item) => {
                   const id = String(item.id ?? "");
                   const status = String(item.status ?? "").toLowerCase();
@@ -17940,7 +20708,11 @@ function DriverMyRidesPage(): JSX.Element {
         return [cancelledRide, ...withoutCurrent];
       });
 
-      window.dispatchEvent(new CustomEvent("rapago:driver-available-rides-updated", { detail: { ride: requeued } }));
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-available-rides-updated", {
+          detail: { ride: requeued },
+        }),
+      );
       window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
       setLoadError(null);
     } finally {
@@ -17958,7 +20730,10 @@ function DriverMyRidesPage(): JSX.Element {
     setLoadError(null);
 
     try {
-      const completed = await ridesService.completeRide(session.accessToken, ride.id);
+      const completed = await ridesService.completeRide(
+        session.accessToken,
+        ride.id,
+      );
       const completedAt = new Date().toISOString();
       const cashPatch = buildDriverCashClosureRidePatch(ride, cashClosure);
 
@@ -17978,7 +20753,12 @@ function DriverMyRidesPage(): JSX.Element {
         }
 
         persistDriverCashClosureForAdmin(
-          { ...(ride as unknown as Record<string, unknown>), ...cashPatch, completedAt, closedByDriverAt: completedAt },
+          {
+            ...(ride as unknown as Record<string, unknown>),
+            ...cashPatch,
+            completedAt,
+            closedByDriverAt: completedAt,
+          },
           cashClosure,
           session?.user,
         );
@@ -17998,9 +20778,15 @@ function DriverMyRidesPage(): JSX.Element {
       );
 
       clearDriverLiveLocationForPassenger(ride.id);
-      removeDriverActiveRideLocalMirror({ ...(ride as unknown as Record<string, unknown>), ...cashPatch }, session?.user);
+      removeDriverActiveRideLocalMirror(
+        { ...(ride as unknown as Record<string, unknown>), ...cashPatch },
+        session?.user,
+      );
 
-      const nextActive = promoteDriverNextRideAfterCompletion(ride.id, session?.user);
+      const nextActive = promoteDriverNextRideAfterCompletion(
+        ride.id,
+        session?.user,
+      );
       setRides((prev) => {
         const completedRide = {
           ...ride,
@@ -18011,14 +20797,18 @@ function DriverMyRidesPage(): JSX.Element {
           closedByDriverAt: completedAt,
         } as DriverRideData;
         const withoutCurrent = prev.filter((item) => item.id !== ride.id);
-        return nextActive ? [nextActive, completedRide, ...withoutCurrent] : [completedRide, ...withoutCurrent];
+        return nextActive
+          ? [nextActive, completedRide, ...withoutCurrent]
+          : [completedRide, ...withoutCurrent];
       });
 
       window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated", { detail: { rideId: ride.id, status: "completed", cashClosure } }));
       if (cashBackendWarning) setLoadError(cashBackendWarning);
       if (!nextActive) await loadRides();
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "No se pudo finalizar el viaje.");
+      setLoadError(
+        err instanceof Error ? err.message : "No se pudo finalizar el viaje.",
+      );
     } finally {
       setActionLoading(null);
       setCompleteConfirmRide(null);
@@ -18045,9 +20835,13 @@ function DriverMyRidesPage(): JSX.Element {
     const rideId = String(ride.id ?? "").trim();
     if (!rideId) return;
 
-    const noShowState = getDriverNoShowState(ride as DriverRideData & Record<string, unknown>);
+    const noShowState = getDriverNoShowState(
+      ride as DriverRideData & Record<string, unknown>,
+    );
     if (!noShowState.allowed) {
-      setLoadError(`Debes esperar 5 minutos desde que llegaste al punto. Falta ${formatDriverNoShowRemaining(noShowState.remainingMs)}.`);
+      setLoadError(
+        `Debes esperar 5 minutos desde que llegaste al punto. Falta ${formatDriverNoShowRemaining(noShowState.remainingMs)}.`,
+      );
       return;
     }
 
@@ -18083,15 +20877,13 @@ function DriverMyRidesPage(): JSX.Element {
       }
 
       try {
-        removeDriverActiveRideLocalMirror(noShowClosedRide as unknown as Record<string, unknown>, session?.user);
+        removeDriverActiveRideLocalMirror(
+          noShowClosedRide as unknown as Record<string, unknown>,
+          session?.user,
+        );
       } catch {
         // No bloquea cierre visual.
       }
-
-
-
-
-
 
       setRides((prev) => [
         noShowClosedRide,
@@ -18104,13 +20896,9 @@ function DriverMyRidesPage(): JSX.Element {
         ),
       ]);
 
-
       if (session?.accessToken) {
         try {
-          await declareDriverNoShowInBackend(
-            session.accessToken,
-            rideId,
-          );
+          await declareDriverNoShowInBackend(session.accessToken, rideId);
         } catch (backendError) {
           console.error(
             "[RAPA GO] No Show local cerrado, pero backend falló",
@@ -18153,18 +20941,22 @@ function DriverMyRidesPage(): JSX.Element {
         }),
       );
 
-      setLoadError("No show registrado. El viaje fue cerrado y retirado de tus viajes activos.");
+      setLoadError(
+        "No show registrado. El viaje fue cerrado y retirado de tus viajes activos.",
+      );
     } catch (err) {
       console.error("[RAPA GO] Error cerrando No show", err);
-      setLoadError(err instanceof Error ? err.message : "No se pudo cerrar el No show.");
+      setLoadError(
+        err instanceof Error ? err.message : "No se pudo cerrar el No show.",
+      );
     } finally {
       setActionLoading(null);
     }
   }
 
-
   const hasInProgressRide = rides.some((ride) => ride.status === "in_progress");
-  const hasAcceptedQueuedRide = hasInProgressRide && rides.some((ride) => ride.status === "accepted");
+  const hasAcceptedQueuedRide =
+    hasInProgressRide && rides.some((ride) => ride.status === "accepted");
 
   return (
     <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
@@ -18221,8 +21013,7 @@ function DriverMyRidesPage(): JSX.Element {
           slot="fixed"
           onIonRefresh={(event) => {
             void loadRides().then(() => event.detail.complete());
-          }}
-        >
+          }}>
           <IonRefresherContent />
         </IonRefresher>
 
@@ -18232,8 +21023,7 @@ function DriverMyRidesPage(): JSX.Element {
               display: "flex",
               justifyContent: "center",
               paddingTop: "40px",
-            }}
-          >
+            }}>
             <IonSpinner name="crescent" />
           </div>
         )}
@@ -18254,8 +21044,7 @@ function DriverMyRidesPage(): JSX.Element {
               background: "var(--rp-surface)",
               border: "2px solid var(--rp-ok-bd)",
               boxShadow: "var(--rp-shadow)",
-            }}
-          >
+            }}>
             <IonCardContent style={{ padding: "15px 16px" }}>
               <div
                 style={{
@@ -18263,8 +21052,7 @@ function DriverMyRidesPage(): JSX.Element {
                   alignItems: "center",
                   justifyContent: "space-between",
                   gap: 12,
-                }}
-              >
+                }}>
                 <div style={{ minWidth: 0 }}>
                   <IonBadge color="success" style={{ marginBottom: 7 }}>
                     {statusLabel(activeRide.status)}
@@ -18279,20 +21067,20 @@ function DriverMyRidesPage(): JSX.Element {
                       fontSize: ".78rem",
                       fontWeight: 800,
                       lineHeight: 1.35,
-                    }}
-                  >
+                    }}>
                     El mapa y los controles están en una pantalla separada.
                   </div>
                 </div>
                 <IonButton
                   routerLink={ROUTES.DRIVER.ACTIVE_RIDE}
                   color="success"
-                  style={{
-                    "--border-radius": "15px",
-                    minWidth: 126,
-                    fontWeight: 950,
-                  } as CSSProperties}
-                >
+                  style={
+                    {
+                      "--border-radius": "15px",
+                      minWidth: 126,
+                      fontWeight: 950,
+                    } as CSSProperties
+                  }>
                   <IonIcon icon={navigateOutline} slot="start" />
                   Abrir mapa
                 </IonButton>
@@ -18349,9 +21137,13 @@ function DriverMyRidesPage(): JSX.Element {
 
             <div className="rapago-trip-list">
               {historyRides.map((ride) => {
-                const rideVehicleCategory = getRideVehicleCategory(ride as RideWithFarePayload);
-                const rideVehicleLabel = getRideVehicleLabel(rideVehicleCategory);
-                const rideVehicleEmoji = getRideVehicleEmoji(rideVehicleCategory);
+                const rideVehicleCategory = getRideVehicleCategory(
+                  ride as RideWithFarePayload,
+                );
+                const rideVehicleLabel =
+                  getRideVehicleLabel(rideVehicleCategory);
+                const rideVehicleEmoji =
+                  getRideVehicleEmoji(rideVehicleCategory);
                 const rideRecord = ride as unknown as Record<string, unknown>;
                 const cancelled = ride.status === "cancelled";
                 const fareClp = getRideDisplayFareClp(ride);
@@ -18366,11 +21158,18 @@ function DriverMyRidesPage(): JSX.Element {
                 return (
                   <article
                     key={ride.id}
-                    className={`rapago-trip-card${cancelled ? " rapago-trip-card--cancelled" : ""}`}
-                  >
+                    className={`rapago-trip-card${cancelled ? " rapago-trip-card--cancelled" : ""}`}>
                     <header className="rapago-trip-card__head">
-                      <span className="rapago-trip-card__icon" aria-hidden="true">
-                        <IonIcon icon={cancelled ? closeCircleOutline : checkmarkCircleOutline} />
+                      <span
+                        className="rapago-trip-card__icon"
+                        aria-hidden="true">
+                        <IonIcon
+                          icon={
+                            cancelled
+                              ? closeCircleOutline
+                              : checkmarkCircleOutline
+                          }
+                        />
                       </span>
 
                       <div className="rapago-trip-card__route">
@@ -18423,7 +21222,10 @@ function DriverMyRidesPage(): JSX.Element {
                         {cashConfirmed && (
                           <div className="rapago-trip-card__fact rapago-trip-card__fact--cash">
                             <dt>
-                              <IonIcon icon={walletOutline} aria-hidden="true" />
+                              <IonIcon
+                                icon={walletOutline}
+                                aria-hidden="true"
+                              />
                               Efectivo recibido
                             </dt>
                             <dd>
@@ -18470,9 +21272,11 @@ function DriverMyRidesPage(): JSX.Element {
         isOpen={Boolean(passengerCancelNotice)}
         backdropDismiss={false}
         className="rapago-cancel-notice"
-        onDidDismiss={() => setPassengerCancelNotice(null)}
-      >
-        <div className="rapago-cancel-notice__card" role="alertdialog" aria-modal="true">
+        onDidDismiss={() => setPassengerCancelNotice(null)}>
+        <div
+          className="rapago-cancel-notice__card"
+          role="alertdialog"
+          aria-modal="true">
           <img
             className="rapago-cancel-notice__logo"
             src={logoRapago}
@@ -18483,7 +21287,9 @@ function DriverMyRidesPage(): JSX.Element {
             <IonIcon icon={closeCircleOutline} />
           </span>
 
-          <h2 className="rapago-cancel-notice__title">Pasajero canceló el viaje</h2>
+          <h2 className="rapago-cancel-notice__title">
+            Pasajero canceló el viaje
+          </h2>
 
           {passengerCancelNotice && (
             <>
@@ -18499,13 +21305,11 @@ function DriverMyRidesPage(): JSX.Element {
           <IonButton
             expand="block"
             className="rapago-cancel-notice__cta"
-            onClick={() => setPassengerCancelNotice(null)}
-          >
+            onClick={() => setPassengerCancelNotice(null)}>
             Entendido
           </IonButton>
         </div>
       </IonModal>
-
     </IonPage>
   );
 }
@@ -18549,10 +21353,12 @@ export function DriverEarningsPage(): JSX.Element {
         ? await ridesService.listDriverRides(session.accessToken)
         : [];
 
-      setRides(dedupeDriverEarningsRides([
-        ...(serverRides as DriverEarningsRide[]),
-        ...localRides,
-      ]));
+      setRides(
+        dedupeDriverEarningsRides([
+          ...(serverRides as DriverEarningsRide[]),
+          ...localRides,
+        ]),
+      );
     } catch (err) {
       setRides(dedupeDriverEarningsRides(localRides));
       setLoadError(
@@ -18576,20 +21382,35 @@ export function DriverEarningsPage(): JSX.Element {
         void loadEarnings();
       }
     };
-    window.addEventListener("rapago:driver-rides-updated", refresh as EventListener);
-    window.addEventListener("rapago:passenger-rides-updated", refresh as EventListener);
+    window.addEventListener(
+      "rapago:driver-rides-updated",
+      refresh as EventListener,
+    );
+    window.addEventListener(
+      "rapago:passenger-rides-updated",
+      refresh as EventListener,
+    );
     window.addEventListener("storage", refresh as EventListener);
     return () => {
-      window.removeEventListener("rapago:driver-rides-updated", refresh as EventListener);
-      window.removeEventListener("rapago:passenger-rides-updated", refresh as EventListener);
+      window.removeEventListener(
+        "rapago:driver-rides-updated",
+        refresh as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:passenger-rides-updated",
+        refresh as EventListener,
+      );
       window.removeEventListener("storage", refresh as EventListener);
     };
   }, [isEarningsPageActive, loadEarnings]);
 
   const filterStart = getDriverEarningsFilterStart(filter);
-  const visibleRides = rides.filter((ride) => getDriverEarningsRideDateMs(ride) >= filterStart);
+  const visibleRides = rides.filter(
+    (ride) => getDriverEarningsRideDateMs(ride) >= filterStart,
+  );
   const totalFareClp = visibleRides.reduce(
-    (sum, ride) => sum + (getRideDisplayFareClp(ride as RideWithFarePayload) ?? 0),
+    (sum, ride) =>
+      sum + (getRideDisplayFareClp(ride as RideWithFarePayload) ?? 0),
     0,
   );
   const totalEarningsClp = visibleRides.reduce(
@@ -18608,189 +21429,315 @@ export function DriverEarningsPage(): JSX.Element {
   return (
     <>
       <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
-      <RapagoAppBar sectionId="driver-earnings" title={m.label} />
-      <IonContent
-        className="ion-padding"
-        style={
-          {
-            "--background": "transparent",
-          } as CSSProperties
-        }
-      >
-        <IonRefresher
-          slot="fixed"
-          onIonRefresh={(event) => {
-            void loadEarnings().finally(() => event.detail.complete());
-          }}
-        >
-          <IonRefresherContent />
-        </IonRefresher>
+        <RapagoAppBar sectionId="driver-earnings" title={m.label} />
+        <IonContent
+          className="ion-padding"
+          style={
+            {
+              "--background": "transparent",
+            } as CSSProperties
+          }>
+          <IonRefresher
+            slot="fixed"
+            onIonRefresh={(event) => {
+              void loadEarnings().finally(() => event.detail.complete());
+            }}>
+            <IonRefresherContent />
+          </IonRefresher>
 
-        <IonCard
-          className="rapago-driver-card"
-          style={{
-            margin: 0,
-            borderRadius: 24,
-            background: "var(--rp-surface)",
-            color: "var(--rp-text)",
-            boxShadow: "var(--rp-shadow)",
-          }}
-        >
-          <IonCardContent style={{ padding: 18 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-              <div>
-                <div style={{ fontSize: ".78rem", fontWeight: 900, opacity: .78 }}>
-                  Ganancia acumulada
-                </div>
-                <div style={{ marginTop: 4, fontSize: "1.8rem", fontWeight: 950, lineHeight: 1 }}>
-                  {formatClp(totalEarningsClp)}
-                </div>
-                <div style={{ marginTop: 7, fontSize: ".82rem", fontWeight: 850 }}>
-                  {visibleRides.length} viaje{visibleRides.length === 1 ? "" : "s"} completado{visibleRides.length === 1 ? "" : "s"}
-                </div>
-              </div>
-
+          <IonCard
+            className="rapago-driver-card"
+            style={{
+              margin: 0,
+              borderRadius: 24,
+              background: "var(--rp-surface)",
+              color: "var(--rp-text)",
+              boxShadow: "var(--rp-shadow)",
+            }}>
+            <IonCardContent style={{ padding: 18 }}>
               <div
-                aria-hidden="true"
                 style={{
-                  width: 54,
-                  height: 54,
-                  borderRadius: 18,
-                  background: "var(--rp-surface-soft)",
                   display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <IonIcon icon={cashOutline} style={{ fontSize: 30 }} />
-              </div>
-            </div>
-          </IonCardContent>
-        </IonCard>
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "flex-start",
+                }}>
+                <div>
+                  <div
+                    style={{
+                      fontSize: ".78rem",
+                      fontWeight: 900,
+                      opacity: 0.78,
+                    }}>
+                    Ganancia acumulada
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: "1.8rem",
+                      fontWeight: 950,
+                      lineHeight: 1,
+                    }}>
+                    {formatClp(totalEarningsClp)}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 7,
+                      fontSize: ".82rem",
+                      fontWeight: 850,
+                    }}>
+                    {visibleRides.length} viaje
+                    {visibleRides.length === 1 ? "" : "s"} completado
+                    {visibleRides.length === 1 ? "" : "s"}
+                  </div>
+                </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 10,
-            marginTop: 12,
-          }}
-        >
-          <IonCard className="rapago-driver-card" style={{ margin: 0, borderRadius: 18, background: "var(--rp-surface)" }}>
-            <IonCardContent style={{ padding: 14 }}>
-              <div style={{ color: "var(--rp-muted)", fontSize: ".72rem", fontWeight: 850 }}>Total cobrado</div>
-              <div style={{ color: "var(--rp-text)", fontWeight: 950, marginTop: 3 }}>{formatClp(totalFareClp)}</div>
-            </IonCardContent>
-          </IonCard>
-          <IonCard className="rapago-driver-card" style={{ margin: 0, borderRadius: 18, background: "var(--rp-surface)" }}>
-            <IonCardContent style={{ padding: 14 }}>
-              <div style={{ color: "var(--rp-muted)", fontSize: ".72rem", fontWeight: 850 }}>Comisión Rapa Go</div>
-              <div style={{ color: "var(--rp-text)", fontWeight: 950, marginTop: 3 }}>{formatClp(totalCommissionClp)}</div>
-            </IonCardContent>
-          </IonCard>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: 8,
-            marginTop: 14,
-          }}
-        >
-          {(["today", "week", "month", "all"] as DriverEarningsFilter[]).map((item) => (
-            <IonButton
-              key={item}
-              size="small"
-              fill={filter === item ? "solid" : "outline"}
-              color={filter === item ? "success" : "light"}
-              onClick={() => setFilter(item)}
-              style={{ "--border-radius": "999px", fontWeight: 900 } as CSSProperties}
-            >
-              {filterLabels[item]}
-            </IonButton>
-          ))}
-        </div>
-
-        <IonButton
-          expand="block"
-          color="success"
-          disabled={visibleRides.length === 0}
-          onClick={() => exportDriverEarningsCsv(visibleRides, filter)}
-          style={{ marginTop: 12, "--border-radius": "16px", height: 48, fontWeight: 950 } as CSSProperties}
-        >
-          Exportar Excel
-        </IonButton>
-
-        {loadError && (
-          <IonText color="warning">
-            <p style={{ fontSize: ".78rem", fontWeight: 800 }}>{loadError}</p>
-          </IonText>
-        )}
-
-        {loading && (
-          <div style={{ display: "flex", justifyContent: "center", paddingTop: 28 }}>
-            <IonSpinner name="crescent" />
-          </div>
-        )}
-
-        {!loading && visibleRides.length === 0 && (
-          <IonCard className="rapago-driver-card" style={{ margin: "14px 0 0", borderRadius: 20, background: "var(--rp-surface)" }}>
-            <IonCardContent style={{ color: "var(--rp-text)", fontWeight: 850 }}>
-              Todavía no hay viajes completados para este filtro.
-            </IonCardContent>
-          </IonCard>
-        )}
-
-        {!loading && visibleRides.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
-            {visibleRides.map((ride) => {
-              const fare = getRideDisplayFareClp(ride as RideWithFarePayload) ?? 0;
-              const earning = getDriverEarningsAmountClp(ride);
-              const dateMs = getDriverEarningsRideDateMs(ride);
-
-              return (
-                <IonCard
-                  key={String(ride.id ?? `${getDriverRidePointDisplayLabel(ride, "origin")}-${getDriverRidePointDisplayLabel(ride, "destination")}-${dateMs}`)}
-                  className="rapago-driver-card"
+                <div
+                  aria-hidden="true"
                   style={{
-                    margin: 0,
-                    borderRadius: 20,
-                    background: "var(--rp-surface)",
-                    color: "var(--rp-text)",
-                    border: "var(--rp-border-w) solid var(--rp-border-c)",
-                  }}
-                >
-                  <IonCardContent style={{ padding: 14 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 950, fontSize: ".94rem", lineHeight: 1.25 }}>
-                          {getDriverRideRouteDisplayLabel(ride as unknown as Record<string, unknown>)}
-                        </div>
-                        <div style={{ marginTop: 5, color: "var(--rp-muted)", fontSize: ".74rem", fontWeight: 800 }}>
-                          {dateMs ? new Date(dateMs).toLocaleString("es-CL") : "Fecha no informada"}
-                        </div>
-                        <div style={{ marginTop: 5, color: "var(--rp-muted)", fontSize: ".74rem", fontWeight: 800 }}>
-                          {getRidePaymentMethodLabel(String(ride.notes ?? ""))} · {getRideTripTypeLabel(String(ride.notes ?? ""))}
-                        </div>
-                      </div>
+                    width: 54,
+                    height: 54,
+                    borderRadius: 18,
+                    background: "var(--rp-surface-soft)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}>
+                  <IonIcon icon={cashOutline} style={{ fontSize: 30 }} />
+                </div>
+              </div>
+            </IonCardContent>
+          </IonCard>
 
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <IonBadge color="success" style={{ fontWeight: 950 }}>
-                          {formatClp(earning)}
-                        </IonBadge>
-                        <div style={{ marginTop: 6, color: "var(--rp-muted)", fontSize: ".72rem", fontWeight: 850 }}>
-                          Precio {formatClp(fare)}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+              marginTop: 12,
+            }}>
+            <IonCard
+              className="rapago-driver-card"
+              style={{
+                margin: 0,
+                borderRadius: 18,
+                background: "var(--rp-surface)",
+              }}>
+              <IonCardContent style={{ padding: 14 }}>
+                <div
+                  style={{
+                    color: "var(--rp-muted)",
+                    fontSize: ".72rem",
+                    fontWeight: 850,
+                  }}>
+                  Total cobrado
+                </div>
+                <div
+                  style={{
+                    color: "var(--rp-text)",
+                    fontWeight: 950,
+                    marginTop: 3,
+                  }}>
+                  {formatClp(totalFareClp)}
+                </div>
+              </IonCardContent>
+            </IonCard>
+            <IonCard
+              className="rapago-driver-card"
+              style={{
+                margin: 0,
+                borderRadius: 18,
+                background: "var(--rp-surface)",
+              }}>
+              <IonCardContent style={{ padding: 14 }}>
+                <div
+                  style={{
+                    color: "var(--rp-muted)",
+                    fontSize: ".72rem",
+                    fontWeight: 850,
+                  }}>
+                  Comisión Rapa Go
+                </div>
+                <div
+                  style={{
+                    color: "var(--rp-text)",
+                    fontWeight: 950,
+                    marginTop: 3,
+                  }}>
+                  {formatClp(totalCommissionClp)}
+                </div>
+              </IonCardContent>
+            </IonCard>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: 8,
+              marginTop: 14,
+            }}>
+            {(["today", "week", "month", "all"] as DriverEarningsFilter[]).map(
+              (item) => (
+                <IonButton
+                  key={item}
+                  size="small"
+                  fill={filter === item ? "solid" : "outline"}
+                  color={filter === item ? "success" : "light"}
+                  onClick={() => setFilter(item)}
+                  style={
+                    {
+                      "--border-radius": "999px",
+                      fontWeight: 900,
+                    } as CSSProperties
+                  }>
+                  {filterLabels[item]}
+                </IonButton>
+              ),
+            )}
+          </div>
+
+          <IonButton
+            expand="block"
+            color="success"
+            disabled={visibleRides.length === 0}
+            onClick={() => exportDriverEarningsCsv(visibleRides, filter)}
+            style={
+              {
+                marginTop: 12,
+                "--border-radius": "16px",
+                height: 48,
+                fontWeight: 950,
+              } as CSSProperties
+            }>
+            Exportar Excel
+          </IonButton>
+
+          {loadError && (
+            <IonText color="warning">
+              <p style={{ fontSize: ".78rem", fontWeight: 800 }}>{loadError}</p>
+            </IonText>
+          )}
+
+          {loading && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                paddingTop: 28,
+              }}>
+              <IonSpinner name="crescent" />
+            </div>
+          )}
+
+          {!loading && visibleRides.length === 0 && (
+            <IonCard
+              className="rapago-driver-card"
+              style={{
+                margin: "14px 0 0",
+                borderRadius: 20,
+                background: "var(--rp-surface)",
+              }}>
+              <IonCardContent
+                style={{ color: "var(--rp-text)", fontWeight: 850 }}>
+                Todavía no hay viajes completados para este filtro.
+              </IonCardContent>
+            </IonCard>
+          )}
+
+          {!loading && visibleRides.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                marginTop: 14,
+              }}>
+              {visibleRides.map((ride) => {
+                const fare =
+                  getRideDisplayFareClp(ride as RideWithFarePayload) ?? 0;
+                const earning = getDriverEarningsAmountClp(ride);
+                const dateMs = getDriverEarningsRideDateMs(ride);
+
+                return (
+                  <IonCard
+                    key={String(
+                      ride.id ??
+                        `${getDriverRidePointDisplayLabel(ride, "origin")}-${getDriverRidePointDisplayLabel(ride, "destination")}-${dateMs}`,
+                    )}
+                    className="rapago-driver-card"
+                    style={{
+                      margin: 0,
+                      borderRadius: 20,
+                      background: "var(--rp-surface)",
+                      color: "var(--rp-text)",
+                      border: "var(--rp-border-w) solid var(--rp-border-c)",
+                    }}>
+                    <IonCardContent style={{ padding: 14 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 950,
+                              fontSize: ".94rem",
+                              lineHeight: 1.25,
+                            }}>
+                            {getDriverRideRouteDisplayLabel(
+                              ride as unknown as Record<string, unknown>,
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 5,
+                              color: "var(--rp-muted)",
+                              fontSize: ".74rem",
+                              fontWeight: 800,
+                            }}>
+                            {dateMs
+                              ? new Date(dateMs).toLocaleString("es-CL")
+                              : "Fecha no informada"}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 5,
+                              color: "var(--rp-muted)",
+                              fontSize: ".74rem",
+                              fontWeight: 800,
+                            }}>
+                            {getRidePaymentMethodLabel(
+                              String(ride.notes ?? ""),
+                            )}{" "}
+                            · {getRideTripTypeLabel(String(ride.notes ?? ""))}
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <IonBadge color="success" style={{ fontWeight: 950 }}>
+                            {formatClp(earning)}
+                          </IonBadge>
+                          <div
+                            style={{
+                              marginTop: 6,
+                              color: "var(--rp-muted)",
+                              fontSize: ".72rem",
+                              fontWeight: 850,
+                            }}>
+                            Precio {formatClp(fare)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </IonCardContent>
-                </IonCard>
-              );
-            })}
-          </div>
-        )}
-      </IonContent>
+                    </IonCardContent>
+                  </IonCard>
+                );
+              })}
+            </div>
+          )}
+        </IonContent>
       </IonPage>
     </>
   );
@@ -18836,7 +21783,9 @@ function clearDriverProfilePhotoRemovalMarker(user?: unknown): void {
 }
 
 function isLocalDriverProfilePhoto(value: unknown): boolean {
-  return String(value ?? "").trim().startsWith("data:image/");
+  return String(value ?? "")
+    .trim()
+    .startsWith("data:image/");
 }
 
 function getPreferredDriverProfilePhoto(
@@ -18859,12 +21808,9 @@ async function clearDriverProfilePhotoOnServer(
   accessToken: string,
 ): Promise<boolean> {
   try {
-    await driverProfileService.upsertMyProfile(
-      accessToken,
-      { profilePhotoUrl: null } as unknown as Parameters<
-        typeof driverProfileService.upsertMyProfile
-      >[1],
-    );
+    await driverProfileService.upsertMyProfile(accessToken, {
+      profilePhotoUrl: null,
+    } as unknown as Parameters<typeof driverProfileService.upsertMyProfile>[1]);
     return true;
   } catch {
     try {
@@ -18936,7 +21882,10 @@ function getStoredDriverProfilePhotoUrl(user?: unknown): string {
   return "";
 }
 
-function persistStoredDriverProfilePhotoUrl(value: string, user?: unknown): void {
+function persistStoredDriverProfilePhotoUrl(
+  value: string,
+  user?: unknown,
+): void {
   try {
     const clean = value.trim();
     const profileKeys = [
@@ -18960,23 +21909,39 @@ function persistStoredDriverProfilePhotoUrl(value: string, user?: unknown): void
         writeDriverScopedStorageItem(key, clean, user);
       }
 
-      writeDriverScopedStorageItem("rapago_driver_profile_photo_updated_at", profilePhotoUpdatedAt, user);
-      writeDriverScopedStorageItem("rapago_driver_profile_updated_at", profilePhotoUpdatedAt, user);
-      writeDriverScopedStorageItem("rapago_public_driver_profile_photo_updated_at", profilePhotoUpdatedAt, user);
+      writeDriverScopedStorageItem(
+        "rapago_driver_profile_photo_updated_at",
+        profilePhotoUpdatedAt,
+        user,
+      );
+      writeDriverScopedStorageItem(
+        "rapago_driver_profile_updated_at",
+        profilePhotoUpdatedAt,
+        user,
+      );
+      writeDriverScopedStorageItem(
+        "rapago_public_driver_profile_photo_updated_at",
+        profilePhotoUpdatedAt,
+        user,
+      );
 
-      window.dispatchEvent(new CustomEvent("rapago:driver-public-profile-updated", {
-        detail: {
-          ownerKey: getDriverScopedOwnerKey(user),
-          driverOwnerKey: getDriverScopedOwnerKey(user),
-          driverEmail: getDriverLiveUserField(user, "email"),
-          driverName: getDriverLiveUserField(user, "name") ?? getDriverLiveUserField(user, "fullName"),
-          driverProfilePhotoUrl: clean,
-          driverProfileImageDataUrl: clean,
-          profilePhotoUpdatedAt,
-          driverProfilePhotoUpdatedAt: profilePhotoUpdatedAt,
-          updatedAt: profilePhotoUpdatedAt,
-        },
-      }));
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-public-profile-updated", {
+          detail: {
+            ownerKey: getDriverScopedOwnerKey(user),
+            driverOwnerKey: getDriverScopedOwnerKey(user),
+            driverEmail: getDriverLiveUserField(user, "email"),
+            driverName:
+              getDriverLiveUserField(user, "name") ??
+              getDriverLiveUserField(user, "fullName"),
+            driverProfilePhotoUrl: clean,
+            driverProfileImageDataUrl: clean,
+            profilePhotoUpdatedAt,
+            driverProfilePhotoUpdatedAt: profilePhotoUpdatedAt,
+            updatedAt: profilePhotoUpdatedAt,
+          },
+        }),
+      );
       window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
     } else {
       const profilePhotoRemovedAt = markDriverProfilePhotoRemoved(user);
@@ -19003,26 +21968,28 @@ function persistStoredDriverProfilePhotoUrl(value: string, user?: unknown): void
         user,
       );
 
-      window.dispatchEvent(new CustomEvent("rapago:driver-public-profile-updated", {
-        detail: {
-          ownerKey: getDriverScopedOwnerKey(user),
-          driverOwnerKey: getDriverScopedOwnerKey(user),
-          driverEmail: getDriverLiveUserField(user, "email"),
-          driverProfilePhotoUrl: null,
-          driverProfileImageDataUrl: null,
-          profilePhotoUrl: null,
-          profileImageDataUrl: null,
-          profilePhotoDataUrl: null,
-          driverPhotoUrl: null,
-          driverPhotoDataUrl: null,
-          avatarDataUrl: null,
-          profilePhotoRemoved: true,
-          profilePhotoRemovedAt,
-          profilePhotoUpdatedAt: profilePhotoRemovedAt,
-          driverProfilePhotoUpdatedAt: profilePhotoRemovedAt,
-          updatedAt: profilePhotoRemovedAt,
-        },
-      }));
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-public-profile-updated", {
+          detail: {
+            ownerKey: getDriverScopedOwnerKey(user),
+            driverOwnerKey: getDriverScopedOwnerKey(user),
+            driverEmail: getDriverLiveUserField(user, "email"),
+            driverProfilePhotoUrl: null,
+            driverProfileImageDataUrl: null,
+            profilePhotoUrl: null,
+            profileImageDataUrl: null,
+            profilePhotoDataUrl: null,
+            driverPhotoUrl: null,
+            driverPhotoDataUrl: null,
+            avatarDataUrl: null,
+            profilePhotoRemoved: true,
+            profilePhotoRemovedAt,
+            profilePhotoUpdatedAt: profilePhotoRemovedAt,
+            driverProfilePhotoUpdatedAt: profilePhotoRemovedAt,
+            updatedAt: profilePhotoRemovedAt,
+          },
+        }),
+      );
       window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
     }
   } catch {
@@ -19051,7 +22018,10 @@ function getStoredDriverVehicleImageDataUrl(user?: unknown): string {
 
 function getStoredDriverVehicleImageName(user?: unknown): string {
   try {
-    return readDriverScopedStorageItem("rapago_driver_vehicle_image_name", user) ?? "";
+    return (
+      readDriverScopedStorageItem("rapago_driver_vehicle_image_name", user) ??
+      ""
+    );
   } catch {
     return "";
   }
@@ -19066,13 +22036,24 @@ function persistStoredDriverVehicleImageDataUrl(
     const clean = value.trim();
 
     if (clean) {
-      writeDriverScopedStorageItem(RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY, clean, user);
+      writeDriverScopedStorageItem(
+        RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY,
+        clean,
+        user,
+      );
     } else {
-      removeDriverScopedStorageItem(RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY, user);
+      removeDriverScopedStorageItem(
+        RAPAGO_DRIVER_CANONICAL_VEHICLE_IMAGE_KEY,
+        user,
+      );
     }
 
     if (imageName?.trim()) {
-      writeDriverScopedStorageItem("rapago_driver_vehicle_image_name", imageName.trim(), user);
+      writeDriverScopedStorageItem(
+        "rapago_driver_vehicle_image_name",
+        imageName.trim(),
+        user,
+      );
     } else if (!clean) {
       removeDriverScopedStorageItem("rapago_driver_vehicle_image_name", user);
     }
@@ -19093,11 +22074,24 @@ function publishDriverProfileVehicleSnapshot(input: {
       ...(vehicle ?? {}),
       ...getDriverVehiclePublicPayload(input.user),
       ...buildDriverResidentFarePayload(input.user),
-      imageDataUrl: vehicle?.imageDataUrl ?? getStoredDriverVehicleImageDataUrl(input.user) ?? null,
-      vehicleImageDataUrl: vehicle?.imageDataUrl ?? getStoredDriverVehicleImageDataUrl(input.user) ?? null,
-      vehiclePhotoDataUrl: vehicle?.imageDataUrl ?? getStoredDriverVehicleImageDataUrl(input.user) ?? null,
-      driverVehicleImageDataUrl: vehicle?.imageDataUrl ?? getStoredDriverVehicleImageDataUrl(input.user) ?? null,
-      driverProfileImageDataUrl: getStoredDriverProfilePhotoUrl(input.user) || null,
+      imageDataUrl:
+        vehicle?.imageDataUrl ??
+        getStoredDriverVehicleImageDataUrl(input.user) ??
+        null,
+      vehicleImageDataUrl:
+        vehicle?.imageDataUrl ??
+        getStoredDriverVehicleImageDataUrl(input.user) ??
+        null,
+      vehiclePhotoDataUrl:
+        vehicle?.imageDataUrl ??
+        getStoredDriverVehicleImageDataUrl(input.user) ??
+        null,
+      driverVehicleImageDataUrl:
+        vehicle?.imageDataUrl ??
+        getStoredDriverVehicleImageDataUrl(input.user) ??
+        null,
+      driverProfileImageDataUrl:
+        getStoredDriverProfilePhotoUrl(input.user) || null,
       driverProfilePhotoUrl: getStoredDriverProfilePhotoUrl(input.user) || null,
       profilePhotoUrl: getStoredDriverProfilePhotoUrl(input.user) || null,
       profileImageDataUrl: getStoredDriverProfilePhotoUrl(input.user) || null,
@@ -19115,7 +22109,8 @@ function publishDriverProfileVehicleSnapshot(input: {
         getDriverLiveUserField(input.user, "name") ??
         "Conductor Rapa Go",
       driverEmail: getDriverLiveUserField(input.user, "email"),
-      driverPhone: input.phone?.trim() || getStoredDriverPublicPhone(input.user),
+      driverPhone:
+        input.phone?.trim() || getStoredDriverPublicPhone(input.user),
       updatedAt: now,
       driverProfileUpdatedAt: now,
       driverProfilePhotoUpdatedAt: now,
@@ -19124,11 +22119,27 @@ function publishDriverProfileVehicleSnapshot(input: {
     };
 
     publishDriverVehicleSnapshotToStorage(snapshot as Record<string, unknown>);
-    writeDriverScopedStorageItem("rapago_driver_public_phone", String(snapshot.driverPhone ?? ""), input.user);
+    writeDriverScopedStorageItem(
+      "rapago_driver_public_phone",
+      String(snapshot.driverPhone ?? ""),
+      input.user,
+    );
 
-    window.dispatchEvent(new CustomEvent("rapago:driver-public-profile-updated", { detail: snapshot }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-selected-vehicle-updated", { detail: snapshot }));
-    window.dispatchEvent(new CustomEvent("rapago:driver-accepted-vehicle-updated", { detail: { ride: snapshot } }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-public-profile-updated", {
+        detail: snapshot,
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-selected-vehicle-updated", {
+        detail: snapshot,
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-accepted-vehicle-updated", {
+        detail: { ride: snapshot },
+      }),
+    );
     window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
   } catch {
     // No bloquea el guardado del perfil.
@@ -19172,9 +22183,14 @@ type StoredDriverRegistrationProfile = {
   residenceVerificationStatus?: string | null;
 };
 
-function readStoredDriverRegistrationProfile(user?: unknown): StoredDriverRegistrationProfile {
+function readStoredDriverRegistrationProfile(
+  user?: unknown,
+): StoredDriverRegistrationProfile {
   try {
-    const scopedRaw = readDriverScopedStorageItem("rapago_driver_registration_profile", user);
+    const scopedRaw = readDriverScopedStorageItem(
+      "rapago_driver_registration_profile",
+      user,
+    );
     const legacyRaw =
       scopedRaw ??
       (canUseDriverLegacyStorage("rapago_driver_registration_profile", user)
@@ -19212,11 +22228,9 @@ function readStoredDriverRegistrationProfile(user?: unknown): StoredDriverRegist
         readDriverScopedStorageItem("rapago_profile_rut", user) ??
         readDriverScopedStorageItem("rapago_driver_rut", user),
       vehicleImageDataUrl:
-        parsed.vehicleImageDataUrl ??
-        getStoredDriverVehicleImageDataUrl(user),
+        parsed.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(user),
       vehicleImageName:
-        parsed.vehicleImageName ??
-        getStoredDriverVehicleImageName(user),
+        parsed.vehicleImageName ?? getStoredDriverVehicleImageName(user),
     };
   } catch {
     return {};
@@ -19235,22 +22249,47 @@ function persistStoredDriverRegistrationProfile(
       ...data,
       ownerKey,
       driverOwnerKey: ownerKey,
-      email: data.email ?? current.email ?? getDriverLiveUserField(user, "email"),
-      name: data.name ?? current.name ?? getDriverLiveUserField(user, "name") ?? getDriverLiveUserField(user, "fullName"),
+      email:
+        data.email ?? current.email ?? getDriverLiveUserField(user, "email"),
+      name:
+        data.name ??
+        current.name ??
+        getDriverLiveUserField(user, "name") ??
+        getDriverLiveUserField(user, "fullName"),
     };
 
     const payload = JSON.stringify(next);
-    writeDriverScopedStorageItem("rapago_driver_registration_profile", payload, next);
+    writeDriverScopedStorageItem(
+      "rapago_driver_registration_profile",
+      payload,
+      next,
+    );
     writeDriverScopedStorageItem("rapago_registration_profile", payload, next);
 
     if (next.phone) {
-      writeDriverScopedStorageItem("rapago_profile_phone", String(next.phone), next);
-      writeDriverScopedStorageItem("rapago_driver_phone", String(next.phone), next);
-      writeDriverScopedStorageItem("rapago_driver_public_phone", String(next.phone), next);
+      writeDriverScopedStorageItem(
+        "rapago_profile_phone",
+        String(next.phone),
+        next,
+      );
+      writeDriverScopedStorageItem(
+        "rapago_driver_phone",
+        String(next.phone),
+        next,
+      );
+      writeDriverScopedStorageItem(
+        "rapago_driver_public_phone",
+        String(next.phone),
+        next,
+      );
     }
 
     if (next.rut) {
-      writeDriverScopedStorageItem("rapago_profile_rut", String(next.rut), next);
+      writeDriverScopedStorageItem(
+        "rapago_profile_rut",
+        String(next.rut),
+        next,
+      );
       writeDriverScopedStorageItem("rapago_driver_rut", String(next.rut), next);
     }
 
@@ -19265,16 +22304,40 @@ function persistStoredDriverRegistrationProfile(
 
     if (fareType) {
       const label = getDriverPassengerFareTypeLabel(fareType);
-      writeDriverScopedStorageItem("rapago_driver_passenger_fare_type", fareType, next);
-      writeDriverScopedStorageItem("rapago_driver_fare_passenger_type", fareType, next);
+      writeDriverScopedStorageItem(
+        "rapago_driver_passenger_fare_type",
+        fareType,
+        next,
+      );
+      writeDriverScopedStorageItem(
+        "rapago_driver_fare_passenger_type",
+        fareType,
+        next,
+      );
       writeDriverScopedStorageItem("rapago_driver_nationality", label, next);
-      writeDriverScopedStorageItem("rapago_driver_is_resident", String(fareType === "resident"), next);
+      writeDriverScopedStorageItem(
+        "rapago_driver_is_resident",
+        String(fareType === "resident"),
+        next,
+      );
 
       // Solo se escribe en llaves de pasajero si este conductor está usando también modo pasajero.
       if (fareType === "resident") {
-        writeDriverScopedStorageItem("rapago_passenger_fare_type", "resident", next);
-        writeDriverScopedStorageItem("rapago_profile_passenger_type", "resident", next);
-        writeDriverScopedStorageItem("rapago_fare_passenger_type", "resident", next);
+        writeDriverScopedStorageItem(
+          "rapago_passenger_fare_type",
+          "resident",
+          next,
+        );
+        writeDriverScopedStorageItem(
+          "rapago_profile_passenger_type",
+          "resident",
+          next,
+        );
+        writeDriverScopedStorageItem(
+          "rapago_fare_passenger_type",
+          "resident",
+          next,
+        );
         writeDriverScopedStorageItem("rapago_profile_nationality", label, next);
       }
     }
@@ -19408,12 +22471,17 @@ export function DriverProfilePage(): JSX.Element {
     String(storedProfile.vehicleColor ?? ""),
   );
   const [vehicleImageDataUrl, setVehicleImageDataUrl] = useState(
-    String(storedProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session?.user)),
+    String(
+      storedProfile.vehicleImageDataUrl ??
+        getStoredDriverVehicleImageDataUrl(session?.user),
+    ),
   );
   const [vehicleImageName, setVehicleImageName] = useState(
     String(storedProfile.vehicleImageName ?? ""),
   );
-  const [vehiclePhotoError, setVehiclePhotoError] = useState<string | null>(null);
+  const [vehiclePhotoError, setVehiclePhotoError] = useState<string | null>(
+    null,
+  );
   const vehiclePhotoFileRef = useRef<HTMLInputElement | null>(null);
   const [uploadingVehiclePhoto, setUploadingVehiclePhoto] = useState(false);
   const vehicleDraftDirtyRef = useRef(false);
@@ -19435,16 +22503,19 @@ export function DriverProfilePage(): JSX.Element {
     : "driver-no-session";
   const [bio, setBio] = useState("");
   const [languages, setLanguages] = useState<string[]>(["es"]);
-  const [driverVehicles, setDriverVehicles] = useState<DriverVehicleRecord[]>(() =>
-    readDriverVehicles(session?.user),
+  const [driverVehicles, setDriverVehicles] = useState<DriverVehicleRecord[]>(
+    () => readDriverVehicles(session?.user),
   );
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(() =>
-    readSelectedDriverVehicleId(session?.user),
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(
+    () => readSelectedDriverVehicleId(session?.user),
   );
-  const [vehicleOwnership, setVehicleOwnership] = useState<DriverVehicleOwnership>("own");
+  const [vehicleOwnership, setVehicleOwnership] =
+    useState<DriverVehicleOwnership>("own");
   const [vehicleExpiresAt, setVehicleExpiresAt] = useState("");
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
-  const [vehicleSaveMessage, setVehicleSaveMessage] = useState<string | null>(null);
+  const [vehicleSaveMessage, setVehicleSaveMessage] = useState<string | null>(
+    null,
+  );
   const [vehicleFormError, setVehicleFormError] = useState<string | null>(null);
   const [vehicleDraftDirty, setVehicleDraftDirty] = useState(false);
   const [savingVehicle, setSavingVehicle] = useState(false);
@@ -19453,9 +22524,10 @@ export function DriverProfilePage(): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [driverRatingSummary, setDriverRatingSummary] = useState<DriverRatingSummary>(() =>
-    readDriverRatingSummary(session?.user, phone),
-  );
+  const [driverRatingSummary, setDriverRatingSummary] =
+    useState<DriverRatingSummary>(() =>
+      readDriverRatingSummary(session?.user, phone),
+    );
 
   useEffect(() => {
     vehicleDraftDirtyRef.current = vehicleDraftDirty;
@@ -19475,9 +22547,7 @@ export function DriverProfilePage(): JSX.Element {
     setVehiclePhotoError(null);
     setPhotoError(null);
     setProfilePhotoUrl(
-      session?.user
-        ? getStoredDriverProfilePhotoUrl(session.user)
-        : "",
+      session?.user ? getStoredDriverProfilePhotoUrl(session.user) : "",
     );
   }, [activeDriverProfileOwnerKey]);
 
@@ -19501,7 +22571,9 @@ export function DriverProfilePage(): JSX.Element {
 
       const selectedVehicle = readSelectedDriverVehicle(session.user);
       const currentVehicles = readDriverVehicles(session.user);
-      const latestStoredProfile = readStoredDriverRegistrationProfile(session.user);
+      const latestStoredProfile = readStoredDriverRegistrationProfile(
+        session.user,
+      );
       setDriverVehicles(currentVehicles);
       setSelectedVehicleId(readSelectedDriverVehicleId(session.user));
 
@@ -19523,21 +22595,29 @@ export function DriverProfilePage(): JSX.Element {
           setVehicleColor(selectedVehicle.color);
           setVehicleImageDataUrl(
             selectedVehicle.imageDataUrl ??
-              String(latestStoredProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session.user)),
+              String(
+                latestStoredProfile.vehicleImageDataUrl ??
+                  getStoredDriverVehicleImageDataUrl(session.user),
+              ),
           );
           setVehicleImageName(
-            selectedVehicle.imageName ?? String(latestStoredProfile.vehicleImageName ?? ""),
+            selectedVehicle.imageName ??
+              String(latestStoredProfile.vehicleImageName ?? ""),
           );
           setVehicleOwnership(selectedVehicle.ownership);
           setVehicleExpiresAt(
-            selectedVehicle.expiresAt ? selectedVehicle.expiresAt.slice(0, 10) : "",
+            selectedVehicle.expiresAt
+              ? selectedVehicle.expiresAt.slice(0, 10)
+              : "",
           );
         } else if (profile) {
           setVehicleBrand(
-            profile.vehicleBrand ?? String(latestStoredProfile.vehicleBrand ?? ""),
+            profile.vehicleBrand ??
+              String(latestStoredProfile.vehicleBrand ?? ""),
           );
           setVehicleModel(
-            profile.vehicleModel ?? String(latestStoredProfile.vehicleModel ?? ""),
+            profile.vehicleModel ??
+              String(latestStoredProfile.vehicleModel ?? ""),
           );
           setVehicleYear(
             profile.vehicleYear != null
@@ -19545,21 +22625,33 @@ export function DriverProfilePage(): JSX.Element {
               : String(latestStoredProfile.vehicleYear ?? ""),
           );
           setVehiclePlate(
-            profile.vehiclePlate ?? String(latestStoredProfile.vehiclePlate ?? ""),
+            profile.vehiclePlate ??
+              String(latestStoredProfile.vehiclePlate ?? ""),
           );
           setVehicleColor(
-            profile.vehicleColor ?? String(latestStoredProfile.vehicleColor ?? ""),
+            profile.vehicleColor ??
+              String(latestStoredProfile.vehicleColor ?? ""),
           );
           setVehicleImageDataUrl(
             profile.vehiclePhotoUrl ??
-              String(latestStoredProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session.user)),
+              String(
+                latestStoredProfile.vehicleImageDataUrl ??
+                  getStoredDriverVehicleImageDataUrl(session.user),
+              ),
           );
-          setVehicleImageName(String(latestStoredProfile.vehicleImageName ?? ""));
+          setVehicleImageName(
+            String(latestStoredProfile.vehicleImageName ?? ""),
+          );
         } else {
           setVehicleImageDataUrl(
-            String(latestStoredProfile.vehicleImageDataUrl ?? getStoredDriverVehicleImageDataUrl(session.user)),
+            String(
+              latestStoredProfile.vehicleImageDataUrl ??
+                getStoredDriverVehicleImageDataUrl(session.user),
+            ),
           );
-          setVehicleImageName(String(latestStoredProfile.vehicleImageName ?? ""));
+          setVehicleImageName(
+            String(latestStoredProfile.vehicleImageName ?? ""),
+          );
         }
 
         vehicleDraftDirtyRef.current = false;
@@ -19577,25 +22669,33 @@ export function DriverProfilePage(): JSX.Element {
         );
       }
       setBio(profile?.bio ?? "");
-      setLanguages(profile ? normalizeDriverLanguages(profile.languages) : ["es"]);
+      setLanguages(
+        profile ? normalizeDriverLanguages(profile.languages) : ["es"],
+      );
 
       if (autoPhone) {
-        persistStoredDriverRegistrationProfile({
-          phone: autoPhone,
-          email: session.user?.email ?? null,
-          name: session.user?.name ?? null,
-        }, session.user);
+        persistStoredDriverRegistrationProfile(
+          {
+            phone: autoPhone,
+            email: session.user?.email ?? null,
+            name: session.user?.name ?? null,
+          },
+          session.user,
+        );
       }
     } catch (err) {
       const fallbackPhone = getAutoDriverPhone(session.user, null);
       setPhone(fallbackPhone);
 
       if (fallbackPhone) {
-        persistStoredDriverRegistrationProfile({
-          phone: fallbackPhone,
-          email: session.user?.email ?? null,
-          name: session.user?.name ?? null,
-        }, session.user);
+        persistStoredDriverRegistrationProfile(
+          {
+            phone: fallbackPhone,
+            email: session.user?.email ?? null,
+            name: session.user?.name ?? null,
+          },
+          session.user,
+        );
       }
 
       const message =
@@ -19616,13 +22716,25 @@ export function DriverProfilePage(): JSX.Element {
     };
 
     refreshRatings();
-    window.addEventListener(RAPAGO_DRIVER_RATINGS_EVENT, refreshRatings as EventListener);
-    window.addEventListener("rapago:driver-profile-updated", refreshRatings as EventListener);
+    window.addEventListener(
+      RAPAGO_DRIVER_RATINGS_EVENT,
+      refreshRatings as EventListener,
+    );
+    window.addEventListener(
+      "rapago:driver-profile-updated",
+      refreshRatings as EventListener,
+    );
     window.addEventListener("storage", refreshRatings as EventListener);
 
     return () => {
-      window.removeEventListener(RAPAGO_DRIVER_RATINGS_EVENT, refreshRatings as EventListener);
-      window.removeEventListener("rapago:driver-profile-updated", refreshRatings as EventListener);
+      window.removeEventListener(
+        RAPAGO_DRIVER_RATINGS_EVENT,
+        refreshRatings as EventListener,
+      );
+      window.removeEventListener(
+        "rapago:driver-profile-updated",
+        refreshRatings as EventListener,
+      );
       window.removeEventListener("storage", refreshRatings as EventListener);
     };
   }, [session?.user, phone]);
@@ -19775,7 +22887,9 @@ export function DriverProfilePage(): JSX.Element {
     window.dispatchEvent(
       new CustomEvent("rapago:driver-selected-vehicle-updated"),
     );
-    window.dispatchEvent(new CustomEvent("rapago:driver-public-profile-updated"));
+    window.dispatchEvent(
+      new CustomEvent("rapago:driver-public-profile-updated"),
+    );
     window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
 
     if (input?.showSuccess ?? true) {
@@ -19864,10 +22978,7 @@ export function DriverProfilePage(): JSX.Element {
       // El backend actual guarda los datos del vehículo propio activo. La foto
       // de cualquier vehículo, incluido el opcional, ya quedó en Supabase y su
       // URL pública queda asociada al registro local del vehículo.
-      if (
-        session?.accessToken &&
-        savedVehicle.ownership === "own"
-      ) {
+      if (session?.accessToken && savedVehicle.ownership === "own") {
         const payload: Parameters<
           typeof driverProfileService.upsertMyProfile
         >[1] = {
@@ -19933,7 +23044,9 @@ export function DriverProfilePage(): JSX.Element {
     const cleanLanguages = normalizeDriverLanguages(languages);
 
     if (vehicleOwnership === "borrowed" && !vehicleExpiresAt.trim()) {
-      setError("El vehículo opcional o prestado debe tener fecha de expiración.");
+      setError(
+        "El vehículo opcional o prestado debe tener fecha de expiración.",
+      );
       setSaving(false);
       return;
     }
@@ -19955,17 +23068,20 @@ export function DriverProfilePage(): JSX.Element {
         session?.user,
       );
 
-      persistStoredDriverRegistrationProfile({
-        email: session?.user?.email ?? null,
-        name: session?.user?.name ?? null,
-        vehicleBrand: cleanVehicleBrand,
-        vehicleModel: cleanVehicleModel,
-        vehicleYear: cleanVehicleYear,
-        vehiclePlate: cleanVehiclePlate,
-        vehicleColor: cleanVehicleColor,
-        vehicleImageDataUrl: cleanVehicleImageDataUrl,
-        vehicleImageName: cleanVehicleImageName,
-      }, session?.user);
+      persistStoredDriverRegistrationProfile(
+        {
+          email: session?.user?.email ?? null,
+          name: session?.user?.name ?? null,
+          vehicleBrand: cleanVehicleBrand,
+          vehicleModel: cleanVehicleModel,
+          vehicleYear: cleanVehicleYear,
+          vehiclePlate: cleanVehiclePlate,
+          vehicleColor: cleanVehicleColor,
+          vehicleImageDataUrl: cleanVehicleImageDataUrl,
+          vehicleImageName: cleanVehicleImageName,
+        },
+        session?.user,
+      );
 
       let savedVehicle: DriverVehicleRecord | null = null;
 
@@ -20038,7 +23154,10 @@ export function DriverProfilePage(): JSX.Element {
         payload.languages = cleanLanguages;
 
         try {
-          await driverProfileService.upsertMyProfile(session.accessToken, payload);
+          await driverProfileService.upsertMyProfile(
+            session.accessToken,
+            payload,
+          );
 
           if (profilePhotoWasRemoved) {
             await clearDriverProfilePhotoOnServer(session.accessToken);
@@ -20046,7 +23165,10 @@ export function DriverProfilePage(): JSX.Element {
         } catch (backendError) {
           // El perfil y la decisión de quitar/cambiar la foto quedan guardados
           // por conductor en este dispositivo aunque el backend falle.
-          console.warn("Perfil guardado localmente. Backend no actualizó:", backendError);
+          console.warn(
+            "Perfil guardado localmente. Backend no actualizó:",
+            backendError,
+          );
         }
       }
 
@@ -20067,8 +23189,12 @@ export function DriverProfilePage(): JSX.Element {
       setSuccess(true);
 
       window.dispatchEvent(new CustomEvent("rapago:driver-profile-saved"));
-      window.dispatchEvent(new CustomEvent("rapago:driver-public-profile-updated"));
-      window.dispatchEvent(new CustomEvent("rapago:driver-selected-vehicle-updated"));
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-public-profile-updated"),
+      );
+      window.dispatchEvent(
+        new CustomEvent("rapago:driver-selected-vehicle-updated"),
+      );
       window.dispatchEvent(new CustomEvent("rapago:passenger-rides-updated"));
     } catch (err) {
       const message =
@@ -20166,7 +23292,9 @@ export function DriverProfilePage(): JSX.Element {
         });
       })
       .catch((err) => {
-        setPhotoError(err instanceof Error ? err.message : "No se pudo leer la foto.");
+        setPhotoError(
+          err instanceof Error ? err.message : "No se pudo leer la foto.",
+        );
       })
       .finally(() => {
         event.target.value = "";
@@ -20267,9 +23395,7 @@ export function DriverProfilePage(): JSX.Element {
     setVehiclePhotoError(null);
     setVehicleDraftDirty(true);
     setVehicleFormError(null);
-    setVehicleSaveMessage(
-      "La foto se quitará cuando guardes este vehículo.",
-    );
+    setVehicleSaveMessage("La foto se quitará cuando guardes este vehículo.");
   }
 
   function refreshDriverVehicleList(): void {
@@ -20289,7 +23415,9 @@ export function DriverProfilePage(): JSX.Element {
     setVehicleImageDataUrl(vehicle.imageDataUrl ?? "");
     setVehicleImageName(vehicle.imageName ?? "");
     setVehicleOwnership(vehicle.ownership);
-    setVehicleExpiresAt(vehicle.expiresAt ? vehicle.expiresAt.slice(0, 10) : "");
+    setVehicleExpiresAt(
+      vehicle.expiresAt ? vehicle.expiresAt.slice(0, 10) : "",
+    );
     persistStoredDriverVehicleImageDataUrl(
       vehicle.imageDataUrl ?? "",
       vehicle.imageName ?? null,
@@ -20317,10 +23445,14 @@ export function DriverProfilePage(): JSX.Element {
     setVehicleImageDataUrl(vehicle.imageDataUrl ?? "");
     setVehicleImageName(vehicle.imageName ?? "");
     setVehicleOwnership(vehicle.ownership);
-    setVehicleExpiresAt(vehicle.expiresAt ? vehicle.expiresAt.slice(0, 10) : "");
+    setVehicleExpiresAt(
+      vehicle.expiresAt ? vehicle.expiresAt.slice(0, 10) : "",
+    );
     setVehicleDraftDirty(false);
     setVehicleFormError(null);
-    setVehicleSaveMessage("Editando este vehículo. Guarda los cambios al terminar.");
+    setVehicleSaveMessage(
+      "Editando este vehículo. Guarda los cambios al terminar.",
+    );
   }
 
   function handleRemoveDriverVehicle(vehicleId: string): void {
@@ -20354,7 +23486,9 @@ export function DriverProfilePage(): JSX.Element {
     setVehicleColor("");
     setVehicleImageDataUrl("");
     setVehicleImageName("");
-    setVehicleExpiresAt(ownership === "borrowed" ? getDefaultBorrowedVehicleExpiry() : "");
+    setVehicleExpiresAt(
+      ownership === "borrowed" ? getDefaultBorrowedVehicleExpiry() : "",
+    );
     setVehiclePhotoError(null);
     setVehicleFormError(null);
     setVehicleDraftDirty(true);
@@ -20394,1245 +23528,1455 @@ export function DriverProfilePage(): JSX.Element {
   return (
     <>
       <IonPage className="rapago-driver-page" data-rapago-theme={theme}>
-      {/* "Cerrar sesión" sale de la cabecera: ahora vive en el menú de cuenta
+        {/* "Cerrar sesión" sale de la cabecera: ahora vive en el menú de cuenta
           de la barra, con confirmación y bloqueado si hay viaje en curso. El
           segundo acceso sigue estando al pie de esta misma pantalla, que es
           donde la convención lo pone. */}
-      <RapagoAppBar sectionId="driver-profile" title="Mi Perfil" />
+        <RapagoAppBar sectionId="driver-profile" title="Mi Perfil" />
 
-      <IonAlert
-        isOpen={success}
-        header="Cambios guardados"
-        message="Tu perfil y la foto del vehículo se guardaron correctamente. El pasajero podrá ver estos datos cuando aceptes un viaje."
-        buttons={[{ text: "OK", handler: () => setSuccess(false) }]}
-        onDidDismiss={() => setSuccess(false)}
-      />
+        <IonAlert
+          isOpen={success}
+          header="Cambios guardados"
+          message="Tu perfil y la foto del vehículo se guardaron correctamente. El pasajero podrá ver estos datos cuando aceptes un viaje."
+          buttons={[{ text: "OK", handler: () => setSuccess(false) }]}
+          onDidDismiss={() => setSuccess(false)}
+        />
 
-      <IonContent
-        className="ion-padding"
-        style={
-          {
-            "--background":
-              "linear-gradient(180deg, rgba(15,15,15,.86), rgba(15,15,15,.96)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
-          } as CSSProperties
-        }
-      >
-        <IonRefresher
-          slot="fixed"
-          onIonRefresh={(event) => {
-            void loadProfile().then(() => event.detail.complete());
-          }}
-        >
-          <IonRefresherContent />
-        </IonRefresher>
+        <IonContent
+          className="ion-padding"
+          style={
+            {
+              "--background":
+                "linear-gradient(180deg, rgba(15,15,15,.86), rgba(15,15,15,.96)), url('/assets/rapa-go-bg.jpg') center/cover no-repeat",
+            } as CSSProperties
+          }>
+          <IonRefresher
+            slot="fixed"
+            onIonRefresh={(event) => {
+              void loadProfile().then(() => event.detail.complete());
+            }}>
+            <IonRefresherContent />
+          </IonRefresher>
 
-        {loading && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              paddingTop: "40px",
-            }}
-          >
-            <IonSpinner name="crescent" />
-          </div>
-        )}
-
-        {!loading && (
-          <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 96 }}>
-            <section
+          {loading && (
+            <div
               style={{
-                position: "relative",
-                overflow: "hidden",
-                borderRadius: "26px",
-                padding: "20px",
-                marginBottom: 14,
-                background:
-                  "var(--rp-btn-primary)",
-                color: "var(--rp-btn-primary-fg)",
-                boxShadow: "0 18px 44px rgba(0,0,0,.30)",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  right: -45,
-                  top: -50,
-                  width: 150,
-                  height: 150,
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,.16)",
-                }}
-              />
-              <div
+                display: "flex",
+                justifyContent: "center",
+                paddingTop: "40px",
+              }}>
+              <IonSpinner name="crescent" />
+            </div>
+          )}
+
+          {!loading && (
+            <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 96 }}>
+              <section
                 style={{
                   position: "relative",
-                  zIndex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                }}
-              >
+                  overflow: "hidden",
+                  borderRadius: "26px",
+                  padding: "20px",
+                  marginBottom: 14,
+                  background: "var(--rp-btn-primary)",
+                  color: "var(--rp-btn-primary-fg)",
+                  boxShadow: "0 18px 44px rgba(0,0,0,.30)",
+                }}>
                 <div
                   style={{
-                    width: 76,
-                    height: 76,
-                    borderRadius: "24px",
-                    background: "rgba(17,17,17,.24)",
-                    border: "2px solid rgba(255,255,255,.36)",
+                    position: "absolute",
+                    right: -45,
+                    top: -50,
+                    width: 150,
+                    height: 150,
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,.16)",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "relative",
+                    zIndex: 1,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "1.55rem",
-                    fontWeight: 950,
-                    overflow: "hidden",
-                    boxShadow: "0 14px 30px rgba(0,0,0,.24)",
-                    flexShrink: 0,
-                  }}
-                >
-                  {hasProfilePhoto ? (
-                    <img
-                      src={cleanProfilePhotoUrl}
-                      alt="Foto de perfil"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
-                      }}
-                    />
-                  ) : (
-                    initials
-                  )}
-                </div>
-                <div>
+                    gap: 14,
+                  }}>
                   <div
                     style={{
-                      fontSize: "1.28rem",
-                      fontWeight: 950,
-                      lineHeight: 1.1,
-                    }}
-                  >
-                    {displayName}
-                  </div>
-                  <div
-                    style={{ marginTop: 4, fontSize: ".83rem", opacity: 0.94 }}
-                  >
-                    Perfil de conductor Rapa Go
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      fontSize: ".78rem",
-                      fontWeight: 850,
-                    }}
-                  >
-                    {phone.trim() ? phone : "Teléfono pendiente"}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      display: "inline-flex",
+                      width: 76,
+                      height: 76,
+                      borderRadius: "24px",
+                      background: "rgba(17,17,17,.24)",
+                      border: "2px solid rgba(255,255,255,.36)",
+                      display: "flex",
                       alignItems: "center",
-                      gap: 8,
-                      padding: "7px 10px",
-                      borderRadius: 999,
-                      background: "rgba(17,17,17,.22)",
-                      border: "1px solid rgba(255,255,255,.20)",
-                    }}
-                  >
-                    <DriverRatingStarsDisplay summary={driverRatingSummary} />
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <IonCard
-              className="rapago-driver-card"
-              style={driverFormCardStyle({
-                background: "var(--rp-surface)",
-                color: "var(--rp-text)",
-                border: "var(--rp-border-w) solid var(--rp-border-c)",
-              })}
-            >
-              <IonCardContent style={{ padding: "14px" }}>
-                <div style={{ fontWeight: 950, fontSize: ".98rem", marginBottom: 8 }}>
-                  Reputación del conductor
-                </div>
-                <DriverRatingStarsDisplay summary={driverRatingSummary} />
-                <div style={{ marginTop: 7, color: "var(--rp-muted)", fontSize: ".78rem", lineHeight: 1.35 }}>
-                  Las estrellas se actualizan cuando el pasajero califica un viaje completado.
-                </div>
-
-                {driverRatingSummary.latest.length > 0 && (
-                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                    {driverRatingSummary.latest.map((rating) => (
-                      <div
-                        key={rating.id}
-                        style={{
-                          background: "var(--rp-surface-soft)",
-                          border: "var(--rp-border-w) solid var(--rp-border-c)",
-                          borderRadius: 14,
-                          padding: "9px 10px",
-                        }}
-                      >
-                        <div style={{ fontWeight: 950, color: "var(--rp-accent)" }}>
-                          {"★".repeat(Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
-                          {"☆".repeat(5 - Math.max(1, Math.min(5, Math.round(Number(rating.stars) || 1))))}
-                        </div>
-                        <div style={{ marginTop: 3, fontSize: ".76rem", color: "var(--rp-muted)", lineHeight: 1.35 }}>
-                          {getDriverRideRouteDisplayLabel(rating)}
-                        </div>
-                        {rating.comment && (
-                          <div style={{ marginTop: 4, fontSize: ".78rem", color: "var(--rp-text)", fontWeight: 800 }}>
-                            “{rating.comment}”
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </IonCardContent>
-            </IonCard>
-
-            {error && (
-              <IonCard
-                className="rapago-driver-card"
-                style={driverFormCardStyle({
-                  background: "var(--rp-warn-bg)",
-                  border: "1px solid var(--rp-warn-bd)",
-                })}
-              >
-                <IonCardContent style={{ padding: "10px 14px" }}>
-                  <IonText>
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "var(--rp-warn-fg)",
-                        fontWeight: 800,
-                        fontSize: ".82rem",
-                      }}
-                    >
-                      {error}
-                    </p>
-                  </IonText>
-                </IonCardContent>
-              </IonCard>
-            )}
-
-            {success && (
-              <IonCard
-                className="rapago-driver-card"
-                style={driverFormCardStyle({
-                  background: "var(--rp-ok-bg)",
-                  border: "1px solid var(--rp-ok-bd)",
-                })}
-              >
-                <IonCardContent style={{ padding: "10px 14px" }}>
-                  <IonText color="success">
-                    <p
-                      style={{ margin: 0, fontWeight: 900, fontSize: ".82rem" }}
-                    >
-                      Perfil guardado correctamente.
-                    </p>
-                  </IonText>
-                </IonCardContent>
-              </IonCard>
-            )}
-
-            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
-              <IonCardContent>
-                <div
-                  style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
-                >
-                  Datos personales
-                </div>
-                <div
-                  style={{
-                    color: "var(--rp-muted)",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    marginBottom: 10,
-                  }}
-                >
-                  El teléfono se toma automáticamente desde el registro y está
-                  bloqueado. Para corregirlo debes solicitarlo a soporte.
-                </div>
-
-                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    Teléfono
-                  </IonLabel>
-                  <IonInput
-                    style={driverFieldTextStyle()}
-                    value={phone}
-                    placeholder="Teléfono registrado"
-                    type="tel"
-                    readonly
-                    aria-readonly="true"
-                  />
-                </IonItem>
-
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: 14,
-                    borderRadius: 20,
-                    background:
-                      "var(--rp-surface-soft)",
-                    border: "1.5px solid var(--rp-border-c)",
-                    boxShadow: "0 12px 26px rgba(0,0,0,.08)",
-                  }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 14 }}
-                  >
-                    <div
-                      style={{
-                        width: 76,
-                        height: 76,
-                        borderRadius: 24,
-                        overflow: "hidden",
-                        background: "var(--rp-btn-primary)",
-                        color: "var(--rp-btn-primary-fg)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 950,
-                        fontSize: "1.35rem",
-                        boxShadow: "0 14px 28px rgba(0,0,0,.18)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {hasProfilePhoto ? (
-                        <img
-                          src={cleanProfilePhotoUrl}
-                          alt="Foto de perfil"
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            display: "block",
-                          }}
-                        />
-                      ) : (
-                        initials
-                      )}
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 950,
-                          color: "var(--rp-text)",
-                          fontSize: ".95rem",
-                        }}
-                      >
-                        Foto de perfil
-                      </div>
-                      <div
-                        style={{
-                          color: "var(--rp-muted)",
-                          fontSize: ".76rem",
-                          fontWeight: 800,
-                          lineHeight: 1.35,
-                          marginTop: 3,
-                        }}
-                      >
-                        Adjunta una foto clara. Se actualizará inmediatamente en
-                        tu perfil.
-                      </div>
-                    </div>
-                  </div>
-
-                  <input
-                    ref={profilePhotoFileRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleProfilePhotoFileChange}
-                    style={{ display: "none" }}
-                  />
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: hasProfilePhoto ? "1fr 1fr" : "1fr",
-                      gap: 10,
-                      marginTop: 14,
-                    }}
-                  >
-                    <IonButton
-                      expand="block"
-                      onClick={() => {
-                        const input = profilePhotoFileRef.current;
-                        if (!input) return;
-                        input.value = "";
-                        input.click();
-                      }}
-                      style={
-                        {
-                          "--border-radius": "16px",
-                          "--background": "var(--rp-btn-primary)",
-                          "--color": "var(--rp-btn-primary-fg)",
-                          height: "48px",
-                          fontWeight: 950,
-                        } as CSSProperties
-                      }
-                    >
-                      <IonIcon icon={cameraOutline} slot="start" aria-hidden="true" />
-                      {hasProfilePhoto ? "Cambiar foto" : "Adjuntar foto"}
-                    </IonButton>
-
-                    {hasProfilePhoto && (
-                      <IonButton
-                        expand="block"
-                        fill="outline"
-                        color="danger"
-                        onClick={handleRemoveProfilePhoto}
-                        style={
-                          {
-                            "--border-radius": "16px",
-                            height: "48px",
-                            fontWeight: 950,
-                          } as CSSProperties
-                        }
-                      >
-                        <IonIcon icon={trashOutline} slot="start" aria-hidden="true" />
-                        Quitar
-                      </IonButton>
-                    )}
-                  </div>
-
-
-                  {photoError && (
-                    <IonText color="danger">
-                      <p
-                        style={{
-                          margin: "8px 0 0",
-                          fontSize: ".78rem",
-                          fontWeight: 850,
-                        }}
-                      >
-                        {photoError}
-                      </p>
-                    </IonText>
-                  )}
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
-              <IonCardContent>
-                <div
-                  style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
-                >
-                  Vehículos del conductor
-                </div>
-                <div
-                  style={{
-                    color: "var(--rp-muted)",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    marginBottom: 10,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  Aquí se toman los vehículos enviados en la inscripción. Puedes agregar todos los vehículos que tengas y elegir cuál queda activo para recibir solicitudes y reservas.
-                </div>
-
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    marginBottom: 12,
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    background: "var(--rp-ok-bg)",
-                    color: "var(--rp-ok-fg)",
-                    fontSize: ".74rem",
-                    fontWeight: 950,
-                  }}
-                >
-                  {driverVehicles.length} vehículo{driverVehicles.length !== 1 ? "s" : ""} registrado{driverVehicles.length !== 1 ? "s" : ""}
-                </div>
-
-                {driverVehicles.length > 0 && (
-                  <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
-                    {driverVehicles.map((vehicle) => {
-                      const selected = selectedVehicleId === vehicle.id;
-                      const borrowedText = getBorrowedVehicleRemainingText(vehicle);
-
-                      return (
-                        <div
-                          key={vehicle.id}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: vehicle.imageDataUrl ? "82px 1fr" : "1fr",
-                            gap: 10,
-                            padding: 10,
-                            borderRadius: 18,
-                            background: selected ? "var(--rp-ok-bg)" : "var(--rp-surface-soft)",
-                            border: selected
-                              ? "2px solid var(--rp-ok-bd)"
-                              : "1.5px solid var(--rp-border-c)",
-                          }}
-                        >
-                          {vehicle.imageDataUrl && (
-                            <img
-                              src={vehicle.imageDataUrl}
-                              alt={vehicle.label}
-                              style={{
-                                width: 82,
-                                height: 82,
-                                borderRadius: 14,
-                                objectFit: "cover",
-                                background: "var(--rp-surface-soft)",
-                              }}
-                            />
-                          )}
-
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 950, color: "var(--rp-text)", fontSize: ".92rem" }}>
-                              {vehicle.brand} {vehicle.model} {vehicle.year ? `· ${vehicle.year}` : ""}
-                            </div>
-                            <div style={{ color: "var(--rp-muted)", fontSize: ".78rem", fontWeight: 850, marginTop: 2 }}>
-                              Patente {vehicle.plate || "sin patente"} · {vehicle.color || "sin color"}
-                            </div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                              <IonBadge color={vehicle.ownership === "borrowed" ? "warning" : "success"}>
-                                {vehicle.ownership === "borrowed" ? "Opcional / temporal" : "Vehículo propio"}
-                              </IonBadge>
-                              {selected && <IonBadge color="success">Activo</IonBadge>}
-                              {borrowedText && <IonBadge color="medium">{borrowedText}</IonBadge>}
-                            </div>
-
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-                              <IonButton
-                                size="small"
-                                color={selected ? "success" : "warning"}
-                                fill={selected ? "solid" : "outline"}
-                                onClick={() => handleSelectDriverVehicle(vehicle)}
-                                style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-                              >
-                                {selected ? "Vehículo activo" : "Usar este"}
-                              </IonButton>
-                              <IonButton
-                                size="small"
-                                fill="outline"
-                                color="medium"
-                                onClick={() => handleEditDriverVehicle(vehicle)}
-                                style={{ "--border-radius": "14px", fontWeight: 950 } as CSSProperties}
-                              >
-                                Editar abajo
-                              </IonButton>
-                            </div>
-
-                            {vehicle.ownership === "borrowed" && (
-                              <IonButton
-                                size="small"
-                                fill="clear"
-                                color="danger"
-                                onClick={() => handleRemoveDriverVehicle(vehicle.id)}
-                                style={{ marginTop: 4, fontWeight: 900 }}
-                              >
-                                Eliminar opcional
-                              </IonButton>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {driverVehicles.length === 0 && (
-                  <IonNote style={{ display: "block", marginBottom: 12, color: "var(--rp-muted)", fontWeight: 900 }}>
-                    No hay vehículos cargados desde la inscripción. Completa los datos abajo y guarda tu vehículo principal. Después podrás agregar más vehículos si tienes.
-                  </IonNote>
-                )}
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                  <IonButton
-                    expand="block"
-                    color={vehicleOwnership === "own" ? "success" : "medium"}
-                    fill={vehicleOwnership === "own" ? "solid" : "outline"}
-                    onClick={() => handlePrepareNewVehicle("own")}
-                    style={{ "--border-radius": "16px", height: "46px", fontWeight: 950 } as CSSProperties}
-                  >
-                    Vehículo propio
-                  </IonButton>
-                  <IonButton
-                    expand="block"
-                    color={vehicleOwnership === "borrowed" ? "warning" : "medium"}
-                    fill={vehicleOwnership === "borrowed" ? "solid" : "outline"}
-                    onClick={() => handlePrepareNewVehicle("borrowed")}
-                    style={{ "--border-radius": "16px", height: "46px", fontWeight: 950 } as CSSProperties}
-                  >
-                    Agregar vehículo opcional
-                  </IonButton>
-                </div>
-
-                <div
-                  style={{
-                    color: "var(--rp-muted)",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    marginBottom: 10,
-                  }}
-                >
-                  {vehicleOwnership === "borrowed"
-                    ? "Vehículo opcional/temporal: puedes agregar más de uno. Cada opcional exige fecha de expiración y luego se borra automáticamente."
-                    : "Vehículo propio: puedes guardar tu principal y también agregar más vehículos propios si los usas en Rapa Go."}
-                </div>
-
-                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    Marca
-                  </IonLabel>
-                  <IonInput
-                    style={driverFieldTextStyle()}
-                    value={vehicleBrand}
-                    onIonInput={(event) => {
-                      setVehicleBrand(String(event.detail.value ?? ""));
-                      setVehicleDraftDirty(true);
-                      setVehicleFormError(null);
-                    }}
-                    placeholder="Toyota"
-                    clearInput
-                  />
-                </IonItem>
-
-                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    Modelo
-                  </IonLabel>
-                  <IonInput
-                    style={driverFieldTextStyle()}
-                    value={vehicleModel}
-                    onIonInput={(event) => {
-                      setVehicleModel(String(event.detail.value ?? ""));
-                      setVehicleDraftDirty(true);
-                      setVehicleFormError(null);
-                    }}
-                    placeholder="Yaris"
-                    clearInput
-                  />
-                </IonItem>
-
-                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    Año
-                  </IonLabel>
-                  <IonInput
-                    style={driverFieldTextStyle()}
-                    value={vehicleYear}
-                    onIonInput={(event) => {
-                      setVehicleYear(String(event.detail.value ?? ""));
-                      setVehicleDraftDirty(true);
-                      setVehicleFormError(null);
-                    }}
-                    placeholder="2025"
-                    inputmode="numeric"
-                    clearInput
-                  />
-                </IonItem>
-
-                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    Patente
-                  </IonLabel>
-                  <IonInput
-                    style={driverFieldTextStyle()}
-                    value={vehiclePlate}
-                    onIonInput={(event) => {
-                      setVehiclePlate(
-                        String(event.detail.value ?? "").toUpperCase(),
-                      );
-                      setVehicleDraftDirty(true);
-                      setVehicleFormError(null);
-                    }}
-                    placeholder="ABCD12"
-                    clearInput
-                  />
-                </IonItem>
-
-                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    Color
-                  </IonLabel>
-                  <IonInput
-                    style={driverFieldTextStyle()}
-                    value={vehicleColor}
-                    onIonInput={(event) => {
-                      setVehicleColor(String(event.detail.value ?? ""));
-                      setVehicleDraftDirty(true);
-                      setVehicleFormError(null);
-                    }}
-                    placeholder="Rojo"
-                    clearInput
-                  />
-                </IonItem>
-
-                {vehicleOwnership === "borrowed" && (
-                  <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                    <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                      Fecha de expiración del vehículo opcional *
-                    </IonLabel>
-                    <IonInput
-                      style={driverFieldTextStyle()}
-                      type="date"
-                      value={vehicleExpiresAt}
-                      onIonInput={(event) => {
-                        setVehicleExpiresAt(String(event.detail.value ?? ""));
-                        setVehicleDraftDirty(true);
-                        setVehicleFormError(null);
-                      }}
-                    />
-                  </IonItem>
-                )}
-
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: 14,
-                    borderRadius: 20,
-                    background: "var(--rp-surface-soft)",
-                    border: "1.5px dashed var(--rp-border-c)",
-                    boxShadow: "0 12px 26px rgba(0,0,0,.08)",
-                  }}
-                >
-                  <div style={{ fontWeight: 950, fontSize: ".95rem", color: "var(--rp-text)" }}>
-                    Foto del vehículo
-                  </div>
-                  <div
-                    style={{
-                      color: "var(--rp-muted)",
-                      fontSize: ".76rem",
-                      fontWeight: 800,
-                      lineHeight: 1.35,
-                      marginTop: 3,
-                    }}
-                  >
-                    Esta foto se mostrará al pasajero cuando aceptes un viaje.
-                  </div>
-
-                  {hasVehiclePhoto && (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        width: "100%",
-                        minHeight: 145,
-                        borderRadius: 18,
-                        overflow: "hidden",
-                        background: "var(--rp-surface-soft)",
-                        border: "var(--rp-border-w) solid var(--rp-border-c)",
-                        boxShadow: "0 10px 24px rgba(0,0,0,.18)",
-                      }}
-                    >
+                      justifyContent: "center",
+                      fontSize: "1.55rem",
+                      fontWeight: 950,
+                      overflow: "hidden",
+                      boxShadow: "0 14px 30px rgba(0,0,0,.24)",
+                      flexShrink: 0,
+                    }}>
+                    {hasProfilePhoto ? (
                       <img
-                        src={cleanVehicleImageDataUrl}
-                        alt="Foto del vehículo"
+                        src={cleanProfilePhotoUrl}
+                        alt="Foto de perfil"
                         style={{
                           width: "100%",
-                          height: 180,
+                          height: "100%",
                           objectFit: "cover",
                           display: "block",
                         }}
                       />
-                    </div>
-                  )}
-
-                  <input
-                    ref={vehiclePhotoFileRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => void handleVehiclePhotoFileChange(event)}
-                    style={{ display: "none" }}
-                  />
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: hasVehiclePhoto ? "1fr 1fr" : "1fr",
-                      gap: 10,
-                      marginTop: 14,
-                    }}
-                  >
-                    <IonButton
-                      expand="block"
-                      disabled={uploadingVehiclePhoto}
-                      onClick={() => {
-                        const input = vehiclePhotoFileRef.current;
-                        if (!input) return;
-
-                        // Se marca antes de abrir el selector. Al volver desde
-                        // la galería, ninguna recarga del perfil puede borrar
-                        // marca/modelo/patente ni la foto elegida.
-                        vehiclePhotoPickerOpenRef.current = true;
-                        vehicleDraftDirtyRef.current = true;
-                        setVehicleDraftDirty(true);
-                        setVehiclePhotoError(null);
-                        input.value = "";
-                        input.click();
-                      }}
-                      style={
-                        {
-                          "--border-radius": "16px",
-                          "--background": "var(--rp-btn-primary)",
-                          "--color": "var(--rp-btn-primary-fg)",
-                          height: "48px",
-                          fontWeight: 950,
-                        } as CSSProperties
-                      }
-                    >
-                      {uploadingVehiclePhoto ? (
-                        <IonSpinner name="dots" />
-                      ) : (
-                        <>
-                          <IonIcon icon={cameraOutline} slot="start" aria-hidden="true" />
-                          {hasVehiclePhoto ? "Cambiar foto" : "Adjuntar foto"}
-                        </>
-                      )}
-                    </IonButton>
-
-                    {hasVehiclePhoto && (
-                      <IonButton
-                        expand="block"
-                        fill="outline"
-                        color="danger"
-                        onClick={handleRemoveVehiclePhoto}
-                        style={
-                          {
-                            "--border-radius": "16px",
-                            height: "48px",
-                            fontWeight: 950,
-                          } as CSSProperties
-                        }
-                      >
-                        <IonIcon icon={trashOutline} slot="start" aria-hidden="true" />
-                        Quitar
-                      </IonButton>
+                    ) : (
+                      initials
                     )}
                   </div>
-
-                  {vehiclePhotoError && (
-                    <IonText color="danger">
-                      <p
-                        style={{
-                          margin: "8px 0 0",
-                          fontSize: ".78rem",
-                          fontWeight: 850,
-                        }}
-                      >
-                        {vehiclePhotoError}
-                      </p>
-                    </IonText>
-                  )}
-                </div>
-
-                {vehicleFormError && (
-                  <div
-                    role="alert"
-                    style={{
-                      marginTop: 12,
-                      padding: "11px 12px",
-                      borderRadius: 16,
-                      border: "1px solid var(--rp-err-bd)",
-                      background: "var(--rp-err-bg)",
-                      color: "var(--rp-err-fg)",
-                      fontSize: ".8rem",
-                      lineHeight: 1.4,
-                      fontWeight: 900,
-                    }}
-                  >
-                    {vehicleFormError}
-                  </div>
-                )}
-
-                {vehicleSaveMessage && !vehicleFormError && (
-                  <div
-                    role="status"
-                    style={{
-                      marginTop: 12,
-                      padding: "11px 12px",
-                      borderRadius: 16,
-                      border: vehicleDraftDirty
-                        ? "1px solid var(--rp-border-c)"
-                        : "1px solid var(--rp-ok-bd)",
-                      background: vehicleDraftDirty ? "var(--rp-warn-bg)" : "var(--rp-ok-bg)",
-                      color: vehicleDraftDirty ? "var(--rp-warn-fg)" : "var(--rp-ok-fg)",
-                      fontSize: ".8rem",
-                      lineHeight: 1.4,
-                      fontWeight: 900,
-                    }}
-                  >
-                    {vehicleSaveMessage}
-                  </div>
-                )}
-
-                <IonButton
-                  expand="block"
-                  color={vehicleOwnership === "borrowed" ? "warning" : "success"}
-                  onClick={() => void handleSaveVehicleOnly()}
-                  disabled={savingVehicle || uploadingVehiclePhoto}
-                  style={
-                    {
-                      "--border-radius": "16px",
-                      height: "52px",
-                      marginTop: 14,
-                      fontWeight: 950,
-                      "--color":
-                        vehicleOwnership === "borrowed" ? "#111" : "#fff",
-                    } as CSSProperties
-                  }
-                >
-                  {savingVehicle || uploadingVehiclePhoto ? (
-                    <IonSpinner name="dots" />
-                  ) : editingVehicleId ? (
-                    "Guardar cambios del vehículo"
-                  ) : vehicleOwnership === "borrowed" ? (
-                    "Crear vehículo opcional"
-                  ) : (
-                    "Guardar vehículo propio"
-                  )}
-                </IonButton>
-
-                <div
-                  style={{
-                    marginTop: 8,
-                    color: "var(--rp-muted)",
-                    fontSize: ".72rem",
-                    fontWeight: 800,
-                    lineHeight: 1.35,
-                    textAlign: "center",
-                  }}
-                >
-                  La foto y los datos quedan asociados a este vehículo y a este conductor.
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
-              <IonCardContent>
-                <div
-                  style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
-                >
-                  Licencia de conducir
-                </div>
-
-                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    Número de licencia
-                  </IonLabel>
-                  <IonInput
-                    style={driverFieldTextStyle()}
-                    value={licenseNumber}
-                    placeholder="Número aprobado"
-                    readonly
-                    aria-readonly="true"
-                  />
-                </IonItem>
-
-                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    Fecha de vencimiento
-                  </IonLabel>
-                  <IonInput
-                    style={driverFieldTextStyle()}
-                    value={licenseExpiry}
-                    type="date"
-                    readonly
-                    aria-readonly="true"
-                  />
-                </IonItem>
-
-                <div
-                  style={{
-                    marginTop: 10,
-                    color: "var(--rp-muted)",
-                    fontSize: ".76rem",
-                    fontWeight: 800,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  El número y vencimiento de la licencia corresponden a los
-                  documentos aprobados. No pueden modificarse desde el perfil.
-                </div>
-
-                <IonButton
-                  expand="block"
-                  fill="outline"
-                  onClick={() => history.push(`${ROUTES.SUPPORT.CENTER}?category=identity_correction`)}
-                  style={
-                    {
-                      "--border-radius": "16px",
-                      height: "48px",
-                      marginTop: 12,
-                      fontWeight: 950,
-                    } as CSSProperties
-                  }
-                >
-                  Solicitar corrección a soporte
-                </IonButton>
-
-                {licenseWarning && (
-                  <IonText
-                    color={
-                      isLicenseExpired(licenseExpiry) ? "danger" : "warning"
-                    }
-                  >
-                    <p
+                  <div>
+                    <div
                       style={{
-                        fontSize: ".8rem",
-                        fontWeight: 800,
-                        margin: "8px 0 0",
-                      }}
-                    >
-                      {licenseWarning}
-                    </p>
-                  </IonText>
-                )}
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
-              <IonCardContent>
-                <div
-                  style={{
-                    fontWeight: 950,
-                    fontSize: "1rem",
-                    marginBottom: 10,
-                  }}
-                >
-                  Biografía
+                        fontSize: "1.28rem",
+                        fontWeight: 950,
+                        lineHeight: 1.1,
+                      }}>
+                      {displayName}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: ".83rem",
+                        opacity: 0.94,
+                      }}>
+                      Perfil de conductor Rapa Go
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontSize: ".78rem",
+                        fontWeight: 850,
+                      }}>
+                      {phone.trim() ? phone : "Teléfono pendiente"}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "7px 10px",
+                        borderRadius: 999,
+                        background: "rgba(17,17,17,.22)",
+                        border: "1px solid rgba(255,255,255,.20)",
+                      }}>
+                      <DriverRatingStarsDisplay summary={driverRatingSummary} />
+                    </div>
+                  </div>
                 </div>
-                <IonItem lines="none" className="rapago-profile-field" style={driverInputItemStyle()}>
-                  <IonLabel position="stacked" style={driverFieldLabelStyle()}>
-                    Sobre ti
-                  </IonLabel>
-                  <IonTextarea
-                    style={driverFieldTextStyle()}
-                    value={bio}
-                    onIonInput={(event) =>
-                      setBio(String(event.detail.value ?? ""))
-                    }
-                    placeholder="Cuéntale al pasajero sobre tu experiencia..."
-                    autoGrow
-                    rows={4}
-                  />
-                </IonItem>
-              </IonCardContent>
-            </IonCard>
+              </section>
 
-            <IonCard className="rapago-driver-card" style={driverFormCardStyle()}>
-              <IonCardContent>
-                <div
-                  style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 4 }}
-                >
-                  Idiomas
-                </div>
-                <div
-                  style={{
-                    color: "var(--rp-muted)",
-                    fontSize: ".78rem",
-                    fontWeight: 800,
-                    marginBottom: 12,
-                  }}
-                >
-                  Selecciona el idioma principal que verán tus pasajeros.
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 10,
-                  }}
-                >
-                  {LANGUAGE_OPTIONS.map((option) => {
-                    const selected = languages.includes(option.value);
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => selectLanguage(option.value)}
-                        style={{
-                          minHeight: 62,
-                          borderRadius: 18,
-                          border: selected
-                            ? "2px solid var(--rp-border-strong)"
-                            : "1.5px solid var(--rp-border-c)",
-                          background: selected
-                            ? "var(--rp-btn-primary)"
-                            : "var(--rp-surface-soft)",
-                          color: selected ? "var(--rp-btn-primary-fg)" : "var(--rp-text)",
-                          boxShadow: selected
-                            ? "var(--rp-shadow-accent)"
-                            : "var(--rp-shadow)",
-                          fontWeight: 950,
-                          fontSize: ".95rem",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 8,
-                        }}
-                        aria-pressed={selected}
-                      >
-                        <span style={{ fontSize: "1.2rem" }}>
-                          {option.emoji}
-                        </span>
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: "10px 12px",
-                    borderRadius: 16,
-                    background: "var(--rp-ok-bg)",
-                    border: "1px solid var(--rp-ok-bd)",
-                    color: "var(--rp-ok-fg)",
-                    fontWeight: 900,
-                    fontSize: ".78rem",
-                  }}
-                >
-                  Idioma seleccionado:{" "}
-                  {languages.includes("en") ? "Inglés" : "Español"}
-                </div>
-              </IonCardContent>
-            </IonCard>
-
-            {canSwitchToPassengerMode && (
               <IonCard
                 className="rapago-driver-card"
                 style={driverFormCardStyle({
                   background: "var(--rp-surface)",
+                  color: "var(--rp-text)",
                   border: "var(--rp-border-w) solid var(--rp-border-c)",
-                })}
-              >
+                })}>
                 <IonCardContent style={{ padding: "14px" }}>
                   <div
-                    style={{ display: "flex", alignItems: "center", gap: 12 }}
-                  >
+                    style={{
+                      fontWeight: 950,
+                      fontSize: ".98rem",
+                      marginBottom: 8,
+                    }}>
+                    Reputación del conductor
+                  </div>
+                  <DriverRatingStarsDisplay summary={driverRatingSummary} />
+                  <div
+                    style={{
+                      marginTop: 7,
+                      color: "var(--rp-muted)",
+                      fontSize: ".78rem",
+                      lineHeight: 1.35,
+                    }}>
+                    Las estrellas se actualizan cuando el pasajero califica un
+                    viaje completado.
+                  </div>
+
+                  {driverRatingSummary.latest.length > 0 && (
                     <div
-                      aria-hidden="true"
                       style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 16,
-                        background: "var(--rp-btn-primary)",
-                        color: "var(--rp-btn-primary-fg)",
+                        marginTop: 12,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                      }}>
+                      {driverRatingSummary.latest.map((rating) => (
+                        <div
+                          key={rating.id}
+                          style={{
+                            background: "var(--rp-surface-soft)",
+                            border:
+                              "var(--rp-border-w) solid var(--rp-border-c)",
+                            borderRadius: 14,
+                            padding: "9px 10px",
+                          }}>
+                          <div
+                            style={{
+                              fontWeight: 950,
+                              color: "var(--rp-accent)",
+                            }}>
+                            {"★".repeat(
+                              Math.max(
+                                1,
+                                Math.min(
+                                  5,
+                                  Math.round(Number(rating.stars) || 1),
+                                ),
+                              ),
+                            )}
+                            {"☆".repeat(
+                              5 -
+                                Math.max(
+                                  1,
+                                  Math.min(
+                                    5,
+                                    Math.round(Number(rating.stars) || 1),
+                                  ),
+                                ),
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 3,
+                              fontSize: ".76rem",
+                              color: "var(--rp-muted)",
+                              lineHeight: 1.35,
+                            }}>
+                            {getDriverRideRouteDisplayLabel(rating)}
+                          </div>
+                          {rating.comment && (
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: ".78rem",
+                                color: "var(--rp-text)",
+                                fontWeight: 800,
+                              }}>
+                              “{rating.comment}”
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </IonCardContent>
+              </IonCard>
+
+              {error && (
+                <IonCard
+                  className="rapago-driver-card"
+                  style={driverFormCardStyle({
+                    background: "var(--rp-warn-bg)",
+                    border: "1px solid var(--rp-warn-bd)",
+                  })}>
+                  <IonCardContent style={{ padding: "10px 14px" }}>
+                    <IonText>
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "var(--rp-warn-fg)",
+                          fontWeight: 800,
+                          fontSize: ".82rem",
+                        }}>
+                        {error}
+                      </p>
+                    </IonText>
+                  </IonCardContent>
+                </IonCard>
+              )}
+
+              {success && (
+                <IonCard
+                  className="rapago-driver-card"
+                  style={driverFormCardStyle({
+                    background: "var(--rp-ok-bg)",
+                    border: "1px solid var(--rp-ok-bd)",
+                  })}>
+                  <IonCardContent style={{ padding: "10px 14px" }}>
+                    <IonText color="success">
+                      <p
+                        style={{
+                          margin: 0,
+                          fontWeight: 900,
+                          fontSize: ".82rem",
+                        }}>
+                        Perfil guardado correctamente.
+                      </p>
+                    </IonText>
+                  </IonCardContent>
+                </IonCard>
+              )}
+
+              <IonCard
+                className="rapago-driver-card"
+                style={driverFormCardStyle()}>
+                <IonCardContent>
+                  <div
+                    style={{
+                      fontWeight: 950,
+                      fontSize: "1rem",
+                      marginBottom: 4,
+                    }}>
+                    Datos personales
+                  </div>
+                  <div
+                    style={{
+                      color: "var(--rp-muted)",
+                      fontSize: ".78rem",
+                      fontWeight: 800,
+                      marginBottom: 10,
+                    }}>
+                    El teléfono se toma automáticamente desde el registro y está
+                    bloqueado. Para corregirlo debes solicitarlo a soporte.
+                  </div>
+
+                  <IonItem
+                    lines="none"
+                    className="rapago-profile-field"
+                    style={driverInputItemStyle()}>
+                    <IonLabel
+                      position="stacked"
+                      style={driverFieldLabelStyle()}>
+                      Teléfono
+                    </IonLabel>
+                    <IonInput
+                      style={driverFieldTextStyle()}
+                      value={phone}
+                      placeholder="Teléfono registrado"
+                      type="tel"
+                      readonly
+                      aria-readonly="true"
+                    />
+                  </IonItem>
+
+                  <div
+                    style={{
+                      marginTop: 14,
+                      padding: 14,
+                      borderRadius: 20,
+                      background: "var(--rp-surface-soft)",
+                      border: "1.5px solid var(--rp-border-c)",
+                      boxShadow: "0 12px 26px rgba(0,0,0,.08)",
+                    }}>
+                    <div
+                      style={{
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <IonIcon icon={personOutline} style={{ fontSize: 26 }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                        gap: 14,
+                      }}>
                       <div
                         style={{
+                          width: 76,
+                          height: 76,
+                          borderRadius: 24,
+                          overflow: "hidden",
+                          background: "var(--rp-btn-primary)",
+                          color: "var(--rp-btn-primary-fg)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                           fontWeight: 950,
-                          fontSize: ".98rem",
-                          color: "var(--rp-text)",
-                        }}
-                      >
-                        ¿Quieres pedir un Rapa Go?
+                          fontSize: "1.35rem",
+                          boxShadow: "0 14px 28px rgba(0,0,0,.18)",
+                          flexShrink: 0,
+                        }}>
+                        {hasProfilePhoto ? (
+                          <img
+                            src={cleanProfilePhotoUrl}
+                            alt="Foto de perfil"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              display: "block",
+                            }}
+                          />
+                        ) : (
+                          initials
+                        )}
                       </div>
-                      <div
-                        style={{
-                          marginTop: 3,
-                          color: "var(--rp-muted)",
-                          fontSize: ".78rem",
-                          fontWeight: 800,
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        Cambia temporalmente a la vista de pasajero sin cerrar
-                        sesión.
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            color: "var(--rp-text)",
+                            fontSize: ".95rem",
+                          }}>
+                          Foto de perfil
+                        </div>
+                        <div
+                          style={{
+                            color: "var(--rp-muted)",
+                            fontSize: ".76rem",
+                            fontWeight: 800,
+                            lineHeight: 1.35,
+                            marginTop: 3,
+                          }}>
+                          Adjunta una foto clara. Se actualizará inmediatamente
+                          en tu perfil.
+                        </div>
                       </div>
                     </div>
+
+                    <input
+                      ref={profilePhotoFileRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProfilePhotoFileChange}
+                      style={{ display: "none" }}
+                    />
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: hasProfilePhoto
+                          ? "1fr 1fr"
+                          : "1fr",
+                        gap: 10,
+                        marginTop: 14,
+                      }}>
+                      <IonButton
+                        expand="block"
+                        onClick={() => {
+                          const input = profilePhotoFileRef.current;
+                          if (!input) return;
+                          input.value = "";
+                          input.click();
+                        }}
+                        style={
+                          {
+                            "--border-radius": "16px",
+                            "--background": "var(--rp-btn-primary)",
+                            "--color": "var(--rp-btn-primary-fg)",
+                            height: "48px",
+                            fontWeight: 950,
+                          } as CSSProperties
+                        }>
+                        <IonIcon
+                          icon={cameraOutline}
+                          slot="start"
+                          aria-hidden="true"
+                        />
+                        {hasProfilePhoto ? "Cambiar foto" : "Adjuntar foto"}
+                      </IonButton>
+
+                      {hasProfilePhoto && (
+                        <IonButton
+                          expand="block"
+                          fill="outline"
+                          color="danger"
+                          onClick={handleRemoveProfilePhoto}
+                          style={
+                            {
+                              "--border-radius": "16px",
+                              height: "48px",
+                              fontWeight: 950,
+                            } as CSSProperties
+                          }>
+                          <IonIcon
+                            icon={trashOutline}
+                            slot="start"
+                            aria-hidden="true"
+                          />
+                          Quitar
+                        </IonButton>
+                      )}
+                    </div>
+
+                    {photoError && (
+                      <IonText color="danger">
+                        <p
+                          style={{
+                            margin: "8px 0 0",
+                            fontSize: ".78rem",
+                            fontWeight: 850,
+                          }}>
+                          {photoError}
+                        </p>
+                      </IonText>
+                    )}
                   </div>
+                </IonCardContent>
+              </IonCard>
+
+              <IonCard
+                className="rapago-driver-card"
+                style={driverFormCardStyle()}>
+                <IonCardContent>
+                  <div
+                    style={{
+                      fontWeight: 950,
+                      fontSize: "1rem",
+                      marginBottom: 4,
+                    }}>
+                    Vehículos del conductor
+                  </div>
+                  <div
+                    style={{
+                      color: "var(--rp-muted)",
+                      fontSize: ".78rem",
+                      fontWeight: 800,
+                      marginBottom: 10,
+                      lineHeight: 1.35,
+                    }}>
+                    Aquí se toman los vehículos enviados en la inscripción.
+                    Puedes agregar todos los vehículos que tengas y elegir cuál
+                    queda activo para recibir solicitudes y reservas.
+                  </div>
+
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginBottom: 12,
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      background: "var(--rp-ok-bg)",
+                      color: "var(--rp-ok-fg)",
+                      fontSize: ".74rem",
+                      fontWeight: 950,
+                    }}>
+                    {driverVehicles.length} vehículo
+                    {driverVehicles.length !== 1 ? "s" : ""} registrado
+                    {driverVehicles.length !== 1 ? "s" : ""}
+                  </div>
+
+                  {driverVehicles.length > 0 && (
+                    <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+                      {driverVehicles.map((vehicle) => {
+                        const selected = selectedVehicleId === vehicle.id;
+                        const borrowedText =
+                          getBorrowedVehicleRemainingText(vehicle);
+
+                        return (
+                          <div
+                            key={vehicle.id}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: vehicle.imageDataUrl
+                                ? "82px 1fr"
+                                : "1fr",
+                              gap: 10,
+                              padding: 10,
+                              borderRadius: 18,
+                              background: selected
+                                ? "var(--rp-ok-bg)"
+                                : "var(--rp-surface-soft)",
+                              border: selected
+                                ? "2px solid var(--rp-ok-bd)"
+                                : "1.5px solid var(--rp-border-c)",
+                            }}>
+                            {vehicle.imageDataUrl && (
+                              <img
+                                src={vehicle.imageDataUrl}
+                                alt={vehicle.label}
+                                style={{
+                                  width: 82,
+                                  height: 82,
+                                  borderRadius: 14,
+                                  objectFit: "cover",
+                                  background: "var(--rp-surface-soft)",
+                                }}
+                              />
+                            )}
+
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontWeight: 950,
+                                  color: "var(--rp-text)",
+                                  fontSize: ".92rem",
+                                }}>
+                                {vehicle.brand} {vehicle.model}{" "}
+                                {vehicle.year ? `· ${vehicle.year}` : ""}
+                              </div>
+                              <div
+                                style={{
+                                  color: "var(--rp-muted)",
+                                  fontSize: ".78rem",
+                                  fontWeight: 850,
+                                  marginTop: 2,
+                                }}>
+                                Patente {vehicle.plate || "sin patente"} ·{" "}
+                                {vehicle.color || "sin color"}
+                              </div>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 6,
+                                  marginTop: 8,
+                                }}>
+                                <IonBadge
+                                  color={
+                                    vehicle.ownership === "borrowed"
+                                      ? "warning"
+                                      : "success"
+                                  }>
+                                  {vehicle.ownership === "borrowed"
+                                    ? "Opcional / temporal"
+                                    : "Vehículo propio"}
+                                </IonBadge>
+                                {selected && (
+                                  <IonBadge color="success">Activo</IonBadge>
+                                )}
+                                {borrowedText && (
+                                  <IonBadge color="medium">
+                                    {borrowedText}
+                                  </IonBadge>
+                                )}
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "1fr 1fr",
+                                  gap: 8,
+                                  marginTop: 10,
+                                }}>
+                                <IonButton
+                                  size="small"
+                                  color={selected ? "success" : "warning"}
+                                  fill={selected ? "solid" : "outline"}
+                                  onClick={() =>
+                                    handleSelectDriverVehicle(vehicle)
+                                  }
+                                  style={
+                                    {
+                                      "--border-radius": "14px",
+                                      fontWeight: 950,
+                                    } as CSSProperties
+                                  }>
+                                  {selected ? "Vehículo activo" : "Usar este"}
+                                </IonButton>
+                                <IonButton
+                                  size="small"
+                                  fill="outline"
+                                  color="medium"
+                                  onClick={() =>
+                                    handleEditDriverVehicle(vehicle)
+                                  }
+                                  style={
+                                    {
+                                      "--border-radius": "14px",
+                                      fontWeight: 950,
+                                    } as CSSProperties
+                                  }>
+                                  Editar abajo
+                                </IonButton>
+                              </div>
+
+                              {vehicle.ownership === "borrowed" && (
+                                <IonButton
+                                  size="small"
+                                  fill="clear"
+                                  color="danger"
+                                  onClick={() =>
+                                    handleRemoveDriverVehicle(vehicle.id)
+                                  }
+                                  style={{ marginTop: 4, fontWeight: 900 }}>
+                                  Eliminar opcional
+                                </IonButton>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {driverVehicles.length === 0 && (
+                    <IonNote
+                      style={{
+                        display: "block",
+                        marginBottom: 12,
+                        color: "var(--rp-muted)",
+                        fontWeight: 900,
+                      }}>
+                      No hay vehículos cargados desde la inscripción. Completa
+                      los datos abajo y guarda tu vehículo principal. Después
+                      podrás agregar más vehículos si tienes.
+                    </IonNote>
+                  )}
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 10,
+                      marginBottom: 12,
+                    }}>
+                    <IonButton
+                      expand="block"
+                      color={vehicleOwnership === "own" ? "success" : "medium"}
+                      fill={vehicleOwnership === "own" ? "solid" : "outline"}
+                      onClick={() => handlePrepareNewVehicle("own")}
+                      style={
+                        {
+                          "--border-radius": "16px",
+                          height: "46px",
+                          fontWeight: 950,
+                        } as CSSProperties
+                      }>
+                      Vehículo propio
+                    </IonButton>
+                    <IonButton
+                      expand="block"
+                      color={
+                        vehicleOwnership === "borrowed" ? "warning" : "medium"
+                      }
+                      fill={
+                        vehicleOwnership === "borrowed" ? "solid" : "outline"
+                      }
+                      onClick={() => handlePrepareNewVehicle("borrowed")}
+                      style={
+                        {
+                          "--border-radius": "16px",
+                          height: "46px",
+                          fontWeight: 950,
+                        } as CSSProperties
+                      }>
+                      Agregar vehículo opcional
+                    </IonButton>
+                  </div>
+
+                  <div
+                    style={{
+                      color: "var(--rp-muted)",
+                      fontSize: ".78rem",
+                      fontWeight: 800,
+                      marginBottom: 10,
+                    }}>
+                    {vehicleOwnership === "borrowed"
+                      ? "Vehículo opcional/temporal: puedes agregar más de uno. Cada opcional exige fecha de expiración y luego se borra automáticamente."
+                      : "Vehículo propio: puedes guardar tu principal y también agregar más vehículos propios si los usas en Rapa Go."}
+                  </div>
+
+                  <IonItem
+                    lines="none"
+                    className="rapago-profile-field"
+                    style={driverInputItemStyle()}>
+                    <IonLabel
+                      position="stacked"
+                      style={driverFieldLabelStyle()}>
+                      Marca
+                    </IonLabel>
+                    <IonInput
+                      style={driverFieldTextStyle()}
+                      value={vehicleBrand}
+                      onIonInput={(event) => {
+                        setVehicleBrand(String(event.detail.value ?? ""));
+                        setVehicleDraftDirty(true);
+                        setVehicleFormError(null);
+                      }}
+                      placeholder="Toyota"
+                      clearInput
+                    />
+                  </IonItem>
+
+                  <IonItem
+                    lines="none"
+                    className="rapago-profile-field"
+                    style={driverInputItemStyle()}>
+                    <IonLabel
+                      position="stacked"
+                      style={driverFieldLabelStyle()}>
+                      Modelo
+                    </IonLabel>
+                    <IonInput
+                      style={driverFieldTextStyle()}
+                      value={vehicleModel}
+                      onIonInput={(event) => {
+                        setVehicleModel(String(event.detail.value ?? ""));
+                        setVehicleDraftDirty(true);
+                        setVehicleFormError(null);
+                      }}
+                      placeholder="Yaris"
+                      clearInput
+                    />
+                  </IonItem>
+
+                  <IonItem
+                    lines="none"
+                    className="rapago-profile-field"
+                    style={driverInputItemStyle()}>
+                    <IonLabel
+                      position="stacked"
+                      style={driverFieldLabelStyle()}>
+                      Año
+                    </IonLabel>
+                    <IonInput
+                      style={driverFieldTextStyle()}
+                      value={vehicleYear}
+                      onIonInput={(event) => {
+                        setVehicleYear(String(event.detail.value ?? ""));
+                        setVehicleDraftDirty(true);
+                        setVehicleFormError(null);
+                      }}
+                      placeholder="2025"
+                      inputmode="numeric"
+                      clearInput
+                    />
+                  </IonItem>
+
+                  <IonItem
+                    lines="none"
+                    className="rapago-profile-field"
+                    style={driverInputItemStyle()}>
+                    <IonLabel
+                      position="stacked"
+                      style={driverFieldLabelStyle()}>
+                      Patente
+                    </IonLabel>
+                    <IonInput
+                      style={driverFieldTextStyle()}
+                      value={vehiclePlate}
+                      onIonInput={(event) => {
+                        setVehiclePlate(
+                          String(event.detail.value ?? "").toUpperCase(),
+                        );
+                        setVehicleDraftDirty(true);
+                        setVehicleFormError(null);
+                      }}
+                      placeholder="ABCD12"
+                      clearInput
+                    />
+                  </IonItem>
+
+                  <IonItem
+                    lines="none"
+                    className="rapago-profile-field"
+                    style={driverInputItemStyle()}>
+                    <IonLabel
+                      position="stacked"
+                      style={driverFieldLabelStyle()}>
+                      Color
+                    </IonLabel>
+                    <IonInput
+                      style={driverFieldTextStyle()}
+                      value={vehicleColor}
+                      onIonInput={(event) => {
+                        setVehicleColor(String(event.detail.value ?? ""));
+                        setVehicleDraftDirty(true);
+                        setVehicleFormError(null);
+                      }}
+                      placeholder="Rojo"
+                      clearInput
+                    />
+                  </IonItem>
+
+                  {vehicleOwnership === "borrowed" && (
+                    <IonItem
+                      lines="none"
+                      className="rapago-profile-field"
+                      style={driverInputItemStyle()}>
+                      <IonLabel
+                        position="stacked"
+                        style={driverFieldLabelStyle()}>
+                        Fecha de expiración del vehículo opcional *
+                      </IonLabel>
+                      <IonInput
+                        style={driverFieldTextStyle()}
+                        type="date"
+                        value={vehicleExpiresAt}
+                        onIonInput={(event) => {
+                          setVehicleExpiresAt(String(event.detail.value ?? ""));
+                          setVehicleDraftDirty(true);
+                          setVehicleFormError(null);
+                        }}
+                      />
+                    </IonItem>
+                  )}
+
+                  <div
+                    style={{
+                      marginTop: 14,
+                      padding: 14,
+                      borderRadius: 20,
+                      background: "var(--rp-surface-soft)",
+                      border: "1.5px dashed var(--rp-border-c)",
+                      boxShadow: "0 12px 26px rgba(0,0,0,.08)",
+                    }}>
+                    <div
+                      style={{
+                        fontWeight: 950,
+                        fontSize: ".95rem",
+                        color: "var(--rp-text)",
+                      }}>
+                      Foto del vehículo
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--rp-muted)",
+                        fontSize: ".76rem",
+                        fontWeight: 800,
+                        lineHeight: 1.35,
+                        marginTop: 3,
+                      }}>
+                      Esta foto se mostrará al pasajero cuando aceptes un viaje.
+                    </div>
+
+                    {hasVehiclePhoto && (
+                      <div
+                        style={{
+                          marginTop: 12,
+                          width: "100%",
+                          minHeight: 145,
+                          borderRadius: 18,
+                          overflow: "hidden",
+                          background: "var(--rp-surface-soft)",
+                          border: "var(--rp-border-w) solid var(--rp-border-c)",
+                          boxShadow: "0 10px 24px rgba(0,0,0,.18)",
+                        }}>
+                        <img
+                          src={cleanVehicleImageDataUrl}
+                          alt="Foto del vehículo"
+                          style={{
+                            width: "100%",
+                            height: 180,
+                            objectFit: "cover",
+                            display: "block",
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    <input
+                      ref={vehiclePhotoFileRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        void handleVehiclePhotoFileChange(event)
+                      }
+                      style={{ display: "none" }}
+                    />
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: hasVehiclePhoto
+                          ? "1fr 1fr"
+                          : "1fr",
+                        gap: 10,
+                        marginTop: 14,
+                      }}>
+                      <IonButton
+                        expand="block"
+                        disabled={uploadingVehiclePhoto}
+                        onClick={() => {
+                          const input = vehiclePhotoFileRef.current;
+                          if (!input) return;
+
+                          // Se marca antes de abrir el selector. Al volver desde
+                          // la galería, ninguna recarga del perfil puede borrar
+                          // marca/modelo/patente ni la foto elegida.
+                          vehiclePhotoPickerOpenRef.current = true;
+                          vehicleDraftDirtyRef.current = true;
+                          setVehicleDraftDirty(true);
+                          setVehiclePhotoError(null);
+                          input.value = "";
+                          input.click();
+                        }}
+                        style={
+                          {
+                            "--border-radius": "16px",
+                            "--background": "var(--rp-btn-primary)",
+                            "--color": "var(--rp-btn-primary-fg)",
+                            height: "48px",
+                            fontWeight: 950,
+                          } as CSSProperties
+                        }>
+                        {uploadingVehiclePhoto ? (
+                          <IonSpinner name="dots" />
+                        ) : (
+                          <>
+                            <IonIcon
+                              icon={cameraOutline}
+                              slot="start"
+                              aria-hidden="true"
+                            />
+                            {hasVehiclePhoto ? "Cambiar foto" : "Adjuntar foto"}
+                          </>
+                        )}
+                      </IonButton>
+
+                      {hasVehiclePhoto && (
+                        <IonButton
+                          expand="block"
+                          fill="outline"
+                          color="danger"
+                          onClick={handleRemoveVehiclePhoto}
+                          style={
+                            {
+                              "--border-radius": "16px",
+                              height: "48px",
+                              fontWeight: 950,
+                            } as CSSProperties
+                          }>
+                          <IonIcon
+                            icon={trashOutline}
+                            slot="start"
+                            aria-hidden="true"
+                          />
+                          Quitar
+                        </IonButton>
+                      )}
+                    </div>
+
+                    {vehiclePhotoError && (
+                      <IonText color="danger">
+                        <p
+                          style={{
+                            margin: "8px 0 0",
+                            fontSize: ".78rem",
+                            fontWeight: 850,
+                          }}>
+                          {vehiclePhotoError}
+                        </p>
+                      </IonText>
+                    )}
+                  </div>
+
+                  {vehicleFormError && (
+                    <div
+                      role="alert"
+                      style={{
+                        marginTop: 12,
+                        padding: "11px 12px",
+                        borderRadius: 16,
+                        border: "1px solid var(--rp-err-bd)",
+                        background: "var(--rp-err-bg)",
+                        color: "var(--rp-err-fg)",
+                        fontSize: ".8rem",
+                        lineHeight: 1.4,
+                        fontWeight: 900,
+                      }}>
+                      {vehicleFormError}
+                    </div>
+                  )}
+
+                  {vehicleSaveMessage && !vehicleFormError && (
+                    <div
+                      role="status"
+                      style={{
+                        marginTop: 12,
+                        padding: "11px 12px",
+                        borderRadius: 16,
+                        border: vehicleDraftDirty
+                          ? "1px solid var(--rp-border-c)"
+                          : "1px solid var(--rp-ok-bd)",
+                        background: vehicleDraftDirty
+                          ? "var(--rp-warn-bg)"
+                          : "var(--rp-ok-bg)",
+                        color: vehicleDraftDirty
+                          ? "var(--rp-warn-fg)"
+                          : "var(--rp-ok-fg)",
+                        fontSize: ".8rem",
+                        lineHeight: 1.4,
+                        fontWeight: 900,
+                      }}>
+                      {vehicleSaveMessage}
+                    </div>
+                  )}
 
                   <IonButton
                     expand="block"
-                    color="warning"
-                    onClick={handleSwitchToPassengerMode}
-                    disabled={saving}
+                    color={
+                      vehicleOwnership === "borrowed" ? "warning" : "success"
+                    }
+                    onClick={() => void handleSaveVehicleOnly()}
+                    disabled={savingVehicle || uploadingVehiclePhoto}
                     style={
                       {
                         "--border-radius": "16px",
                         height: "52px",
-                        marginTop: 12,
+                        marginTop: 14,
                         fontWeight: 950,
-                        "--color": "#111",
+                        "--color":
+                          vehicleOwnership === "borrowed" ? "#111" : "#fff",
                       } as CSSProperties
-                    }
-                  >
-                    Cambiar a modo pasajero
+                    }>
+                    {savingVehicle || uploadingVehiclePhoto ? (
+                      <IonSpinner name="dots" />
+                    ) : editingVehicleId ? (
+                      "Guardar cambios del vehículo"
+                    ) : vehicleOwnership === "borrowed" ? (
+                      "Crear vehículo opcional"
+                    ) : (
+                      "Guardar vehículo propio"
+                    )}
                   </IonButton>
+
+                  <div
+                    style={{
+                      marginTop: 8,
+                      color: "var(--rp-muted)",
+                      fontSize: ".72rem",
+                      fontWeight: 800,
+                      lineHeight: 1.35,
+                      textAlign: "center",
+                    }}>
+                    La foto y los datos quedan asociados a este vehículo y a
+                    este conductor.
+                  </div>
                 </IonCardContent>
               </IonCard>
-            )}
 
-            <AccountDeletionCard
-              requesterSnapshot={{
-                phone: phone.trim() || null,
-                rut: storedProfile.rut?.trim() || null,
-                vehicleBrand: vehicleBrand.trim() || null,
-                vehicleModel: vehicleModel.trim() || null,
-                vehicleYear: Number.isFinite(Number(vehicleYear))
-                  ? Number(vehicleYear)
-                  : null,
-                vehiclePlate: vehiclePlate.trim() || null,
-                vehicleColor: vehicleColor.trim() || null,
-                licenseNumber: licenseNumber.trim() || null,
-                sourceView: "driver",
-              }}
-            />
+              <IonCard
+                className="rapago-driver-card"
+                style={driverFormCardStyle()}>
+                <IonCardContent>
+                  <div
+                    style={{
+                      fontWeight: 950,
+                      fontSize: "1rem",
+                      marginBottom: 4,
+                    }}>
+                    Licencia de conducir
+                  </div>
 
-            <IonButton
-              expand="block"
-              onClick={() => void handleSave()}
-              disabled={saving}
-              style={
-                {
-                  "--border-radius": "16px",
-                  "--background": "var(--rp-btn-primary)",
-                  "--color": "var(--rp-btn-primary-fg)",
-                  height: "52px",
-                  fontWeight: 950,
-                } as CSSProperties
-              }
-            >
-              {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
-            </IonButton>
+                  <IonItem
+                    lines="none"
+                    className="rapago-profile-field"
+                    style={driverInputItemStyle()}>
+                    <IonLabel
+                      position="stacked"
+                      style={driverFieldLabelStyle()}>
+                      Número de licencia
+                    </IonLabel>
+                    <IonInput
+                      style={driverFieldTextStyle()}
+                      value={licenseNumber}
+                      placeholder="Número aprobado"
+                      readonly
+                      aria-readonly="true"
+                    />
+                  </IonItem>
 
-            <IonButton
-              expand="block"
-              fill="outline"
-              color="danger"
-              onClick={() => void handleLogout()}
-              disabled={saving}
-              style={
-                {
-                  "--border-radius": "16px",
-                  height: "52px",
-                  marginTop: 12,
-                  fontWeight: 950,
-                } as CSSProperties
-              }
-            >
-              Cerrar sesión
-            </IonButton>
-          </div>
-        )}
-      </IonContent>
+                  <IonItem
+                    lines="none"
+                    className="rapago-profile-field"
+                    style={driverInputItemStyle()}>
+                    <IonLabel
+                      position="stacked"
+                      style={driverFieldLabelStyle()}>
+                      Fecha de vencimiento
+                    </IonLabel>
+                    <IonInput
+                      style={driverFieldTextStyle()}
+                      value={licenseExpiry}
+                      type="date"
+                      readonly
+                      aria-readonly="true"
+                    />
+                  </IonItem>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      color: "var(--rp-muted)",
+                      fontSize: ".76rem",
+                      fontWeight: 800,
+                      lineHeight: 1.4,
+                    }}>
+                    El número y vencimiento de la licencia corresponden a los
+                    documentos aprobados. No pueden modificarse desde el perfil.
+                  </div>
+
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    onClick={() =>
+                      history.push(
+                        `${ROUTES.SUPPORT.CENTER}?category=identity_correction`,
+                      )
+                    }
+                    style={
+                      {
+                        "--border-radius": "16px",
+                        height: "48px",
+                        marginTop: 12,
+                        fontWeight: 950,
+                      } as CSSProperties
+                    }>
+                    Solicitar corrección a soporte
+                  </IonButton>
+
+                  {licenseWarning && (
+                    <IonText
+                      color={
+                        isLicenseExpired(licenseExpiry) ? "danger" : "warning"
+                      }>
+                      <p
+                        style={{
+                          fontSize: ".8rem",
+                          fontWeight: 800,
+                          margin: "8px 0 0",
+                        }}>
+                        {licenseWarning}
+                      </p>
+                    </IonText>
+                  )}
+                </IonCardContent>
+              </IonCard>
+
+              <IonCard
+                className="rapago-driver-card"
+                style={driverFormCardStyle()}>
+                <IonCardContent>
+                  <div
+                    style={{
+                      fontWeight: 950,
+                      fontSize: "1rem",
+                      marginBottom: 10,
+                    }}>
+                    Biografía
+                  </div>
+                  <IonItem
+                    lines="none"
+                    className="rapago-profile-field"
+                    style={driverInputItemStyle()}>
+                    <IonLabel
+                      position="stacked"
+                      style={driverFieldLabelStyle()}>
+                      Sobre ti
+                    </IonLabel>
+                    <IonTextarea
+                      style={driverFieldTextStyle()}
+                      value={bio}
+                      onIonInput={(event) =>
+                        setBio(String(event.detail.value ?? ""))
+                      }
+                      placeholder="Cuéntale al pasajero sobre tu experiencia..."
+                      autoGrow
+                      rows={4}
+                    />
+                  </IonItem>
+                </IonCardContent>
+              </IonCard>
+
+              <IonCard
+                className="rapago-driver-card"
+                style={driverFormCardStyle()}>
+                <IonCardContent>
+                  <div
+                    style={{
+                      fontWeight: 950,
+                      fontSize: "1rem",
+                      marginBottom: 4,
+                    }}>
+                    Idiomas
+                  </div>
+                  <div
+                    style={{
+                      color: "var(--rp-muted)",
+                      fontSize: ".78rem",
+                      fontWeight: 800,
+                      marginBottom: 12,
+                    }}>
+                    Selecciona el idioma principal que verán tus pasajeros.
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 10,
+                    }}>
+                    {LANGUAGE_OPTIONS.map((option) => {
+                      const selected = languages.includes(option.value);
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => selectLanguage(option.value)}
+                          style={{
+                            minHeight: 62,
+                            borderRadius: 18,
+                            border: selected
+                              ? "2px solid var(--rp-border-strong)"
+                              : "1.5px solid var(--rp-border-c)",
+                            background: selected
+                              ? "var(--rp-btn-primary)"
+                              : "var(--rp-surface-soft)",
+                            color: selected
+                              ? "var(--rp-btn-primary-fg)"
+                              : "var(--rp-text)",
+                            boxShadow: selected
+                              ? "var(--rp-shadow-accent)"
+                              : "var(--rp-shadow)",
+                            fontWeight: 950,
+                            fontSize: ".95rem",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 8,
+                          }}
+                          aria-pressed={selected}>
+                          <span style={{ fontSize: "1.2rem" }}>
+                            {option.emoji}
+                          </span>
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: "10px 12px",
+                      borderRadius: 16,
+                      background: "var(--rp-ok-bg)",
+                      border: "1px solid var(--rp-ok-bd)",
+                      color: "var(--rp-ok-fg)",
+                      fontWeight: 900,
+                      fontSize: ".78rem",
+                    }}>
+                    Idioma seleccionado:{" "}
+                    {languages.includes("en") ? "Inglés" : "Español"}
+                  </div>
+                </IonCardContent>
+              </IonCard>
+
+              {canSwitchToPassengerMode && (
+                <IonCard
+                  className="rapago-driver-card"
+                  style={driverFormCardStyle({
+                    background: "var(--rp-surface)",
+                    border: "var(--rp-border-w) solid var(--rp-border-c)",
+                  })}>
+                  <IonCardContent style={{ padding: "14px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                      }}>
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 16,
+                          background: "var(--rp-btn-primary)",
+                          color: "var(--rp-btn-primary-fg)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}>
+                        <IonIcon
+                          icon={personOutline}
+                          style={{ fontSize: 26 }}
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            fontSize: ".98rem",
+                            color: "var(--rp-text)",
+                          }}>
+                          ¿Quieres pedir un Rapa Go?
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 3,
+                            color: "var(--rp-muted)",
+                            fontSize: ".78rem",
+                            fontWeight: 800,
+                            lineHeight: 1.35,
+                          }}>
+                          Cambia temporalmente a la vista de pasajero sin cerrar
+                          sesión.
+                        </div>
+                      </div>
+                    </div>
+
+                    <IonButton
+                      expand="block"
+                      color="warning"
+                      onClick={handleSwitchToPassengerMode}
+                      disabled={saving}
+                      style={
+                        {
+                          "--border-radius": "16px",
+                          height: "52px",
+                          marginTop: 12,
+                          fontWeight: 950,
+                          "--color": "#111",
+                        } as CSSProperties
+                      }>
+                      Cambiar a modo pasajero
+                    </IonButton>
+                  </IonCardContent>
+                </IonCard>
+              )}
+
+              <AccountDeletionCard
+                requesterSnapshot={{
+                  phone: phone.trim() || null,
+                  rut: storedProfile.rut?.trim() || null,
+                  vehicleBrand: vehicleBrand.trim() || null,
+                  vehicleModel: vehicleModel.trim() || null,
+                  vehicleYear: Number.isFinite(Number(vehicleYear))
+                    ? Number(vehicleYear)
+                    : null,
+                  vehiclePlate: vehiclePlate.trim() || null,
+                  vehicleColor: vehicleColor.trim() || null,
+                  licenseNumber: licenseNumber.trim() || null,
+                  sourceView: "driver",
+                }}
+              />
+
+              <IonButton
+                expand="block"
+                onClick={() => void handleSave()}
+                disabled={saving}
+                style={
+                  {
+                    "--border-radius": "16px",
+                    "--background": "var(--rp-btn-primary)",
+                    "--color": "var(--rp-btn-primary-fg)",
+                    height: "52px",
+                    fontWeight: 950,
+                  } as CSSProperties
+                }>
+                {saving ? <IonSpinner name="dots" /> : "Guardar cambios"}
+              </IonButton>
+
+              <IonButton
+                expand="block"
+                fill="outline"
+                color="danger"
+                onClick={() => void handleLogout()}
+                disabled={saving}
+                style={
+                  {
+                    "--border-radius": "16px",
+                    height: "52px",
+                    marginTop: 12,
+                    fontWeight: 950,
+                  } as CSSProperties
+                }>
+                Cerrar sesión
+              </IonButton>
+            </div>
+          )}
+        </IonContent>
       </IonPage>
     </>
   );

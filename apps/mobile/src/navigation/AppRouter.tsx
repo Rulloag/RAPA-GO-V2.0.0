@@ -109,7 +109,10 @@ function StandaloneRoutes(): JSX.Element {
       <Route exact path={ROUTES.PROFILE.BANK_ACCOUNT} component={ProfileBankAccountPage} />
       <Route exact path={ROUTES.PROFILE.SECURITY} component={ProfileSecurityPage} />
       <Route exact path={ROUTES.PROFILE.NOTIFICATIONS} component={ProfileNotificationsPage} />
-      <Route exact path="/notifications" component={NotificationPage} />
+      {/* Red de seguridad: sólo se llega aquí sin rol conocido (visitante sin
+          sesión, guía, arrendador). Los tres roles con barra inferior entran
+          por su layout — ver el caso especial más abajo. */}
+      <Route exact path={ROUTES.NOTIFICATIONS} component={NotificationPage} />
       <Route exact path={ROUTES.SUPPORT.CENTER} component={SupportCenterPage} />
 
       <Route exact path={ROUTES.NOT_FOUND} component={NotFoundPage} />
@@ -117,9 +120,45 @@ function StandaloneRoutes(): JSX.Element {
   );
 }
 
+/**
+ * Áreas que exigen sesión. Todo lo demás (login, registro, legales, postular,
+ * recuperar contraseña) sigue siendo accesible sin autenticar.
+ */
+const SESSION_REQUIRED_BASES = [
+  ROUTES.PASSENGER.BASE,
+  ROUTES.DRIVER.BASE,
+  ROUTES.ADMIN.BASE,
+  ROUTES.GUIDE.BASE,
+  ROUTES.RENTAL.BASE,
+];
+
 export function AppRouter(): JSX.Element {
   const { pathname } = useLocation();
-  const { user } = useAuth();
+  const { user, status } = useAuth();
+
+  /**
+   * GUARD DE SESIÓN (no de rol).
+   *
+   * El "modo de recuperación visual" desactivó TODOS los bloqueos del
+   * frontend, incluida la redirección por sesión. Eso arreglaba las pantallas
+   * en negro, pero dejó un agujero: cuando la sesión se pierde, el usuario se
+   * queda en la pantalla protegida con `user === null`. El avatar entonces se
+   * dibuja como "?" y ninguna petición funciona, porque ya no hay token.
+   *
+   * Se repone SOLO la comprobación de sesión, que es la que faltaba. Las
+   * validaciones por ROL siguen desactivadas a propósito: eran las que
+   * producían las pantallas en negro, y la autorización real vive en la API.
+   *
+   * `status === "loading"` no redirige: durante la restauración todavía no se
+   * sabe si hay sesión, y expulsar ahí devolvería al login en cada arranque.
+   */
+  const requiresSession = SESSION_REQUIRED_BASES.some((base) =>
+    isPathInside(pathname, base),
+  );
+
+  if (requiresSession && status === "unauthenticated") {
+    return <Redirect to={ROUTES.AUTH.LOGIN} />;
+  }
 
   /**
    * Centro de ayuda: vive en /support-center, fuera del prefijo /passenger, y
@@ -134,7 +173,31 @@ export function AppRouter(): JSX.Element {
    */
   const isPassengerRole = user != null && user.role !== "driver" && user.role !== "admin";
 
-  if (isPathInside(pathname, ROUTES.PASSENGER.BASE) || (pathname === ROUTES.SUPPORT.CENTER && isPassengerRole)) {
+  /**
+   * Notificaciones: mismo caso que el centro de ayuda, y por eso se resuelve
+   * igual. La ruta vive en /notifications, fuera de todo prefijo de rol, y a
+   * ella se llega desde la campana y el menú de cuenta de CUALQUIER pantalla.
+   * Mientras estuvo en las rutas sueltas, entrar desmontaba el layout del rol
+   * y con él la barra inferior: en un teléfono real —sin botón "atrás" del
+   * navegador— el usuario quedaba encerrado en la pantalla.
+   *
+   * A diferencia de Ayuda, aquí SÍ se enruta también a conductor y a admin:
+   * los tres roles usan el mismo componente y los tres tienen barra propia, de
+   * modo que cada uno conserva su navegación y su ámbito de tema (la pantalla
+   * los deriva del rol; ver NotificationPage).
+   *
+   * `isPassengerRole` incluye a guías y arrendadores, igual que en Ayuda: es
+   * deliberado y no un descuido — sus layouts están detrás de banderas de
+   * release, así que la barra de pasajero es hoy la única navegación real que
+   * pueden recibir. Quien entra SIN sesión cae en la ruta standalone, donde la
+   * salida es el botón de volver de la barra superior.
+   */
+  const isNotificationsPath = pathname === ROUTES.NOTIFICATIONS;
+
+  if (
+    isPathInside(pathname, ROUTES.PASSENGER.BASE) ||
+    ((pathname === ROUTES.SUPPORT.CENTER || isNotificationsPath) && isPassengerRole)
+  ) {
     return (
       <>
         <LegalReacceptanceGate />
@@ -145,7 +208,10 @@ export function AppRouter(): JSX.Element {
     );
   }
 
-  if (isPathInside(pathname, ROUTES.DRIVER.BASE)) {
+  if (
+    isPathInside(pathname, ROUTES.DRIVER.BASE) ||
+    (isNotificationsPath && user?.role === "driver")
+  ) {
     return (
       <>
         <LegalReacceptanceGate />
@@ -156,7 +222,10 @@ export function AppRouter(): JSX.Element {
     );
   }
 
-  if (isPathInside(pathname, ROUTES.ADMIN.BASE)) {
+  if (
+    isPathInside(pathname, ROUTES.ADMIN.BASE) ||
+    (isNotificationsPath && user?.role === "admin")
+  ) {
     return (
       <>
         <LegalReacceptanceGate />

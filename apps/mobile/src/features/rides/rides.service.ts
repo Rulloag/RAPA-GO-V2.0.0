@@ -363,20 +363,6 @@ export const ridesService = {
     return (result.data as DriverRidesEnvelope).data;
   },
 
-  async getDriverLocation(accessToken: string, rideId: string): Promise<{ driverUserId: string; lat: number; lng: number; updatedAt: string | null } | null> {
-    type Envelope = { ok: true; data: { location: { driverUserId: string; lat: number; lng: number; updatedAt: string | null } | null }; statusCode: number };
-    const result = await apiClient.get<Envelope>(`/rides/${rideId}/driver-location`, { token: accessToken });
-    if (result.ok === false) throw new Error(result.message ?? "Failed to get driver location.");
-    return (result.data as Envelope).data.location;
-  },
-
-  async updateDriverLocation(accessToken: string, lat: number, lng: number): Promise<{ updatedAt: string }> {
-    type Envelope = { ok: true; data: { updatedAt: string }; statusCode: number };
-    const result = await apiClient.patch<Envelope>("/drivers/me/location", { lat, lng }, { token: accessToken });
-    if (result.ok === false) throw new Error(result.message ?? "Failed to update location.");
-    return (result.data as Envelope).data;
-  },
-
   async getActiveDriverOffer(accessToken: string): Promise<ActiveRideOfferData | null> {
     type Envelope = { ok: true; data: ActiveRideOfferData | null; statusCode: number };
     const result = await apiClient.get<Envelope>("/drivers/me/offers/active", { token: accessToken });

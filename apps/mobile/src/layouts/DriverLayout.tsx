@@ -5,6 +5,11 @@ import { UnknownRolePathRedirect } from "./UnknownRolePathRedirect.js";
 import { ROUTES } from "../navigation/routes";
 import * as DriverPages from "../pages/driver";
 import { DriverLocationRuntime } from "../features/location/index.js";
+/* Notificaciones vive en /notifications, fuera del prefijo /driver, pero la
+   campana y el menú de cuenta del conductor llevan ahí. Se monta dentro de
+   este layout para que no pierda la barra inferior al entrar (ver el caso
+   especial en AppRouter). */
+import { NotificationPage } from "../pages/notifications/NotificationPage.js";
 
 const DriverHomePage = DriverPages.DriverHomePage;
 const DriverRequestsPage = DriverPages.DriverRequestsPage;
@@ -49,6 +54,7 @@ export function DriverLayout(): JSX.Element {
         <Route exact path={ROUTES.DRIVER.TRIP_DETAIL_PATTERN} component={DriverTripsPage} />
         <Route exact path={ROUTES.DRIVER.EARNINGS} component={DriverEarningsPage} />
         <Route exact path={ROUTES.DRIVER.PROFILE} component={DriverProfilePage} />
+        <Route exact path={ROUTES.NOTIFICATIONS} component={NotificationPage} />
         <Route
           path={ROUTES.DRIVER.BASE}
           render={() => (

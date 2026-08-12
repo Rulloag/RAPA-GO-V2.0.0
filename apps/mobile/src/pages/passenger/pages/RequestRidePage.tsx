@@ -6280,7 +6280,13 @@ function MapPointPicker({
 
         const map = new google.maps.Map(mapElementRef.current, {
           center,
-          zoom: 17,
+          /* 15 y no 17: a 17 se ven un par de calles y en Rapa Nui, con los
+             caminos separados, la pantalla queda casi vacía y sin referencias
+             para ubicarse. A 15 entra el barrio y se entiende dónde estás
+             respecto del pueblo, que es lo que hace falta para elegir el punto
+             de partida. Acercarse es un gesto; alejarse cuando ya te perdiste
+             de contexto, no tanto. */
+          zoom: 15,
           mapTypeControl: false,
           fullscreenControl: false,
           streetViewControl: false,
@@ -6315,7 +6321,9 @@ function MapPointPicker({
           if (cancelled) return;
           google.maps.event.trigger(map, "resize");
           map.setCenter(center);
-          map.setZoom(17);
+          // Debe coincidir con el zoom inicial de arriba: este reajuste tras el
+          // resize lo reimponía en 17 y deshacía el valor de apertura.
+          map.setZoom(15);
           setReady(true);
         }, 120);
 
@@ -9419,17 +9427,6 @@ return (
 
           </div>
 
-          <MapFallback
-            origin={mapOrigin}
-            destination={mapDestination}
-            height={320}
-            showRoute
-            originDraggable={canChooseOrigin}
-            onOriginChange={(payload) => {
-              void applyMovedOriginFromMap(payload);
-            }}
-          />
-
           <div
             style={{
               padding: "18px 16px 20px",
@@ -9476,26 +9473,49 @@ return (
                 style={{ fontSize: "1.25rem", color: "var(--rp-accent)" }}
               />
 
-              <span
-                style={{
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  fontSize: ".92rem",
-                  fontWeight: 850,
-                }}
-              >
-                {originInput.trim() || "\u00A0"}
+              <span style={{ minWidth: 0, display: "grid", gap: "1px" }}>
+                <small
+                  style={{
+                    fontSize: ".6rem",
+                    fontWeight: 800,
+                    letterSpacing: ".05em",
+                    textTransform: "uppercase",
+                    opacity: 0.62,
+                  }}
+                >
+                  {!canChooseOrigin
+                    ? "Origen fijo"
+                    : originPoint
+                      ? "Confirmado \u00B7 toca para cambiar"
+                      : "Toca para buscar"}
+                </small>
+                <span
+                  style={{
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    fontSize: ".92rem",
+                    fontWeight: 850,
+                    opacity: originInput.trim() ? 1 : 0.55,
+                  }}
+                >
+                  {originInput.trim() || "Buscar direcci\u00F3n de origen"}
+                </span>
               </span>
 
               {searchingOrigin ? (
                 <IonSpinner name="dots" />
               ) : (
                 <IonIcon
-                  icon={searchOutline}
+                  icon={originPoint ? checkmarkCircleOutline : searchOutline}
                   aria-hidden="true"
-                  style={{ fontSize: "1.1rem", color: "var(--rp-accent)" }}
+                  style={{
+                    fontSize: "1.1rem",
+                    color: originPoint
+                      ? "var(--rp-ok-fg, #146b45)"
+                      : "var(--rp-accent)",
+                  }}
                 />
               )}
             </button>
@@ -9521,7 +9541,7 @@ return (
               <div style={{ margin: "-4px 0 22px", color: "var(--rp-accent)", fontSize: ".78rem", fontWeight: 900, lineHeight: 1.35, display: "flex", alignItems: "center", gap: 5 }}>
               <IonIcon icon={airplaneOutline} style={{ fontSize: "1rem", flexShrink: 0 }} /> Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el destino.
               </div>
-            ) : (
+            ) : originPoint ? null : (
               <div
                 style={{
                   display: "grid",
@@ -9649,30 +9669,54 @@ return (
                 style={{ fontSize: "1.2rem", color: "var(--rp-danger-fg)" }}
               />
 
-              <span
-                style={{
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  fontSize: ".92rem",
-                  fontWeight: 850,
-                }}
-              >
-                {destInput.trim() || "\u00A0"}
+              <span style={{ minWidth: 0, display: "grid", gap: "1px" }}>
+                <small
+                  style={{
+                    fontSize: ".6rem",
+                    fontWeight: 800,
+                    letterSpacing: ".05em",
+                    textTransform: "uppercase",
+                    opacity: 0.62,
+                  }}
+                >
+                  {selectedRoundTripPromotion
+                    ? "Destino fijo"
+                    : destinationPoint
+                      ? "Confirmado \u00B7 toca para cambiar"
+                      : "Toca para buscar"}
+                </small>
+                <span
+                  style={{
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    fontSize: ".92rem",
+                    fontWeight: 850,
+                    opacity: destInput.trim() ? 1 : 0.55,
+                  }}
+                >
+                  {destInput.trim() || "Buscar direcci\u00F3n de destino"}
+                </span>
               </span>
 
               {searchingDest ? (
                 <IonSpinner name="dots" />
               ) : (
                 <IonIcon
-                  icon={searchOutline}
+                  icon={destinationPoint ? checkmarkCircleOutline : searchOutline}
                   aria-hidden="true"
-                  style={{ fontSize: "1.1rem", color: "var(--rp-danger-fg)" }}
+                  style={{
+                    fontSize: "1.1rem",
+                    color: destinationPoint
+                      ? "var(--rp-ok-fg, #146b45)"
+                      : "var(--rp-danger-fg)",
+                  }}
                 />
               )}
             </button>
 
+            {!destinationPoint && (
             <button
               type="button"
               onClick={() => {
@@ -9727,6 +9771,30 @@ return (
                 )}
               </span>
             </button>
+            )}
+
+            {/* El mapa vive debajo de ORIGEN y DESTINO para que el formulario
+                sea lo primero que encuentra el pasajero. Se mantiene a sangre
+                completa con margen negativo: mismo alto y mismo comportamiento
+                que antes, solo cambia su posicion en el orden de lectura. */}
+            <div
+              style={{
+                margin: "2px -16px 22px",
+                borderTop: "1px solid rgba(210,164,58,.18)",
+                borderBottom: "1px solid rgba(210,164,58,.18)",
+              }}
+            >
+              <MapFallback
+                origin={mapOrigin}
+                destination={mapDestination}
+                height={320}
+                showRoute
+                originDraggable={canChooseOrigin}
+                onOriginChange={(payload) => {
+                  void applyMovedOriginFromMap(payload);
+                }}
+              />
+            </div>
 
 
             {rideMode === "now" && (

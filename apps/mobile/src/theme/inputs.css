@@ -1,0 +1,44 @@
+/* ==========================================================================
+   CAMPOS DE FORMULARIO — ANTI ZOOM AUTOMÁTICO EN iOS
+   ==========================================================================
+
+   Safari y el WKWebView de iOS hacen zoom sobre la página al enfocar un campo
+   de texto cuyo font-size calculado sea menor a 16px. Después del zoom el
+   usuario queda con la vista desplazada y tiene que cerrar el teclado y hacer
+   pinch para volver, que es justo lo que se siente "raro" al tocar un input.
+
+   Hasta ahora esto se venía parchando pantalla por pantalla (profile.css,
+   el bloque responsive de auth en global.css), y las pantallas nuevas —pedir
+   viaje, buscador de direcciones, inscripción de conductor— quedaron con
+   tamaños de 0.92rem / 0.96rem, o sea 14.7px y 15.4px. Este archivo cierra el
+   agujero de una vez para toda la app y para cualquier campo que se agregue
+   después.
+
+   Por qué funciona sin pelear especificidad: las reglas de las pantallas fijan
+   el font-size sobre el host (`ion-input`), y el <input> real lo recibe por
+   herencia. Aquí se declara sobre el <input> mismo, y una declaración directa
+   siempre le gana a un valor heredado, sin importar cuán específico sea el
+   selector del host.
+
+   El ámbito es `pointer: coarse` —dispositivos táctiles— porque el auto-zoom
+   solo existe ahí. En escritorio los tamaños de cada pantalla quedan intactos.
+   No se toca el meta viewport a propósito: bloquear el zoom con
+   `maximum-scale=1` mataría también el pinch-zoom de accesibilidad. */
+
+@media (pointer: coarse) {
+  /* Se excluyen los tipos que no abren teclado: en ellos el font-size no
+     evita ningún zoom y sí alteraría el tamaño del control o de su texto. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"],
+            [type="submit"], [type="reset"], [type="color"], [type="file"],
+            [type="image"]),
+  textarea,
+  select,
+  /* Nombres internos de los componentes de Ionic. Van explícitos porque un día
+     pueden dejar de ser un <input>/<textarea> nativo y la regla debe seguir
+     alcanzándolos. */
+  .native-input,
+  .native-textarea,
+  .searchbar-input {
+    font-size: 16px !important;
+  }
+}

@@ -4,6 +4,25 @@ import { authSessions, refreshTokens, users } from "../../db/schema/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 
 /**
+ * Cuánto tiempo después de rotarlo se sigue aceptando un refresh token.
+ *
+ * Cubre el caso en que el servidor completó la rotación pero la respuesta no
+ * llegó al cliente (app en segundo plano, red intermitente). Se mantiene corta
+ * a propósito: fuera de ella, presentar un token ya rotado se trata como robo.
+ */
+const REFRESH_TOKEN_REUSE_GRACE_MS = 60_000;
+
+export type ConsumeRefreshTokenResult =
+  /** Token válido y sin usar: rotación normal. */
+  | { outcome: "consumed"; id: string; userId: string }
+  /** Ya rotado hace muy poco: se asume respuesta perdida, se permite. */
+  | { outcome: "grace"; id: string; userId: string }
+  /** Ya rotado hace rato: reutilización sospechosa, revocar todo. */
+  | { outcome: "reuse"; id: string; userId: string }
+  /** Desconocido, caducado o nunca emitido. */
+  | { outcome: "unknown" };
+
+/**
  * SessionService — manages auth_sessions and refresh_tokens in the database.
  *
  * SECURITY: only hashes of tokens are stored. Raw tokens are never persisted.
@@ -86,7 +105,7 @@ export class SessionService {
 
   async consumeRefreshToken(
     tokenHash: string,
-  ): Promise<{ id: string; userId: string } | null> {
+  ): Promise<ConsumeRefreshTokenResult> {
     const now = new Date();
 
     try {
@@ -106,7 +125,66 @@ export class SessionService {
             userId: refreshTokens.userId,
           });
 
-        return consumed ?? null;
+        if (consumed) {
+          return { outcome: "consumed", ...consumed } as const;
+        }
+
+        /**
+         * VENTANA DE GRACIA — la parte que arreglaba el "me fui a WhatsApp y
+         * volví sin sesión".
+         *
+         * La rotación es de un solo uso: el servidor revoca el token en el
+         * mismo UPDATE con el que lo lee. Si la respuesta no llega al teléfono
+         * (que es exactamente lo que pasa al pasar la app a segundo plano: la
+         * WebView se congela, la radio se corta, el timeout de 25 s se dispara
+         * al volver), el servidor ya rotó pero el cliente sigue guardando el
+         * token viejo. Sin esta ventana, el siguiente intento devolvía
+         * AUTH_REFRESH_TOKEN_INVALID y la sesión moría de forma definitiva:
+         * el usuario tenía que volver a iniciar sesión a mano.
+         *
+         * Aquí se distingue ese caso del robo real por el tiempo transcurrido
+         * desde la revocación:
+         *  - dentro de la ventana → reintento legítimo de una rotación cuya
+         *    respuesta se perdió; se permite emitir un par nuevo.
+         *  - fuera de la ventana → reutilización de un token ya rotado, que es
+         *    la señal clásica de token robado (OAuth 2.0 BCP): se revoca TODA
+         *    la sesión del usuario.
+         */
+        const [previouslyRotated] = await tx
+          .select({
+            id: refreshTokens.id,
+            userId: refreshTokens.userId,
+            revokedAt: refreshTokens.revokedAt,
+            expiresAt: refreshTokens.expiresAt,
+          })
+          .from(refreshTokens)
+          .where(eq(refreshTokens.tokenHash, tokenHash))
+          .limit(1);
+
+        if (!previouslyRotated?.revokedAt) {
+          return { outcome: "unknown" } as const;
+        }
+
+        if (previouslyRotated.expiresAt.getTime() <= now.getTime()) {
+          return { outcome: "unknown" } as const;
+        }
+
+        const revokedAgoMs =
+          now.getTime() - previouslyRotated.revokedAt.getTime();
+
+        if (revokedAgoMs <= REFRESH_TOKEN_REUSE_GRACE_MS) {
+          return {
+            outcome: "grace",
+            id: previouslyRotated.id,
+            userId: previouslyRotated.userId,
+          } as const;
+        }
+
+        return {
+          outcome: "reuse",
+          id: previouslyRotated.id,
+          userId: previouslyRotated.userId,
+        } as const;
       });
     } catch (err) {
       throw AppError.internal(

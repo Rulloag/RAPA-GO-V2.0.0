@@ -2153,7 +2153,31 @@ export class AuthService {
       tokenService.hashToken(refreshTokenValue),
     );
 
-    if (!consumed) {
+    /**
+     * Reutilización fuera de la ventana de gracia: es la señal estándar de
+     * token robado (el legítimo ya rotó hace rato y este sigue circulando).
+     * Se cierra toda la sesión del usuario, no solo esta cadena.
+     */
+    if (consumed.outcome === "reuse") {
+      await sessionService.revokeAllForUser(consumed.userId);
+
+      auditService.recordSafe({
+        eventType: "auth.session.refresh.reuse_detected",
+        entityType: "user",
+        entityId: consumed.userId,
+        actorUserId: consumed.userId,
+        metadata: { rotatedFromTokenId: consumed.id },
+      });
+
+      return {
+        ok: false,
+        code: "AUTH_SESSION_REVOKED",
+        message: "La sesión se cerró por seguridad. Inicia sesión nuevamente.",
+        statusCode: 401,
+      };
+    }
+
+    if (consumed.outcome === "unknown") {
       return {
         ok: false,
         code: "AUTH_REFRESH_TOKEN_INVALID",
@@ -2212,7 +2236,11 @@ export class AuthService {
       entityType: "user",
       entityId: user.id,
       actorUserId: user.id,
-      metadata: { rotatedFromTokenId: consumed.id },
+      metadata: {
+        rotatedFromTokenId: consumed.id,
+        /** Deja rastro de cuántas renovaciones vienen de una respuesta perdida. */
+        viaReuseGrace: consumed.outcome === "grace",
+      },
     });
 
     return {

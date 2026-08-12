@@ -27,9 +27,17 @@ import "../theme/driver.css";
 import "../theme/admin.css";
 import "../theme/request-ride.css";
 import "../theme/request.css";
+/* Va después de sections.css: la pantalla de notificaciones reutiliza .rp-card
+   del kit y necesita anularle el padding para que el área táctil la ocupe el
+   botón interior. Misma especificidad, así que decide el orden de cascada. */
+import "../theme/notifications.css";
 /* Va al final: la barra superior debe poder pisar los restos de cabecera de
    cualquier ámbito (sections, driver, request-ride) sin recurrir a !important. */
 import "../theme/appbar.css";
+/* Va después de todas las pantallas: fija el mínimo de 16px en los campos de
+   texto para que iOS no haga zoom al enfocarlos, y debe ganarle a los tamaños
+   que cada pantalla define para sus inputs. */
+import "../theme/inputs.css";
 
 import { initRapagoTheme } from "../theme/rapagoTheme";
 

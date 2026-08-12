@@ -9,9 +9,28 @@ const MAX_ACCESS_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
 
 function getAccessTokenTtlSeconds(): number {
-  const configured = Number(process.env["ACCESS_TOKEN_TTL_SECONDS"] ?? "");
+  /**
+   * El valor crudo se comprueba ANTES de convertirlo a número.
+   *
+   * Antes esto era `Number(process.env[...] ?? "")`, y ahí estaba el fallo:
+   * cuando la variable no está definida (que es el caso en producción), el
+   * `?? ""` deja una cadena vacía y `Number("")` devuelve 0 — que ES finito.
+   * Así que el `if (!Number.isFinite(...))` nunca se cumplía, el default de
+   * 24 h era código muerto, y el clamp de abajo dejaba el TTL en el mínimo:
+   * `max(900, 0)` = 900 s = 15 minutos.
+   *
+   * Consecuencia real: el token moría a los 15 minutos, así que bastaba con
+   * cambiar de aplicación un rato normal para volver con la sesión caducada.
+   */
+  const raw = process.env["ACCESS_TOKEN_TTL_SECONDS"]?.trim();
 
-  if (!Number.isFinite(configured)) {
+  if (!raw) {
+    return DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
+  }
+
+  const configured = Number(raw);
+
+  if (!Number.isFinite(configured) || configured <= 0) {
     return DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
   }
 

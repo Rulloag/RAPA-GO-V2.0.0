@@ -7,16 +7,28 @@ import {
   IonIcon,
   IonText,
 } from "@ionic/react";
-import { locationOutline, settingsOutline, shieldCheckmarkOutline } from "ionicons/icons";
+import {
+  locationOutline,
+  settingsOutline,
+  shieldCheckmarkOutline,
+} from "ionicons/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/index.js";
 import { ridesService, type DriverRideData } from "../rides/rides.service.js";
 import { locationPermissionService } from "./locationPermission.service.js";
-import { rideLocationService } from "./rideLocation.service.js";
-import type {
-  RapaGoLocationPoint,
-  RapaGoPermissionSnapshot,
-} from "./location.types.js";
+import { rideTrackingCoordinator } from "./rideTrackingCoordinator.js";
+import type { RapaGoPermissionSnapshot } from "./location.types.js";
+
+/**
+ * Detecta el viaje activo y los permisos, y se lo DECLARA al coordinador.
+ *
+ * Este componente ya no toca el GPS ni el servicio nativo: solo describe qué
+ * debería estar pasando. El ciclo de vida real vive en
+ * `rideTrackingCoordinator`, un módulo sin `unmount`, para que cambiar de
+ * pestaña no pueda volver a matar el seguimiento en segundo plano.
+ *
+ * Lo único que sigue renderizando es la tarjeta que pide los permisos.
+ */
 
 const ACTIVE_STATUSES = new Set([
   "accepted",
@@ -25,89 +37,20 @@ const ACTIVE_STATUSES = new Set([
   "in_progress",
 ]);
 
-const DRIVER_LOCATION_EVENT = "rapago:driver-native-location";
-const LIVE_LOCATION_EVENT = "rapago:driver-live-location-updated";
-const LIVE_LOCATION_KEY = "rapago_driver_live_locations_v1";
-const CURRENT_LOCATION_KEY = "rapago_current_driver_location";
-
 function activeRideOf(rides: DriverRideData[]): DriverRideData | null {
   return (
     rides
       .filter((ride) => ACTIVE_STATUSES.has(String(ride.status)))
       .sort((a, b) => {
-        const bTime = new Date(b.startedAt ?? b.acceptedAt ?? b.createdAt).getTime();
-        const aTime = new Date(a.startedAt ?? a.acceptedAt ?? a.createdAt).getTime();
+        const bTime = new Date(
+          b.startedAt ?? b.acceptedAt ?? b.createdAt,
+        ).getTime();
+        const aTime = new Date(
+          a.startedAt ?? a.acceptedAt ?? a.createdAt,
+        ).getTime();
         return bTime - aTime;
       })[0] ?? null
   );
-}
-
-function readMap(): Record<string, Record<string, unknown>> {
-  try {
-    const raw = sessionStorage.getItem(LIVE_LOCATION_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : {};
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, Record<string, unknown>>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function userSnapshot(user: unknown): Record<string, unknown> {
-  if (!user || typeof user !== "object") return {};
-  const record = user as Record<string, unknown>;
-  return {
-    driverName: record.name ?? record.fullName ?? null,
-    driverFullName: record.name ?? record.fullName ?? null,
-    driverEmail: record.email ?? null,
-    driverPhone: record.phone ?? null,
-    driverProfilePhotoUrl: record.profilePhotoUrl ?? null,
-    driverVehicleBrand: record.vehicleBrand ?? null,
-    driverVehicleModel: record.vehicleModel ?? null,
-    driverVehicleColor: record.vehicleColor ?? null,
-    driverVehiclePlate: record.vehiclePlate ?? null,
-    vehicleBrand: record.vehicleBrand ?? null,
-    vehicleModel: record.vehicleModel ?? null,
-    vehicleColor: record.vehicleColor ?? null,
-    vehiclePlate: record.vehiclePlate ?? null,
-  };
-}
-
-function publishCompatibilityLocation(
-  ride: DriverRideData | null,
-  point: RapaGoLocationPoint,
-  user: unknown,
-): void {
-  const payload: Record<string, unknown> = {
-    rideId: ride?.id ?? null,
-    lat: point.lat,
-    lng: point.lng,
-    heading: point.headingDegrees,
-    speed: point.speedMetersPerSecond,
-    accuracy: point.accuracyMeters,
-    updatedAt: point.capturedAt,
-    source: point.source,
-    appState: point.appState,
-    status: ride?.status ?? null,
-    originText: ride?.originText ?? null,
-    destinationText: ride?.destinationText ?? null,
-    ...userSnapshot(user),
-  };
-
-  try {
-    if (ride?.id) {
-      const map = readMap();
-      map[ride.id] = payload;
-      sessionStorage.setItem(LIVE_LOCATION_KEY, JSON.stringify(map));
-    }
-    sessionStorage.setItem(CURRENT_LOCATION_KEY, JSON.stringify(payload));
-  } catch {
-    // Compatibilidad local no debe bloquear el GPS real.
-  }
-
-  window.dispatchEvent(new CustomEvent(DRIVER_LOCATION_EVENT, { detail: payload }));
-  window.dispatchEvent(new CustomEvent(LIVE_LOCATION_EVENT, { detail: payload }));
 }
 
 function foregroundGranted(snapshot: RapaGoPermissionSnapshot | null): boolean {
@@ -116,13 +59,11 @@ function foregroundGranted(snapshot: RapaGoPermissionSnapshot | null): boolean {
 
 export function DriverLocationRuntime(): JSX.Element | null {
   const { session } = useAuth();
-  const [permissions, setPermissions] = useState<RapaGoPermissionSnapshot | null>(null);
+  const [permissions, setPermissions] =
+    useState<RapaGoPermissionSnapshot | null>(null);
   const [activeRide, setActiveRide] = useState<DriverRideData | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const stopWatchRef = useRef<(() => Promise<void>) | null>(null);
-  const lastSentRef = useRef<{ rideId: string; at: number; lat: number; lng: number } | null>(null);
-  const nativeRideRef = useRef<string | null>(null);
   const permissionAppListenerRef = useRef<PluginListenerHandle | null>(null);
 
   const accessToken = session?.accessToken ?? null;
@@ -133,10 +74,6 @@ export function DriverLocationRuntime(): JSX.Element | null {
     try {
       const next = await locationPermissionService.check();
       setPermissions(next);
-
-      if (foregroundGranted(next)) {
-        setMessage(null);
-      }
     } catch {
       setPermissions(null);
     }
@@ -208,113 +145,47 @@ export function DriverLocationRuntime(): JSX.Element | null {
     };
   }, [accessToken, isDriver]);
 
-  useEffect(() => {
-    if (!isDriver || !activeRide || !foregroundGranted(permissions)) {
-      if (stopWatchRef.current) {
-        void stopWatchRef.current();
-        stopWatchRef.current = null;
-      }
-      return;
-    }
-
-    let cancelled = false;
-    void rideLocationService
-      .watch(
-        (point) => {
-          if (cancelled) return;
-          publishCompatibilityLocation(activeRide, point, session?.user);
-
-          if (!activeRide || !accessToken) return;
-          const previous = lastSentRef.current;
-          const now = Date.now();
-          const moved = previous
-            ? Math.hypot(point.lat - previous.lat, point.lng - previous.lng) * 111000
-            : Number.POSITIVE_INFINITY;
-          if (
-            previous &&
-            previous.rideId === activeRide.id &&
-            now - previous.at < 3500 &&
-            moved < 4
-          ) {
-            return;
-          }
-
-          lastSentRef.current = {
-            rideId: activeRide.id,
-            at: now,
-            lat: point.lat,
-            lng: point.lng,
-          };
-          void rideLocationService.publish(accessToken, activeRide.id, point).catch(() => {
-            // El servicio nativo reintentará cuando la app esté en segundo plano.
-          });
-        },
-        (errorMessage) => {
-          setMessage(errorMessage);
-
-          if (/permission|denied|not allowed|autoriz/i.test(errorMessage)) {
-            locationPermissionService.clearRememberedWebGrant();
-            void refreshPermissions();
-          }
-        },
-      )
-      .then((stop) => {
-        if (cancelled) {
-          void stop();
-          return;
-        }
-        stopWatchRef.current = stop;
-        setMessage(null);
-      })
-      .catch((error) => {
-        setMessage(error instanceof Error ? error.message : "No se pudo iniciar el GPS.");
-      });
-
-    return () => {
-      cancelled = true;
-      if (stopWatchRef.current) {
-        void stopWatchRef.current();
-        stopWatchRef.current = null;
-      }
-    };
-  }, [accessToken, activeRide?.id, isDriver, permissions?.foreground, permissions?.coarse, refreshPermissions, session?.user]);
-
+  /**
+   * Declara el estado deseado. El coordinador decide solo si publica el
+   * servicio nativo o la capa JS, y se auto-repara si algo mató el nativo por
+   * fuera. Aquí no se arranca ni se para nada directamente.
+   */
   useEffect(() => {
     if (!isDriver || !accessToken || !activeRide) {
-      if (nativeRideRef.current) {
-        void rideLocationService.stopNativeBackground();
-        nativeRideRef.current = null;
-      }
+      rideTrackingCoordinator.setDesired(null);
       return;
     }
 
-    const canStart =
-      permissions?.background === "granted" &&
-      permissions.locationServicesEnabled !== false &&
-      permissions.notifications !== "denied";
+    rideTrackingCoordinator.setDesired({
+      rideId: activeRide.id,
+      accessToken,
+      permissions,
+      ride: activeRide as unknown as Record<string, unknown>,
+    });
+  }, [accessToken, activeRide, isDriver, permissions]);
 
-    if (!canStart || nativeRideRef.current === activeRide.id) return;
-
-    void rideLocationService
-      .startNativeBackground(accessToken, activeRide.id)
-      .then(() => {
-        nativeRideRef.current = activeRide.id;
-        setMessage(null);
-      })
-      .catch((error) => {
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "No se pudo activar la ubicación en segundo plano.",
-        );
-      });
-  }, [accessToken, activeRide?.id, isDriver, permissions?.background, permissions?.locationServicesEnabled, permissions?.notifications]);
-
+  /**
+   * Parar al desmontar es correcto AQUÍ y solo aquí: este componente vive en
+   * `DriverLayout`, que únicamente se desmonta al cerrar sesión o dejar de ser
+   * conductor. No se desmonta al cambiar de pestaña — que era justo lo que
+   * rompía el seguimiento antes.
+   */
   useEffect(() => {
     return () => {
-      if (nativeRideRef.current) void rideLocationService.stopNativeBackground();
+      rideTrackingCoordinator.setDesired(null);
     };
   }, []);
+
+  useEffect(() => {
+    return rideTrackingCoordinator.subscribe((status) => {
+      setMessage(status.message);
+
+      if (status.message && /permission|denied|not allowed|autoriz/i.test(status.message)) {
+        locationPermissionService.clearRememberedWebGrant();
+        void refreshPermissions();
+      }
+    });
+  }, [refreshPermissions]);
 
   const needsForeground =
     isDriver &&
@@ -346,7 +217,11 @@ export function DriverLocationRuntime(): JSX.Element | null {
         setMessage(null);
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo solicitar el permiso.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo solicitar el permiso.",
+      );
     } finally {
       setBusy(false);
     }
@@ -363,10 +238,16 @@ export function DriverLocationRuntime(): JSX.Element | null {
       next = await locationPermissionService.requestBackground();
       setPermissions(next);
       if (next.background !== "granted") {
-        setMessage("En Ajustes selecciona Ubicación > Permitir siempre y vuelve a RAPA GO.");
+        setMessage(
+          "En Ajustes selecciona Ubicación > Permitir siempre y vuelve a RAPA GO.",
+        );
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo solicitar el permiso.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo solicitar el permiso.",
+      );
     } finally {
       setBusy(false);
     }
@@ -397,7 +278,13 @@ export function DriverLocationRuntime(): JSX.Element | null {
           <div style={{ flex: 1 }}>
             {cardTitle && <div style={{ fontWeight: 950 }}>{cardTitle}</div>}
             <IonText>
-              <p style={{ margin: "4px 0 10px", fontSize: ".8rem", lineHeight: 1.35 }}>
+              <p
+                style={{
+                  margin: "4px 0 10px",
+                  fontSize: ".8rem",
+                  lineHeight: 1.35,
+                }}
+              >
                 {needsForeground
                   ? "Aceptaste un viaje. Activa el GPS para abrir la ruta, ubicar al pasajero y compartir tu avance mientras el servicio esté activo."
                   : needsBackground
@@ -406,11 +293,25 @@ export function DriverLocationRuntime(): JSX.Element | null {
               </p>
             </IonText>
             {message && cardTitle && (
-              <div style={{ fontSize: ".76rem", fontWeight: 850, color: "#9f1d1d", marginBottom: 8 }}>
+              <div
+                style={{
+                  fontSize: ".76rem",
+                  fontWeight: 850,
+                  color: "#9f1d1d",
+                  marginBottom: 8,
+                }}
+              >
                 {message}
               </div>
             )}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                justifyContent: "flex-start",
+              }}
+            >
               {needsForeground && (
                 <IonButton
                   size="small"

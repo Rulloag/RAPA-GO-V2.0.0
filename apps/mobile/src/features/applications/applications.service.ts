@@ -103,20 +103,31 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   }
 }
 
+/**
+ * Códigos que obligan a cerrar sesión desde esta pantalla.
+ *
+ * `AUTH_TOKEN_EXPIRED` ya NO está en la lista, y esa es la corrección: un
+ * access token caducado es el caso recuperable por excelencia. Antes provocaba
+ * un cierre de sesión completo mientras `apiClient` emitía, para esa MISMA
+ * respuesta, un `auth:token-expired` que disparaba la renovación. Las dos
+ * cosas competían por el almacenamiento: si la renovación ganaba la escritura,
+ * el cierre borraba justo después una sesión recién guardada y válida.
+ *
+ * Tampoco se dispara ya por un 401 "a secas": el código concreto manda, porque
+ * un 401 sin código reconocido puede ser cualquier cosa.
+ */
+const FORCE_LOGOUT_CODES = [
+  "AUTH_SESSION_REVOKED",
+  "AUTH_ACCOUNT_DELETED",
+  "AUTH_ACCOUNT_SUSPENDED",
+  "UNAUTHORIZED",
+];
+
 function forceLogoutWhenNeeded(
-  statusCode: number,
+  _statusCode: number,
   code: string | undefined,
 ): void {
-  if (
-    statusCode !== 401 &&
-    ![
-      "AUTH_SESSION_REVOKED",
-      "AUTH_TOKEN_EXPIRED",
-      "AUTH_ACCOUNT_DELETED",
-      "AUTH_ACCOUNT_SUSPENDED",
-      "UNAUTHORIZED",
-    ].includes(code ?? "")
-  ) {
+  if (!FORCE_LOGOUT_CODES.includes(code ?? "")) {
     return;
   }
 

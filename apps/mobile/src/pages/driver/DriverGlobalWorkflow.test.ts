@@ -14,7 +14,7 @@ describe("flujo global y mapa grande del conductor", () => {
     expect(layoutSource.indexOf("</RoleLayout>")).toBeLessThan(
       layoutSource.indexOf("<DriverGlobalRideAlert />"),
     );
-    expect(driverSource).toContain("Este aviso permanece hasta que aceptes, rechaces o la solicitud expire.");
+    // La persistencia se valida abajo: sin controles de cierre y con Aceptar/Rechazar obligatorios.
     expect(driverSource).not.toContain('aria-label="Cerrar alerta de viaje"');
     expect(driverSource).not.toContain('aria-label="Cerrar solicitud"');
     expect(driverSource).toContain("Rechazar");
@@ -34,7 +34,7 @@ describe("flujo global y mapa grande del conductor", () => {
     expect((driverSource.match(/ROUTES\.DRIVER\.ACTIVE_RIDE/g) ?? []).length).toBeGreaterThanOrEqual(6);
     expect(driverSource.match(/history\.replace\(ROUTES\.DRIVER\.ACTIVE_RIDE\)/g) ?? [])
       .toHaveLength(3);
-    expect(driverSource).toContain("history.replace(activeAccepted ? ROUTES.DRIVER.ACTIVE_RIDE");
+    expect(driverSource).toMatch(/history\.replace\(\s*activeAccepted\s*\?\s*ROUTES\.DRIVER\.ACTIVE_RIDE/);
     expect(driverSource).toContain('<UberDriverNavigationMap');
     expect(driverSource).toContain('height="100%"');
   });
@@ -43,7 +43,11 @@ describe("flujo global y mapa grande del conductor", () => {
     expect(driverSource).not.toContain('setError("Activa tu ubicación real para tomar este viaje.")');
     expect(driverSource).toContain("const acceptedLocation = driverLocationRef.current ?? driverLocation;");
     expect(locationRuntimeSource).toContain("Boolean(activeRide)");
-    expect(locationRuntimeSource).toContain("!isDriver || !activeRide || !foregroundGranted(permissions)");
+    // El guardia se mudó: ya no vive en un efecto que abre el GPS, sino en el
+    // que DECLARA el estado deseado al coordinador. Misma garantía —no se pide
+    // ubicación sin viaje activo— expresada en el nuevo dueño único.
+    expect(locationRuntimeSource).toContain("!isDriver || !accessToken || !activeRide");
+    expect(locationRuntimeSource).toContain("rideTrackingCoordinator.setDesired(null)");
     expect(locationRuntimeSource).toContain("Aceptaste un viaje. Activa el GPS");
   });
 

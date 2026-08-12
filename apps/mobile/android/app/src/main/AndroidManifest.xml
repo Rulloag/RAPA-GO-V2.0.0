@@ -44,6 +44,9 @@
 
     <!-- Permissions: location is used only for pickup/navigation and active rides. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Necesario para registerNetworkCallback: reenvía la cola de ubicaciones
+         en cuanto vuelve la señal, sin esperar al siguiente punto GPS. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />

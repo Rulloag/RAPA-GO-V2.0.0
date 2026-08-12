@@ -1,3 +1,4 @@
+import { locationQueue } from "../../features/location/locationQueue.js";
 import { clearRouteCache } from "../../features/navigation/routeCache.js";
 
 /**
@@ -69,6 +70,12 @@ export function clearSensitiveClientStorage(): void {
   // siguiente cuenta que use el teléfono. No se espera el resultado para no
   // bloquear el cierre de sesión.
   void clearRouteCache();
+
+  // Misma razón para la cola de ubicaciones pendientes: es historial de
+  // posiciones precisas del conductor y vive en Preferences, así que los
+  // borrados de Web Storage de arriba no la alcanzan. Dejarla ahí entregaría
+  // el recorrido de un conductor a la siguiente cuenta que abra la app.
+  void locationQueue.clear();
 }
 
 export function prepareClientStorageForAuthentication(): void {

@@ -1,0 +1,517 @@
+/* ==========================================================================
+   RAPA GO — Pantalla de notificaciones
+
+   POR QUÉ UN ARCHIVO PROPIO Y NO UN BLOQUE EN sections.css
+   sections.css es una CAPA DE COMPATIBILIDAD: existe para reconducir hacia los
+   tokens los componentes Ionic de cuatro pantallas que no se pueden reescribir
+   (RequestRide tiene 8.018 líneas). Casi todas sus reglas llevan !important
+   porque pelean contra global.css. Esta pantalla no necesita nada de eso: se
+   reescribió entera con marcado propio, así que ninguna regla de aquí lleva
+   !important ni selecciona etiquetas de Ionic. Mezclarlas en el mismo archivo
+   habría escondido esa diferencia.
+
+   Se importa DESPUÉS de sections.css (ver App.tsx) por un motivo concreto:
+   `.rp-notif` reutiliza `.rp-card` del kit y necesita anularle el padding para
+   que el área táctil de la tarjeta la ocupe el <button> interior y no el <li>
+   que lo envuelve. Misma especificidad, así que manda el orden de cascada.
+
+   TODO EL COLOR SALE DE TOKENS --rp-*: no hay un solo hex en este archivo, y
+   por eso el modo día/noche funciona sin una sola regla duplicada.
+   ========================================================================== */
+
+/* Sólo para lectores de pantalla: los avisos de "cargando" y el recuento de no
+   leídas deben anunciarse sin ocupar sitio en una pantalla de 320px. */
+.rp-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Barra de control (filtro + acción) ─────────────────────────────────────
+   Pegajosa bajo la barra superior. No es un capricho: con veinte avisos, el
+   botón de "marcar todo" quedaba a un scroll completo de distancia justo
+   cuando más falta hace. El material es el mismo cristal esmerilado de la
+   barra superior y de la barra de pestañas, para que las tres se lean como
+   un sistema y no como tres piezas. */
+.rapago-notifications-page .rp-notif-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap-sm);
+  padding: 10px;
+  border-radius: var(--rp-radius);
+  background: var(--rp-appbar-bg, var(--rp-surface));
+  border: 1px solid var(--rp-border-c);
+  box-shadow: var(--rp-shadow);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+}
+
+.rapago-notifications-page > ion-content {
+  --background: transparent !important;
+}
+
+/* ── Filtro Todas / No leídas ───────────────────────────────────────────────
+   Dos botones de alternancia dentro de un grupo etiquetado, y no un
+   ion-segment: el segment de Ionic no expone estado consultable de forma
+   fiable a TalkBack/VoiceOver en esta versión, mientras que `aria-pressed`
+   se anuncia siempre ("No leídas, botón, presionado"). Además con Tab se
+   alcanzan los dos, sin necesidad de implementar navegación por flechas. */
+.rp-notif-filter {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--rp-seg-track);
+  border: 1px solid var(--rp-icon-bd);
+}
+
+.rp-notif-filter__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  /* 44px es el mínimo táctil (44pt iOS / 48dp Android). */
+  min-height: 44px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--rp-muted);
+  font: inherit;
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  line-height: 1.1;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.rp-notif-filter__btn[aria-pressed="true"] {
+  background: var(--rp-btn-primary);
+  color: var(--rp-btn-primary-fg);
+  font-weight: 850;
+}
+
+.rp-notif-filter__btn:disabled {
+  opacity: 0.58;
+  cursor: default;
+}
+
+/* Contador dentro de cada pestaña: da el volumen sin obligar a contar. */
+.rp-notif-filter__btn em {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+  color: inherit;
+  font-size: var(--rp-fs-micro);
+  font-style: normal;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-notif-filter__btn[aria-pressed="true"] em {
+  background: var(--rp-hero-inset);
+  border-color: var(--rp-hero-inset-bd);
+}
+
+/* ── Pie de la barra: recuento + acción ─────────────────────────────────── */
+.rp-notif-bar__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rp-notif-status {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--rp-fs-sub);
+  font-weight: 800;
+  color: var(--rp-muted);
+}
+
+/* ── Botón de la pantalla ───────────────────────────────────────────────────
+   "Todo leído" era un `IonButton fill="clear"`: texto dorado suelto en la
+   esquina de un toolbar, sin borde ni relleno, indistinguible del título.
+   Aquí tiene borde de marca, relleno y 44px de alto — la misma anatomía que
+   los botones secundarios del resto de la app. */
+.rp-notif-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--rp-radius-sm);
+  border: var(--rp-border-w) solid var(--rp-border-strong);
+  background: var(--rp-icon-bg);
+  color: var(--rp-icon-fg);
+  font: inherit;
+  font-size: var(--rp-fs-sub);
+  font-weight: 850;
+  line-height: 1.1;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+/* El botón debe parecer una acción, no un enlace de texto suelto. Se refuerzan
+   las variables y el fondo porque global.css contiene reglas antiguas para
+   button[aria-pressed] y botones con disabled. */
+.rapago-notifications-page .rp-notif-btn {
+  background: var(--rp-icon-bg) !important;
+  color: var(--rp-icon-fg) !important;
+  border: var(--rp-border-w) solid var(--rp-border-strong) !important;
+  box-shadow: var(--rp-shadow-accent);
+}
+
+.rapago-notifications-page .rp-notif-btn:hover {
+  background: var(--rp-btn-primary) !important;
+  color: var(--rp-btn-primary-fg) !important;
+}
+
+.rapago-notifications-page .rp-notif-btn:focus-visible {
+  outline: 2px solid var(--rp-gold-light);
+  outline-offset: 3px;
+}
+
+.rp-notif-btn ion-icon {
+  flex: 0 0 auto;
+  font-size: 18px;
+}
+
+.rp-notif-btn:active {
+  background: var(--rp-surface-soft);
+  transform: scale(0.98);
+}
+
+.rp-notif-btn:disabled {
+  opacity: 0.55 !important;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* ── Lista ──────────────────────────────────────────────────────────────── */
+.rp-notif-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* El padding se le quita a la tarjeta y se le da al <button> de dentro: así el
+   área táctil es la tarjeta ENTERA y no un rectángulo más pequeño dentro de
+   ella. `overflow: hidden` recorta el realce al pulsar contra el radio. */
+.rapago-notifications-page .rp-notif {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Sin leer: borde y halo reforzados. NO se usa opacidad para diferenciar las
+   leídas (el original las bajaba a 0.7): atenuar texto rompe el contraste AA
+   justo en la información que el usuario vuelve a consultar. La jerarquía la
+   dan el borde, el punto dorado y el peso del titular. */
+.rapago-notifications-page .rp-notif.is-unread {
+  border-color: var(--rp-border-strong);
+  box-shadow: var(--rp-shadow-accent);
+}
+
+.rp-notif__main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--rp-gap-sm);
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: var(--rp-pad);
+  padding-right: calc(var(--rp-pad) + 38px);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+/* Acción secundaria de la tarjeta. Está fuera del botón que marca como leída
+   para evitar botones anidados y permitir eliminar avisos leídos o pendientes. */
+.rp-notif__dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border: 1px solid var(--rp-icon-bd);
+  border-radius: 999px;
+  background: var(--rp-icon-bg);
+  color: var(--rp-muted);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.rp-notif__dismiss ion-icon {
+  font-size: 18px;
+}
+
+.rp-notif__dismiss:hover,
+.rp-notif__dismiss:focus-visible {
+  background: var(--rp-err-bg);
+  border-color: var(--rp-err-bd);
+  color: var(--rp-err-fg);
+}
+
+.rp-notif__dismiss:active {
+  transform: scale(0.92);
+}
+
+.rp-notif__dismiss:focus-visible {
+  outline: 2px solid var(--rp-gold-light);
+  outline-offset: 2px;
+}
+
+.rp-notif__dismiss:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.rp-notif__main--tap {
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.rp-notif__main--tap:active {
+  background: var(--rp-surface-soft);
+}
+
+/* Chip del icono. El tono lo pone la variante de tipo: no es decoración, es lo
+   que permite distinguir un aviso de viaje de uno de documentos sin leer. */
+.rp-notif__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--rp-icon-size-sm);
+  height: var(--rp-icon-size-sm);
+  border-radius: 12px;
+  font-size: 18px;
+  color: var(--rp-icon-fg);
+  background: var(--rp-icon-bg);
+  border: 1px solid var(--rp-icon-bd);
+}
+
+.rp-notif--info .rp-notif__icon {
+  color: var(--rp-info-fg);
+  background: var(--rp-info-bg);
+  border-color: var(--rp-info-bd);
+}
+
+.rp-notif--ok .rp-notif__icon {
+  color: var(--rp-ok-fg);
+  background: var(--rp-ok-bg);
+  border-color: var(--rp-ok-bd);
+}
+
+.rp-notif--warn .rp-notif__icon {
+  color: var(--rp-warn-fg);
+  background: var(--rp-warn-bg);
+  border-color: var(--rp-warn-bd);
+}
+
+.rp-notif__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* La única zona elástica: sin min-width:0 un título largo empuja el punto de
+     "sin leer" fuera de la tarjeta. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rp-notif__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rp-notif__kind {
+  font-size: var(--rp-fs-label);
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: var(--rp-tracking-eyebrow);
+  color: var(--rp-muted);
+}
+
+.rp-notif__time {
+  flex: 0 0 auto;
+  font-size: var(--rp-fs-micro);
+  font-weight: 750;
+  color: var(--rp-muted-soft);
+  white-space: nowrap;
+}
+
+.rp-notif__title {
+  font-size: var(--rp-fs-body);
+  font-weight: 750;
+  line-height: 1.3;
+  color: var(--rp-text);
+  /* Los títulos vienen del backend y pueden traer códigos de viaje sin
+     espacios: sin esto desbordan la tarjeta en pantallas de 320px. */
+  overflow-wrap: anywhere;
+}
+
+.is-unread .rp-notif__title {
+  font-weight: 850;
+}
+
+.rp-notif__msg {
+  font-size: var(--rp-fs-sub);
+  line-height: 1.45;
+  color: var(--rp-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Punto de "sin leer". Nunca es el ÚNICO indicador: el titular en negrita, el
+   borde reforzado y el texto "Sin leer" del aria-label lo acompañan, porque el
+   color por sí solo no es información accesible (WCAG 1.4.1). */
+.rp-notif__dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--rp-gold);
+  box-shadow: 0 0 0 3px var(--rp-icon-bg);
+}
+
+/* ── Enlace a WhatsApp ──────────────────────────────────────────────────────
+   Era un `IonButton fill="clear"` con el texto "WA" en el slot final de la
+   fila: dos letras sin contexto, pegadas al punto de no leída y por debajo del
+   mínimo táctil. Pasa a ser una acción de ancho completo al pie de la tarjeta,
+   con el logo, el destino escrito entero y los tokens del eje laguna, que es
+   el verde que la app ya usa en ambos temas.
+
+   Vive FUERA del <button> de la tarjeta a propósito: un <a> dentro de un
+   <button> es HTML inválido y ningún lector de pantalla lo expone bien. */
+.rp-notif__wa {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0 var(--rp-pad) var(--rp-pad);
+  padding: 0 14px;
+  border-radius: var(--rp-radius-sm);
+  border: 1.5px solid var(--rp-ok-bd);
+  background: var(--rp-ok-bg);
+  color: var(--rp-ok-fg);
+  font-size: var(--rp-fs-sub);
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.rp-notif__wa ion-icon {
+  flex: 0 0 auto;
+  font-size: 19px;
+}
+
+.rp-notif__wa:active {
+  border-color: var(--rp-ok-fg);
+}
+
+/* ── Esqueleto de carga ─────────────────────────────────────────────────────
+   Antes `loading` se calculaba y no se pintaba: al entrar había un hueco en
+   blanco que se leía como "no tienes notificaciones" hasta que respondía la
+   API. El esqueleto ocupa el mismo sitio que ocuparán las tarjetas reales. */
+.rapago-notifications-page ion-skeleton-text {
+  --background: var(--rp-surface-soft);
+  /* El brillo de Ionic se dibuja con --background-rgb: sin este token usa el
+     gris de fábrica y el placeholder parece de otra app. */
+  --background-rgb: var(--rp-skeleton-rgb);
+  margin: 0;
+}
+
+.rp-notif--skeleton .rp-notif__main {
+  align-items: center;
+}
+
+.rp-notif__skeleton-icon {
+  flex: 0 0 auto;
+  width: var(--rp-icon-size-sm);
+  height: var(--rp-icon-size-sm);
+  border-radius: 12px;
+}
+
+/* ── Estado vacío ───────────────────────────────────────────────────────── */
+.rp-notif-empty-action {
+  margin-top: var(--rp-gap-sm);
+}
+
+.rp-notif-error-state {
+  border-color: var(--rp-err-bd);
+  background: var(--rp-err-bg);
+}
+
+.rp-notif-error-state .rp-empty__icon {
+  color: var(--rp-err-fg);
+  background: var(--rp-err-bg);
+  border-color: var(--rp-err-bd);
+}
+
+.rp-notif-error-state .rp-empty__title,
+.rp-notif-error-state .rp-empty__body {
+  color: var(--rp-text);
+}
+
+/* ── Pantallas muy angostas (iPhone SE / Galaxy A) ──────────────────────── */
+@media (max-width: 360px) {
+  /* El recuento y el botón dejan de competir por la misma fila: el botón pasa
+     a ancho completo, que además es el objetivo táctil más cómodo. */
+  .rp-notif-bar__foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rp-notif-btn {
+    width: 100%;
+  }
+
+  .rp-notif__kind {
+    letter-spacing: 0.06em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-notif-filter__btn,
+  .rp-notif-btn,
+  .rp-notif__main--tap {
+    transition: none;
+  }
+
+  .rp-notif-btn:active {
+    transform: none;
+  }
+}
