@@ -621,7 +621,7 @@ export class PaymentsRepository {
       .where(
         and(
           eq(payments.id, id),
-          eq(payments.status, "success"),
+          inArray(payments.status, ["success", "authorized"]),
           or(
             isNull(payments.refundStatus),
             eq(payments.refundStatus, "failed"),

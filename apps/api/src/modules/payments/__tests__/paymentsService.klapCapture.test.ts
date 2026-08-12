@@ -11,6 +11,11 @@ const {
   mockMarkCaptureFailed,
   mockRecordSafe,
   mockCaptureOrder,
+  mockClaimRefund,
+  mockMarkRefunded,
+  mockMarkRefundFailed,
+  mockGetOrder,
+  mockRefundOrder,
 } = vi.hoisted(() => ({
   mockFindById: vi.fn(),
   mockFindRefundableByRideId: vi.fn(),
@@ -21,6 +26,11 @@ const {
   mockMarkCaptureFailed: vi.fn(),
   mockRecordSafe: vi.fn(),
   mockCaptureOrder: vi.fn(),
+  mockClaimRefund: vi.fn(),
+  mockMarkRefunded: vi.fn(),
+  mockMarkRefundFailed: vi.fn(),
+  mockGetOrder: vi.fn(),
+  mockRefundOrder: vi.fn(),
 }));
 
 vi.mock("../payments.repository.js", () => ({
@@ -32,13 +42,20 @@ vi.mock("../payments.repository.js", () => ({
     markCapturedSuccess: mockMarkCapturedSuccess,
     markCaptureUnknown: mockMarkCaptureUnknown,
     markCaptureFailed: mockMarkCaptureFailed,
+    claimRefund: mockClaimRefund,
+    markRefunded: mockMarkRefunded,
+    markRefundFailed: mockMarkRefundFailed,
   })),
 }));
 vi.mock("../../../modules/audit/audit.service.js", () => ({
   AuditService: vi.fn().mockImplementation(() => ({ recordSafe: mockRecordSafe })),
 }));
 vi.mock("../provider.registry.js", () => ({
-  getKlapProvider: () => ({ captureOrder: mockCaptureOrder }),
+  getKlapProvider: () => ({
+    captureOrder: mockCaptureOrder,
+    getOrder: mockGetOrder,
+    refundOrder: mockRefundOrder,
+  }),
 }));
 
 import { PaymentsService } from "../payments.service.js";
@@ -480,8 +497,30 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
     },
   );
 
-  it("cancelacion gratis con autorizacion Klap no ejecuta CAPTURE 0", async () => {
+  it("cancelacion gratis con autorizacion Klap libera la autorizacion sin CAPTURE 0", async () => {
     mockFindActiveByRideIdAndPurpose.mockResolvedValue(paymentFixture());
+    mockFindById.mockResolvedValue(paymentFixture());
+
+    mockClaimRefund.mockResolvedValue(
+      paymentFixture({ refundStatus: "processing" }),
+    );
+
+    mockGetOrder.mockResolvedValue({
+      order_id: ORDER_ID,
+      reference_id: PAYMENT_ID,
+      status: "authorized",
+      amount: 5000,
+      transaction_id: null,
+      mc_code: null,
+    });
+
+    mockRefundOrder.mockResolvedValue({
+      orderId: ORDER_ID,
+      referenceId: PAYMENT_ID,
+      status: "refund",
+      amountClp: 5000,
+      refundableAmountClp: 0,
+    });
 
     const result = await service.refundCardPaymentForCancelledRide({
       rideRequestId: RIDE_ID,
@@ -492,11 +531,21 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.processed).toBe(false);
-    expect(result.remainderReleaseRequired).toBe(true);
+
+    expect(result.processed).toBe(true);
+    expect(result.refunded).toBe(true);
+    expect(result.remainderReleaseRequired).toBe(false);
+
     expect(mockCaptureOrder).not.toHaveBeenCalled();
+    expect(mockClaimRefund).toHaveBeenCalledOnce();
+    expect(mockGetOrder).toHaveBeenCalledWith(ORDER_ID);
+    expect(mockRefundOrder).toHaveBeenCalledWith(ORDER_ID);
+    expect(mockMarkRefunded).toHaveBeenCalledOnce();
+
     expect(mockRecordSafe).toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: "payment.klap_void_required" }),
+      expect.objectContaining({
+        eventType: "payment.klap_authorization_released",
+      }),
     );
   });
 

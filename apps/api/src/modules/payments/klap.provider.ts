@@ -709,6 +709,99 @@ export class KlapProvider implements PaymentProvider {
     return parseOrderStatusResponse(raw, config.environment);
   }
 
+  /**
+   * Libera/revierte una orden Klap usando Order API.
+   * Para anulacion total NO se envia body ni amount.
+   */
+  async refundOrder(
+    orderId: string,
+  ): Promise<{
+    orderId: string;
+    referenceId: string | null;
+    status: "refund" | "refunded";
+    amountClp: number | null;
+    refundableAmountClp: number | null;
+  }> {
+    validateReferenceId(orderId);
+
+    const config = getKlapConfig();
+
+    const url =
+      `${config.ordersUrl.replace(/\/+$/, "")}/${encodeURIComponent(
+        orderId,
+      )}/refund`;
+
+    const raw = await fetchJson(
+      url,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          apikey: config.apiKey,
+        },
+      },
+      config.requestTimeoutMs,
+      "Klap order refund",
+    );
+
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new KlapProviderError(
+        "invalid_response",
+        "Klap refund response is not a valid object.",
+      );
+    }
+
+    const record = raw as Record<string, unknown>;
+
+    const returnedOrderId =
+      String(record["order_id"] ?? "").trim();
+
+    const referenceId =
+      String(record["reference_id"] ?? "").trim() || null;
+
+    const normalizedStatus =
+      String(record["status"] ?? "").trim().toLowerCase();
+
+    if (returnedOrderId !== orderId) {
+      throw new KlapProviderError(
+        "invalid_response",
+        "Klap refund response returned an unexpected order_id.",
+      );
+    }
+
+    if (
+      normalizedStatus !== "refund" &&
+      normalizedStatus !== "refunded"
+    ) {
+      throw new KlapProviderError(
+        "invalid_response",
+        "Klap refund response did not confirm a final refund state.",
+      );
+    }
+
+    const parseClp = (value: unknown): number | null => {
+      const numeric =
+        typeof value === "number"
+          ? value
+          : typeof value === "string"
+            ? Number(value)
+            : Number.NaN;
+
+      return Number.isFinite(numeric)
+        ? Math.round(numeric)
+        : null;
+    };
+
+    return {
+      orderId: returnedOrderId,
+      referenceId,
+      status: normalizedStatus as "refund" | "refunded",
+      amountClp: parseClp(record["amount"]),
+      refundableAmountClp:
+        parseClp(record["refundable_amount"]),
+    };
+  }
+
   verifyWebhookSignature(
     payload: Record<string, unknown>,
     headers: Record<string, string>,

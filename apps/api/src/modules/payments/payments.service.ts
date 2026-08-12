@@ -2538,7 +2538,6 @@ export class PaymentsService {
         "rejected",
         "failed",
         "refunded",
-        "authorized",
         "capture_pending",
         "capture_unknown",
         "capture_failed",
@@ -2649,6 +2648,77 @@ export class PaymentsService {
       mcCode: remoteOrder.mc_code,
     });
 
+    const remoteStatus =
+      normalizePaymentText(remoteOrder.status);
+
+    // Una autorizacion que luego fue anulada/refundida por Klap
+    // NO es un rechazo de checkout. Se sincroniza como refunded.
+    if (
+      payment.status === "authorized" &&
+      (remoteStatus === "refund" ||
+        remoteStatus === "refunded")
+    ) {
+      const refundKey =
+        `klap-reconcile-refund:${payment.id}`;
+
+      const claimed =
+        await paymentsRepo.claimRefund(
+          payment.id,
+          refundKey,
+        );
+
+      const refundState =
+        claimed ??
+        (await paymentsRepo.findById(payment.id));
+
+      if (
+        refundState?.refundStatus === "processing"
+      ) {
+        await paymentsRepo.markRefunded({
+          id: payment.id,
+          providerRefundId:
+            remoteOrder.transaction_id ??
+            remoteOrder.mc_code ??
+            null,
+          refundPayload: safePayload,
+        });
+      }
+
+      auditService.recordSafe({
+        actorUserId: auth.userId,
+        eventType:
+          "payment.klap_authorization_reconciled_refunded",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          providerStatus: remoteOrder.status,
+        },
+      });
+
+      const current =
+        await paymentsRepo.findById(payment.id);
+
+      return {
+        ok: true,
+        status: current?.status ?? "refunded",
+        providerStatus: remoteOrder.status,
+      };
+    }
+
+    // Si Klap sigue diciendo authorized no se reactiva ni se captura nada.
+    if (
+      payment.status === "authorized" &&
+      remoteStatus === "authorized"
+    ) {
+      return {
+        ok: true,
+        status: "authorized",
+        providerStatus: remoteOrder.status,
+      };
+    }
+
     if (normalizedStatus === "success") {
       if (isKlapAuthorizationModeEnabled()) {
         await paymentsRepo.markAuthorizedAndActivateRide({
@@ -2691,6 +2761,400 @@ export class PaymentsService {
    * responde con su estado actual sin enviar otra captura automática. Un
    * error de captura nunca deshace ni reabre el viaje ya completado.
    */
+  /**
+   * Libera una autorizacion Klap total sin captura.
+   * Regla financiera: primero GET, luego un unico POST refund SIN BODY
+   * solamente cuando el proveedor sigue en authorized.
+   */
+  async releaseAuthorizedKlapPayment(
+    paymentId: string,
+    input: {
+      actorUserId: string;
+      cancelledByRole: string;
+      resolutionKey: string;
+    },
+  ): Promise<Result<{ status: string }>> {
+    const payment =
+      await paymentsRepo.findById(paymentId);
+
+    if (!payment) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Payment not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (
+      normalizePaymentText(payment.provider) !== "klap"
+    ) {
+      return {
+        ok: false,
+        code: "PAYMENT_PROVIDER_MISMATCH",
+        message: "This payment does not belong to Klap.",
+        statusCode: 409,
+      };
+    }
+
+    if (
+      payment.status === "refunded" ||
+      payment.refundStatus === "approved"
+    ) {
+      return {
+        ok: true,
+        status: "refunded",
+      };
+    }
+
+    if (payment.status !== "authorized") {
+      return {
+        ok: false,
+        code: "PAYMENT_NOT_AUTHORIZED",
+        message:
+          `Klap authorization cannot be released from status '${payment.status}'.`,
+        statusCode: 409,
+      };
+    }
+
+    const orderId =
+      String(payment.providerOrderId ?? "").trim();
+
+    if (!orderId) {
+      return {
+        ok: false,
+        code: "KLAP_ORDER_ID_MISSING",
+        message:
+          "No se puede liberar la autorizacion Klap porque falta order_id.",
+        statusCode: 409,
+      };
+    }
+
+    const refundKey =
+      `klap-void:${input.resolutionKey}`;
+
+    const claimed =
+      await paymentsRepo.claimRefund(
+        payment.id,
+        refundKey,
+      );
+
+    const current =
+      claimed ??
+      (await paymentsRepo.findById(payment.id));
+
+    if (
+      current?.status === "refunded" ||
+      current?.refundStatus === "approved"
+    ) {
+      return {
+        ok: true,
+        status: "refunded",
+      };
+    }
+
+    const provider = getKlapProvider();
+
+    // Otra peticion ya posee la reserva financiera.
+    // Solo se permite GET para observar el resultado; nunca otro POST.
+    if (
+      !claimed &&
+      current?.refundStatus === "processing"
+    ) {
+      try {
+        const remote =
+          await provider.getOrder(orderId);
+
+        const remoteStatus =
+          normalizePaymentText(remote.status);
+
+        if (
+          remoteStatus === "refund" ||
+          remoteStatus === "refunded"
+        ) {
+          const safeRemote =
+            sanitizeKlapOrderQueryPayload({
+              orderId: remote.order_id,
+              referenceId: remote.reference_id,
+              status: remote.status,
+              amount: remote.amount,
+              transactionId:
+                remote.transaction_id,
+              mcCode: remote.mc_code,
+            });
+
+          await paymentsRepo.markRefunded({
+            id: payment.id,
+            providerRefundId:
+              remote.transaction_id ??
+              remote.mc_code ??
+              null,
+            refundPayload: safeRemote,
+          });
+
+          auditService.recordSafe({
+            actorUserId: input.actorUserId,
+            eventType:
+              "payment.klap_authorization_released",
+            entityType: "payment",
+            entityId: payment.id,
+            metadata: {
+              rideId: payment.rideRequestId,
+              provider: "klap",
+              source: "remote_reconciliation",
+              cancelledByRole:
+                input.cancelledByRole,
+              resolutionKey:
+                input.resolutionKey,
+            },
+          });
+
+          return {
+            ok: true,
+            status: "refunded",
+          };
+        }
+      } catch {
+        // Estado incierto: nunca repetir POST automaticamente.
+      }
+
+      return {
+        ok: true,
+        status: "refund_processing",
+      };
+    }
+
+    // claimRefund puede devolver null si el estado cambio concurrentemente.
+    if (!claimed) {
+      const latest =
+        await paymentsRepo.findById(payment.id);
+
+      return {
+        ok: true,
+        status: latest?.status ?? payment.status,
+      };
+    }
+
+    // Hasta aqui no hubo ninguna operacion financiera remota.
+    let remoteBefore;
+
+    try {
+      remoteBefore =
+        await provider.getOrder(orderId);
+    } catch (error) {
+      // GET fallo y por lo tanto sabemos que NO enviamos refund.
+      // Se puede dejar failed para un retry posterior seguro.
+      await paymentsRepo.markRefundFailed({
+        id: payment.id,
+        reason:
+          "No fue posible consultar Klap antes de liberar la autorizacion.",
+        refundPayload: {
+          source: "klap_void_precheck_error",
+          errorKind:
+            error instanceof KlapProviderError
+              ? error.kind
+              : "unknown",
+        },
+      });
+
+      return {
+        ok: false,
+        code: "KLAP_VOID_PRECHECK_ERROR",
+        message:
+          "No se pudo confirmar el estado de la autorizacion antes de liberarla.",
+        statusCode: 502,
+      };
+    }
+
+    const remoteBeforeStatus =
+      normalizePaymentText(
+        remoteBefore.status,
+      );
+
+    const safeRemoteBefore =
+      sanitizeKlapOrderQueryPayload({
+        orderId: remoteBefore.order_id,
+        referenceId:
+          remoteBefore.reference_id,
+        status: remoteBefore.status,
+        amount: remoteBefore.amount,
+        transactionId:
+          remoteBefore.transaction_id,
+        mcCode: remoteBefore.mc_code,
+      });
+
+    // Recuperacion idempotente: Klap ya la libero.
+    if (
+      remoteBeforeStatus === "refund" ||
+      remoteBeforeStatus === "refunded"
+    ) {
+      await paymentsRepo.markRefunded({
+        id: payment.id,
+        providerRefundId:
+          remoteBefore.transaction_id ??
+          remoteBefore.mc_code ??
+          null,
+        refundPayload: safeRemoteBefore,
+      });
+
+      auditService.recordSafe({
+        actorUserId: input.actorUserId,
+        eventType:
+          "payment.klap_authorization_released",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          source: "already_released_remote",
+          cancelledByRole:
+            input.cancelledByRole,
+          resolutionKey:
+            input.resolutionKey,
+        },
+      });
+
+      return {
+        ok: true,
+        status: "refunded",
+      };
+    }
+
+    if (remoteBeforeStatus !== "authorized") {
+      await paymentsRepo.markRefundFailed({
+        id: payment.id,
+        reason:
+          `Estado Klap inesperado antes de liberar: ${remoteBefore.status}`,
+        refundPayload: safeRemoteBefore,
+      });
+
+      auditService.recordSafe({
+        actorUserId: input.actorUserId,
+        eventType:
+          "payment.klap_financial_manual_review",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          providerStatus:
+            remoteBefore.status,
+          resolutionKey:
+            input.resolutionKey,
+        },
+      });
+
+      return {
+        ok: false,
+        code: "KLAP_VOID_STATE_MISMATCH",
+        message:
+          "Klap no informa una autorizacion liberable.",
+        statusCode: 409,
+      };
+    }
+
+    let refundResult;
+
+    try {
+      // Contrato comprobado en produccion:
+      // POST /orders/{orderId}/refund SIN BODY.
+      refundResult =
+        await provider.refundOrder(orderId);
+    } catch (error) {
+      const knownRejected =
+        error instanceof KlapProviderError &&
+        error.kind === "http_rejected";
+
+      if (knownRejected) {
+        // Un HTTP rechazado conocido confirma que Klap no acepto
+        // la operacion. Puede habilitarse retry seguro.
+        await paymentsRepo.markRefundFailed({
+          id: payment.id,
+          reason:
+            "Klap rechazo la anulacion de la autorizacion.",
+          refundPayload: {
+            source: "klap_void_http_rejected",
+            errorKind: error.kind,
+          },
+        });
+      }
+
+      auditService.recordSafe({
+        actorUserId: input.actorUserId,
+        eventType: knownRejected
+          ? "payment.klap_authorization_release_failed"
+          : "payment.klap_authorization_release_unknown",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          resolutionKey:
+            input.resolutionKey,
+          errorKind:
+            error instanceof KlapProviderError
+              ? error.kind
+              : "unknown",
+        },
+      });
+
+      return {
+        ok: false,
+        code: knownRejected
+          ? "KLAP_VOID_REJECTED"
+          : "KLAP_VOID_UNKNOWN",
+        message: knownRejected
+          ? "Klap rechazo la liberacion de la autorizacion."
+          : "No se pudo confirmar si Klap libero la autorizacion. No se reintentara automaticamente.",
+        statusCode: 502,
+      };
+    }
+
+    const refundPayload = {
+      source: "klap_order_refund",
+      order_id: refundResult.orderId,
+      reference_id:
+        refundResult.referenceId,
+      status: refundResult.status,
+      amount_clp:
+        refundResult.amountClp,
+      refundable_amount_clp:
+        refundResult.refundableAmountClp,
+      released_at:
+        new Date().toISOString(),
+    };
+
+    await paymentsRepo.markRefunded({
+      id: payment.id,
+      providerRefundId: null,
+      refundPayload,
+    });
+
+    auditService.recordSafe({
+      actorUserId: input.actorUserId,
+      eventType:
+        "payment.klap_authorization_released",
+      entityType: "payment",
+      entityId: payment.id,
+      metadata: {
+        rideId: payment.rideRequestId,
+        provider: "klap",
+        cancelledByRole:
+          input.cancelledByRole,
+        resolutionKey:
+          input.resolutionKey,
+        releasedAmountClp:
+          payment.authorizedAmountClp ??
+          payment.amountClp,
+      },
+    });
+
+    return {
+      ok: true,
+      status: "refunded",
+    };
+  }
+
   async captureAuthorizedKlapPayment(
     paymentId: string,
     financialInput: KlapCaptureFinancialInput = {},
@@ -3479,32 +3943,40 @@ export class PaymentsService {
           });
 
           if (resolution.action === "void") {
-            auditService.recordSafe({
-              actorUserId: input.cancelledByUserId,
-              eventType: "payment.klap_void_required",
-              entityType: "payment",
-              entityId: activeKlapAuthorization.id,
-              metadata: {
-                rideId: input.rideRequestId,
-                provider: "klap",
-                paymentStatus,
-                cancelledByRole: input.cancelledByRole,
-                resolutionKey: resolution.resolutionKey,
-                remainingAuthorizedAmountClp:
-                  resolution.remainingAuthorizedAmountClp,
-              },
-            });
+            const releaseResult =
+              await this.releaseAuthorizedKlapPayment(
+                activeKlapAuthorization.id,
+                {
+                  actorUserId:
+                    input.cancelledByUserId,
+                  cancelledByRole:
+                    input.cancelledByRole,
+                  resolutionKey:
+                    resolution.resolutionKey,
+                },
+              );
+
+            if (!releaseResult.ok) {
+              return releaseResult;
+            }
+
+            const released =
+              releaseResult.status === "refunded";
 
             return {
               ok: true,
-              processed: false,
-              refunded: false,
-              skippedReason:
-                "Cancelación sin cobro: RAPA GO no hará CAPTURE por 0. " +
-                "La autorización queda marcada para liberación/VOID cuando el contrato " +
-                "Checkout de Klap esté confirmado.",
-              paymentId: activeKlapAuthorization.id,
-              remainderReleaseRequired: true,
+              processed: released,
+              refunded: released,
+              ...(!released
+                ? {
+                    skippedReason:
+                      "La liberacion Klap esta en proceso o requiere conciliacion. No se enviara otra operacion financiera.",
+                  }
+                : {}),
+              paymentId:
+                activeKlapAuthorization.id,
+              remainderReleaseRequired:
+                !released,
             };
           }
 
