@@ -50,8 +50,7 @@ export class NotificationsRepository {
   }
 
   async dismiss(id: string, userId: string): Promise<void> {
-    await db.update(notifications)
-      .set({ read: true })
+    await db.delete(notifications)
       .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
   }
 
