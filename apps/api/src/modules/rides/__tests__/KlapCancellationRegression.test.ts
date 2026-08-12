@@ -16,8 +16,7 @@ describe("Klap pending-payment cancellation regressions", () => {
     expect(ridesServiceSource).toContain(
       'existing.status !== "pending_payment"',
     );
-    expect(ridesServiceSource).toContain(
-      "Una solicitud todavía sin pago aprobado se puede descartar sin multa",
-    );
+    // La regla de pending_payment se valida por la condición anterior.
+    // El test no debe depender de que exista un comentario literal en rides.service.ts.
   });
 });
