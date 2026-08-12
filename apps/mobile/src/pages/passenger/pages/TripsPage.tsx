@@ -274,15 +274,15 @@ const RAPAGO_FAST_SEARCH_EVENT = "rapago:passenger-fast-search-updated";
 const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
 const RAPAGO_FAST_SEARCH_PROMPT_AFTER_MS = 2 * 60 * 1000;
 // Política comercial RAPA GO:
-// - Cancelación gratuita durante los primeros 2 minutos desde la aceptación confirmada del conductor.
-// - Desde el minuto 3: 30% de la tarifa aplicable, con tope de $3.000.
-// - No show después de 5 minutos: 50% de la tarifa aplicable, con tope de $5.000.
-// - Viajes programados: cancelación gratuita hasta 30 minutos antes; dentro de los últimos 30 minutos,
-//   30% de la tarifa aplicable, con tope de $3.000.
-// El frontend solo calcula un monto referencial. Backend/admin debe autorizar el cargo real.
-const RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS = 2 * 60 * 1000;
+// - Sin conductor asignado: cancelación gratuita en cualquier momento.
+// - Con conductor asignado: cancelación gratuita durante 1 minuto desde acceptedAt.
+// - Desde 1 minuto cumplido: 30% de la tarifa aplicable, con tope de $3.000.
+// - No show después de 5 minutos desde arrivedAt: 50% de la tarifa, tope $5.000.
+// - Si el conductor cancela, el viaje se reasigna y el reloj comienza de nuevo
+//   cuando el nuevo conductor queda efectivamente asignado.
+// El frontend es informativo; backend conserva la autoridad financiera.
+const RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS = 1 * 60 * 1000;
 const RAPAGO_NO_SHOW_AFTER_ARRIVAL_MS = 5 * 60 * 1000;
-const RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS = 30 * 60 * 1000;
 const RAPAGO_CANCEL_FEE_CAP_CLP = 3000;
 const RAPAGO_NO_SHOW_FEE_CAP_CLP = 5000;
 const RAPAGO_LATE_CANCEL_PERCENT = 30;
@@ -1697,51 +1697,6 @@ function getPassengerCancellationTimeMs(ride: RideRequestData & Record<string, u
   return null;
 }
 
-function getPassengerScheduledPickupTimestampMs(
-  ride: Partial<RideRequestData> & Record<string, unknown>,
-): number | null {
-  return getPassengerCancellationTimeMs(ride as RideRequestData & Record<string, unknown>, [
-    "scheduledPickupAt",
-    "scheduledAt",
-    "pickupScheduledAt",
-    "dispatchAt",
-    "autoAssignAt",
-  ]);
-}
-
-function isPassengerScheduledCancellationChargeWindow(
-  ride: Partial<RideRequestData> & Record<string, unknown>,
-  nowMs = Date.now(),
-): boolean {
-  const status = String(ride.status ?? "").toLowerCase();
-  const scheduleStatus = String(
-    ride.scheduleStatus ??
-      ride.adminScheduleStatus ??
-      ride.reservationStatus ??
-      ride.bookingPurpose ??
-      ride.serviceType ??
-      "",
-  ).toLowerCase();
-
-  const isScheduled =
-    ride.isScheduled === true ||
-    status === "scheduled" ||
-    status === "driver_scheduled" ||
-    Boolean(ride.scheduledAt) ||
-    Boolean(ride.scheduledPickupAt) ||
-    scheduleStatus.includes("scheduled") ||
-    scheduleStatus.includes("reservation") ||
-    scheduleStatus.includes("airport") ||
-    scheduleStatus.includes("reserva");
-
-  if (!isScheduled) return false;
-
-  const pickupMs = getPassengerScheduledPickupTimestampMs(ride);
-  if (pickupMs == null) return false;
-
-  return nowMs >= pickupMs - RAPAGO_SCHEDULED_CANCEL_CHARGE_WINDOW_MS;
-}
-
 function getPassengerCancellationPolicyForRide(ride: RideRequestData): PassengerCancellationPolicy {
   const record = ride as RideRequestData & Record<string, unknown>;
   const effectiveStatus = getEffectivePassengerRideStatus(ride);
@@ -1769,7 +1724,6 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       RAPAGO_NO_SHOW_FEE_CAP_CLP,
       Math.max(0, Math.round(applicableFareClp * (RAPAGO_NO_SHOW_PERCENT / 100))),
     );
-  const scheduledChargeWindow = isPassengerScheduledCancellationChargeWindow(record, nowMs);
 
   if (
     effectiveStatus === "driver_arrived" &&
@@ -1784,59 +1738,12 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       applicableFareClp,
       feePercent: RAPAGO_NO_SHOW_PERCENT,
       feeCapClp: RAPAGO_NO_SHOW_FEE_CAP_CLP,
-      title: "No presentación por revisar",
+      title: "No presentación / No Show",
       message: `El conductor llegó al punto y esperó 5 minutos. El cargo referencial es ${formatClp(fee)}.`,
-      detail: `No show: ${RAPAGO_NO_SHOW_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_NO_SHOW_FEE_CAP_CLP)}. El administrador debe validar la llegada, la espera y la evidencia antes de cobrar. Una vez recaudado, el cargo se distribuye 50% al conductor y 50% a Rapa Go.`,
+      detail: `No Show: ${RAPAGO_NO_SHOW_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_NO_SHOW_FEE_CAP_CLP)}. Backend solo permite declararlo después de 5 minutos desde la llegada del conductor.`,
       acceptedElapsedMs,
       arrivedElapsedMs,
       requiresAdminReview: true,
-      exemptionRequested: false,
-    };
-  }
-
-  if (scheduledChargeWindow) {
-    const fee = charge30WithCap();
-    return {
-      type: "late_cancel",
-      feeClp: fee,
-      candidateFeeClp: fee,
-      applicableFareClp,
-      feePercent: RAPAGO_LATE_CANCEL_PERCENT,
-      feeCapClp: RAPAGO_CANCEL_FEE_CAP_CLP,
-      title: "Cancelación programada dentro de 30 minutos",
-      message: `La reserva está dentro de los 30 minutos anteriores al inicio. El cargo referencial es ${formatClp(fee)}.`,
-      detail: `Viaje programado: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Administración debe confirmar o eximir el cargo.`,
-      acceptedElapsedMs,
-      arrivedElapsedMs,
-      requiresAdminReview: true,
-      exemptionRequested: false,
-    };
-  }
-
-  // En reservas programadas la regla especial manda sobre la regla general de 2 minutos:
-  // fuera de los últimos 30 minutos la cancelación es gratuita, aunque el conductor
-  // ya haya sido preasignado 30 minutos antes.
-  const isScheduledReservation =
-    record.isScheduled === true ||
-    ["scheduled", "driver_scheduled"].includes(String(record.status ?? "").toLowerCase()) ||
-    Boolean(record.scheduledAt) ||
-    Boolean(record.scheduledPickupAt) ||
-    Boolean(record.pickupScheduledAt);
-
-  if (isScheduledReservation && !scheduledChargeWindow) {
-    return {
-      type: "free",
-      feeClp: 0,
-      candidateFeeClp: 0,
-      applicableFareClp,
-      feePercent: 0,
-      feeCapClp: 0,
-      title: "Cancelación gratuita de reserva",
-      message: "Puedes cancelar gratuitamente hasta 30 minutos antes de la hora programada.",
-      detail: "La penalización del 30% con tope de $3.000 solo comienza dentro de los últimos 30 minutos.",
-      acceptedElapsedMs,
-      arrivedElapsedMs,
-      requiresAdminReview: false,
       exemptionRequested: false,
     };
   }
@@ -1854,7 +1761,7 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       feePercent: 0,
       feeCapClp: 0,
       title: "Cancelación gratuita",
-      message: "Puedes cancelar gratuitamente durante los primeros 2 minutos desde que el conductor acepta la solicitud y la aplicación confirma su asignación.",
+      message: "Puedes cancelar gratuitamente durante el primer minuto desde que el conductor queda asignado al viaje.",
       detail: "No corresponde cargo por cancelación.",
       acceptedElapsedMs,
       arrivedElapsedMs,
@@ -1871,9 +1778,9 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
     applicableFareClp,
     feePercent: RAPAGO_LATE_CANCEL_PERCENT,
     feeCapClp: RAPAGO_CANCEL_FEE_CAP_CLP,
-    title: "Cancelación desde el tercer minuto",
-    message: `Finalizó el período gratuito de 2 minutos. El cargo referencial es ${formatClp(fee)}.`,
-    detail: `Desde el minuto 3: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Administración debe confirmar o eximir el cargo.`,
+    title: "Cancelación después de 1 minuto",
+    message: `Finalizó el minuto gratuito desde la asignación. El cargo referencial es ${formatClp(fee)}.`,
+    detail: `Después de 1 minuto desde la asignación: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Backend calcula el monto aplicable.`,
     acceptedElapsedMs,
     arrivedElapsedMs,
     requiresAdminReview: true,
@@ -9499,7 +9406,7 @@ function PassengerRideCard({
                 fontWeight: 900,
               }}
             >
-              Reserva dentro de últimos 30 min.
+              Conductor asignado: finalizó el minuto gratuito.
               <br />
               Cargo por cancelar: <strong>{formatClp(cancellationPolicy.feeClp)}</strong>.
             </div>

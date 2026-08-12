@@ -576,18 +576,13 @@ function toPolicyChargeResponse(
 function shouldCreatePassengerCancellationCharge(
   ride: RideRequest,
 ): boolean {
-  const scheduleMeta = getScheduleMetaFromRide(ride);
-  const scheduledPickupAtMs = scheduleMeta?.scheduledPickupAt
-    ? new Date(scheduleMeta.scheduledPickupAt).getTime()
-    : null;
-
+  // La penalidad comienza únicamente desde la asignación efectiva del
+  // conductor. Sin acceptedAt (incluidas reservas aún sin conductor), la
+  // cancelación del pasajero es gratuita. Cuando un conductor cancela, el
+  // repositorio limpia acceptedAt; la nueva aceptación crea un reloj nuevo.
   return isPassengerCancellationChargeable({
-    isScheduled: scheduleMeta?.isScheduled === true,
-    scheduledPickupAtMs:
-      scheduledPickupAtMs != null &&
-      Number.isFinite(scheduledPickupAtMs)
-        ? scheduledPickupAtMs
-        : null,
+    isScheduled: false,
+    scheduledPickupAtMs: null,
     acceptedAtMs: ride.acceptedAt?.getTime() ?? null,
   });
 }
@@ -1166,12 +1161,10 @@ export class RidesService {
 
     let policyCharge: RidePolicyCharge | null = null;
 
-    // Las reservas se cobran dentro de los últimos 30 minutos aunque todavía
-    // no hayan sido aceptadas por un conductor. Un viaje inmediato sin
-    // conductor sigue siendo gratuito.
-    // Una solicitud todavía sin pago aprobado se puede descartar sin multa.
-    // La política de cancelación comienza después de publicar/activar el viaje,
-    // no mientras el pasajero sigue completando Klap.
+    // Sin conductor asignado no existe penalidad, aunque sea una reserva.
+    // Una solicitud todavía sin pago aprobado también se puede descartar sin
+    // multa. El reloj comienza únicamente en acceptedAt de la asignación
+    // efectiva y se reinicia cuando un nuevo conductor acepta el viaje.
     if (
       existing.status !== "pending_payment" &&
       shouldCreatePassengerCancellationCharge(existing)

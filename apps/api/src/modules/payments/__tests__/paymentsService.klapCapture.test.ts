@@ -50,6 +50,25 @@ vi.mock("../payments.repository.js", () => ({
 vi.mock("../../../modules/audit/audit.service.js", () => ({
   AuditService: vi.fn().mockImplementation(() => ({ recordSafe: mockRecordSafe })),
 }));
+
+// These tests exercise payment/Klap behavior only. Keep auth repositories fully
+// isolated so importing PaymentsService never requires DATABASE_URL.
+vi.mock("../../../modules/auth/token.service.js", () => ({
+  TokenService: vi.fn().mockImplementation(() => ({
+    verifyAccessToken: vi.fn(),
+    hashToken: vi.fn().mockReturnValue("test-hash"),
+  })),
+}));
+vi.mock("../../../modules/auth/session.service.js", () => ({
+  SessionService: vi.fn().mockImplementation(() => ({
+    isSessionValid: vi.fn().mockResolvedValue(true),
+  })),
+}));
+vi.mock("../../../modules/users/users.repository.js", () => ({
+  UsersRepository: vi.fn().mockImplementation(() => ({
+    findById: vi.fn(),
+  })),
+}));
 vi.mock("../provider.registry.js", () => ({
   getKlapProvider: () => ({
     captureOrder: mockCaptureOrder,

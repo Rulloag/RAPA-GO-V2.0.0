@@ -3,16 +3,14 @@
  *
  * Este módulo es puro para que la política pueda probarse sin base de datos:
  * - tarifa final redondeada hacia arriba a múltiplos de $500 CLP;
- * - cancelación inmediata gratuita durante 2 minutos;
- * - reserva gratuita hasta 30 minutos antes;
- * - cancelación tardía 30%, tope $3.000;
+ * - sin conductor asignado, la cancelación siempre es gratuita;
+ * - con conductor asignado, la cancelación es gratuita durante 1 minuto;
+ * - después de 1 minuto desde la asignación, 30%, tope $3.000;
  * - No Show después de 5 minutos, 50%, tope $5.000.
  */
 
 export const RIDE_FARE_ROUNDING_UNIT_CLP = 500;
-export const PASSENGER_FREE_CANCELLATION_MS = 2 * 60 * 1000;
-export const SCHEDULED_CANCELLATION_CHARGE_WINDOW_MS =
-  30 * 60 * 1000;
+export const PASSENGER_FREE_CANCELLATION_MS = 1 * 60 * 1000;
 export const DRIVER_NO_SHOW_WAIT_MS = 5 * 60 * 1000;
 
 export const LATE_CANCELLATION_PERCENT = 30;
@@ -95,6 +93,9 @@ export function calculateRidePolicyAmount(
 }
 
 export function isPassengerCancellationChargeable(input: {
+  // Se conservan estos campos en la firma por compatibilidad con llamadas
+  // existentes, pero la política financiera depende exclusivamente de una
+  // asignación efectiva (acceptedAt). Una reserva sin conductor es gratis.
   isScheduled: boolean;
   scheduledPickupAtMs: number | null;
   acceptedAtMs: number | null;
@@ -103,18 +104,6 @@ export function isPassengerCancellationChargeable(input: {
   const nowMs = input.nowMs ?? Date.now();
 
   if (
-    input.isScheduled &&
-    input.scheduledPickupAtMs != null &&
-    Number.isFinite(input.scheduledPickupAtMs)
-  ) {
-    return (
-      input.scheduledPickupAtMs - nowMs <=
-      SCHEDULED_CANCELLATION_CHARGE_WINDOW_MS
-    );
-  }
-
-  if (
-    input.isScheduled ||
     input.acceptedAtMs == null ||
     !Number.isFinite(input.acceptedAtMs)
   ) {

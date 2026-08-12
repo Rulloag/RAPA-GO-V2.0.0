@@ -1107,7 +1107,7 @@ function mapBackendPolicyChargeToAdmin(
       item.reason ??
       (item.type === "no_show"
         ? "No Show pendiente de revisión administrativa."
-        : "Cancelación desde el tercer minuto pendiente de revisión administrativa."),
+        : "Cancelación después de 1 minuto desde la asignación pendiente de revisión administrativa."),
     createdAt: item.createdAt,
     appliedRideId: item.appliedToRideId,
     appliedAt: item.appliedAt,

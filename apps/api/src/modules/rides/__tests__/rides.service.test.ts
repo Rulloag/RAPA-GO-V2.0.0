@@ -145,6 +145,15 @@ vi.mock("../../notifications/notifications.helpers.js", () => ({
   notifyPassengerRideCompleted: mockNotifyCompleted,
 }));
 
+vi.mock("../../rideReceipts/rideReceipts.service.js", () => ({
+  rideReceiptsService: {
+    queueCancelledRide: vi.fn().mockResolvedValue(null),
+    queueCompletedRide: vi.fn().mockResolvedValue(null),
+    queuePolicyCharge: vi.fn().mockResolvedValue(null),
+    queueNoShowRide: vi.fn().mockResolvedValue(null),
+  },
+}));
+
 const { RidesService } = await import("../rides.service.js");
 
 const NOW = new Date("2026-07-23T12:00:00.000Z");

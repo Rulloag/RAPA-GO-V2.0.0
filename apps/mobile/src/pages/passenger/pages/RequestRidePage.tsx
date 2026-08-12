@@ -181,7 +181,7 @@ function getPassengerPendingChargeDefaultTitle(type: unknown): string {
 function getPassengerPendingChargeDefaultDescription(type: unknown): string {
   return isPassengerPendingChargeNoShow(type)
     ? "No Show aprobado por administración para sumarlo al próximo viaje."
-    : "Cargo por cancelación desde el minuto 3 aprobado por administración para sumarlo al próximo viaje.";
+    : "Cargo por cancelación después de 1 minuto desde la asignación aprobado por administración.";
 }
 
 function calculateApprovedPassengerChargeForRequest(
@@ -8469,7 +8469,7 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && method === "cash") {
       setPaymentMethod("card");
       setShowPaymentBox(false);
-      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/Klap. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se gestiona como devolución al medio de pago original y no se convierte en Beneficios.");
+      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/Klap. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.");
       return;
     }
 
@@ -8518,7 +8518,7 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && String(activePaymentMethod) !== "card") {
       setPaymentMethod("card");
       setShowPaymentBox(true);
-      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/Klap. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se gestiona como devolución al medio de pago original y no se convierte en Beneficios.");
+      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/Klap. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.");
       return;
     }
 
@@ -8553,7 +8553,7 @@ export default function RequestRidePage(): JSX.Element {
       if (reservationRequiresCard) {
         notes.push("Pago obligatorio para reservas: tarjeta/Klap.");
         notes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
-        notes.push("Política cancelación reserva: desde los últimos 30 minutos previos al inicio se cobra 30% con tope $3.000.");
+        notes.push("Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000.");
         notes.push("Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.");
       }
       if (pendingPassengerChargeTotalClp > 0) {
@@ -8616,7 +8616,7 @@ export default function RequestRidePage(): JSX.Element {
         } else {
           notes.push(`Tipo de reserva: recogida aeropuerto.`);
           notes.push("Pago obligatorio para reservas: tarjeta/Klap.");
-          notes.push("Política cancelación reserva: dentro de los últimos 30 minutos se cobra 30% con tope $3.000; el saldo restante se gestiona como devolución al medio de pago original por backend/Klap.");
+          notes.push("Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000 y el saldo retenido restante debe liberarse por backend/Klap.");
           notes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
           notes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
           notes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
@@ -8997,7 +8997,7 @@ export default function RequestRidePage(): JSX.Element {
         if (reservationRequiresCard) {
           localNotes.push("Pago obligatorio para reservas: tarjeta/Klap.");
           localNotes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
-          localNotes.push("Política cancelación reserva: desde los últimos 30 minutos previos al inicio se cobra 30% con tope $3.000.");
+          localNotes.push("Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000.");
           localNotes.push("Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.");
         }
         if (pendingPassengerChargeTotalClp > 0) {
@@ -9057,7 +9057,7 @@ export default function RequestRidePage(): JSX.Element {
           } else {
             localNotes.push(`Tipo de reserva: recogida aeropuerto.`);
             localNotes.push("Pago obligatorio para reservas: tarjeta/Klap.");
-            localNotes.push("Política cancelación reserva: dentro de los últimos 30 minutos se cobra 30% con tope $3.000; el saldo restante se gestiona como devolución al medio de pago original por backend/Klap.");
+            localNotes.push("Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000 y el saldo retenido restante debe liberarse por backend/Klap.");
             localNotes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
             localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
             localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
@@ -10262,13 +10262,13 @@ return (
                     <>
                       Elige dónde pasamos a buscarte y programa ambos horarios. La reserva queda congelada para conductores y se habilita {SCHEDULE_ACTIVATION_MINUTES} minutos antes de la ida.
                       <br />
-                      <strong>Pago obligatorio con tarjeta:</strong> la tarifa incluye ida y regreso. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante vuelve al medio de pago original y no se convierte en Beneficios.
+                      <strong>Pago obligatorio con tarjeta:</strong> la tarifa incluye ida y regreso. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.
                     </>
                   ) : (
                     <>
                       El origen queda automático en Aeropuerto Internacional Mataveri de Rapa Nui. Tú eliges el destino final y el tipo de recibimiento. La reserva se habilita {SCHEDULE_ACTIVATION_MINUTES} minutos antes.
                       <br />
-                      <strong>Pago obligatorio con tarjeta:</strong> si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante vuelve al medio de pago original y no se convierte en Beneficios.
+                      <strong>Pago obligatorio con tarjeta:</strong> sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.
                     </>
                   )}
                 </IonNote>
@@ -10753,7 +10753,7 @@ return (
                     Cargos aprobados que se sumarán a este viaje: <strong>{formatCLP(pendingPassengerChargeTotalClp)}</strong>.
                     {pendingCancellationChargeTotalClp > 0 && (
                       <>
-                        <br />Cancelación desde el minuto 3: <strong>{formatCLP(pendingCancellationChargeTotalClp)}</strong>.
+                        <br />Cancelación después de 1 minuto desde la asignación: <strong>{formatCLP(pendingCancellationChargeTotalClp)}</strong>.
                       </>
                     )}
                     {pendingNoShowChargeTotalClp > 0 && (
@@ -10860,7 +10860,7 @@ return (
                         ¿Cómo quieres pagar?
                       </div>
                       <div style={{ marginTop: 6, color: "rgba(17,17,17,.66)", fontSize: ".74rem", lineHeight: 1.35, fontWeight: 800 }}>
-                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Si cancelas dentro de los últimos 30 minutos, se descuenta 30% con tope $3.000. El saldo restante se devuelve al medio de pago original y no se convierte en Beneficios." : "Elige efectivo al conductor o paga con tarjeta mediante Klap Checkout Transparente."}
+                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000." : "Elige efectivo al conductor o paga con tarjeta mediante Klap Checkout Transparente."}
                       </div>
                     </div>
                     <span style={{ borderRadius: 999, padding: "6px 9px", background: "#fff7e8", color: "#9A6A10", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>

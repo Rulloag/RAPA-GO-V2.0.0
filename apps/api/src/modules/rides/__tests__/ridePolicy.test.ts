@@ -15,7 +15,7 @@ describe("RAPA GO ride policy", () => {
     expect(roundFareUpTo500(10501)).toBe(11000);
   });
 
-  it("mantiene gratis la cancelación inmediata antes de dos minutos", () => {
+  it("mantiene gratis la cancelación antes de 1 minuto desde la asignación", () => {
     const acceptedAtMs = 1_000_000;
 
     expect(
@@ -23,7 +23,7 @@ describe("RAPA GO ride policy", () => {
         isScheduled: false,
         scheduledPickupAtMs: null,
         acceptedAtMs,
-        nowMs: acceptedAtMs + 119_999,
+        nowMs: acceptedAtMs + 59_999,
       }),
     ).toBe(false);
 
@@ -32,19 +32,19 @@ describe("RAPA GO ride policy", () => {
         isScheduled: false,
         scheduledPickupAtMs: null,
         acceptedAtMs,
-        nowMs: acceptedAtMs + 120_000,
+        nowMs: acceptedAtMs + 60_000,
       }),
     ).toBe(true);
   });
 
-  it("cobra una reserva solo dentro de los últimos 30 minutos", () => {
+  it("mantiene gratuita cualquier cancelación mientras no exista conductor asignado", () => {
     const nowMs = 10_000_000;
 
     expect(
       isPassengerCancellationChargeable({
-        isScheduled: true,
-        scheduledPickupAtMs: nowMs + 30 * 60 * 1000 + 1,
-        acceptedAtMs: nowMs - 10 * 60 * 1000,
+        isScheduled: false,
+        scheduledPickupAtMs: null,
+        acceptedAtMs: null,
         nowMs,
       }),
     ).toBe(false);
@@ -52,8 +52,22 @@ describe("RAPA GO ride policy", () => {
     expect(
       isPassengerCancellationChargeable({
         isScheduled: true,
-        scheduledPickupAtMs: nowMs + 30 * 60 * 1000,
+        scheduledPickupAtMs: nowMs + 5 * 60 * 1000,
         acceptedAtMs: null,
+        nowMs,
+      }),
+    ).toBe(false);
+  });
+
+  it("aplica la misma ventana de 1 minuto a una reserva cuando ya tiene conductor", () => {
+    const nowMs = 10_000_000;
+    const acceptedAtMs = nowMs - 60_000;
+
+    expect(
+      isPassengerCancellationChargeable({
+        isScheduled: true,
+        scheduledPickupAtMs: nowMs + 20 * 60 * 1000,
+        acceptedAtMs,
         nowMs,
       }),
     ).toBe(true);
