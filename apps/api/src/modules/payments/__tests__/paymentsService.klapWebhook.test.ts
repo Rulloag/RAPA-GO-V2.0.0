@@ -267,6 +267,53 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
       }
     }
   });
+  it("16a-case-prod. acepta TARJETAS y AUTHORIZATION observados en produccion", async () => {
+    const previousDeferred =
+      process.env["KLAP_DEFERRED_CAPTURE_ENABLED"];
+
+    process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
+
+    try {
+      const result = await service.handleKlapConfirmWebhook(
+        confirmBody({
+          payment_method: "TARJETAS",
+          transaction_type: "AUTHORIZATION",
+        }),
+        { apikey: validApikeyHeader() },
+      );
+
+      expect(result.ok).toBe(true);
+      expect(mockClaimWebhookEvent).toHaveBeenCalledTimes(1);
+
+      expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: REFERENCE_ID,
+          rideRequestId: "ride-uuid",
+          transactionType: "authorization",
+        }),
+      );
+
+      expect(mockRecordSafe).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: "payment.klap_unexpected_payment_method",
+        }),
+      );
+
+      expect(mockRecordSafe).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: "payment.klap_unexpected_transaction_type",
+        }),
+      );
+    } finally {
+      if (previousDeferred === undefined) {
+        delete process.env["KLAP_DEFERRED_CAPTURE_ENABLED"];
+      } else {
+        process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] =
+          previousDeferred;
+      }
+    }
+  });
+
   it("16b. a transaction_type distinto de authorization no marca success/authorized (Fase 4)", async () => {
     const result = await service.handleKlapConfirmWebhook(
       confirmBody({ transaction_type: "sale" }),

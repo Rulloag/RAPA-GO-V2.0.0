@@ -1459,7 +1459,7 @@ export class PaymentsService {
     // Klap puede describir el medio concreto con otro texto en payment_method.
     // Para una firma vÃ¡lida, order_id/reference_id coincidentes y monto exacto,
     // este campo se conserva para auditorÃ­a, pero no debe provocar HTTP 422.
-    if (body.payment_method != null && body.payment_method !== "tarjetas") {
+    if (body.payment_method != null && body.payment_method.trim().toLowerCase() !== "tarjetas") {
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
         eventType: "payment.klap_unexpected_payment_method",
@@ -1508,7 +1508,7 @@ export class PaymentsService {
     if (
       deferredCaptureEnabled &&
         body.transaction_type != null &&
-        body.transaction_type !== KLAP_TRANSACTION_TYPE_AUTHORIZATION
+        body.transaction_type.trim().toLowerCase() !== KLAP_TRANSACTION_TYPE_AUTHORIZATION
     ) {
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
@@ -1590,7 +1590,7 @@ export class PaymentsService {
           id: payment.id,
           rideRequestId: payment.rideRequestId,
           authorizedAmountClp: paidAmountClp,
-          transactionType: body.transaction_type ?? KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+          transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
           providerPayload,
         });
       } else {
