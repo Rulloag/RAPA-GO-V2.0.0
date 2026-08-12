@@ -597,7 +597,7 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
     if (!result.ok) return;
     expect(result.processed).toBe(true);
     expect(result.capturedCancellationFeeClp).toBe(3000);
-    expect(result.remainderReleaseRequired).toBe(true);
+    expect(result.remainderReleaseRequired).toBe(false);
   });
 
   it("cancelacion nunca reintenta si la captura Klap ya esta incierta", async () => {

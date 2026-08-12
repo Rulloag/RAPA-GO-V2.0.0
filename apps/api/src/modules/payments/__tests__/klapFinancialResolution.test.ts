@@ -35,7 +35,7 @@ describe("resolveKlapFinancialOutcome", () => {
     expect(result.action).toBe("capture_partial");
     expect(result.amountClp).toBe(18_000);
     expect(result.remainingAuthorizedAmountClp).toBe(2_000);
-    expect(result.requiresRemainderRelease).toBe(true);
+    expect(result.requiresRemainderRelease).toBe(false);
   });
 
   it("CASO 2: cancelación gratis nunca captura y exige VOID/liberación", () => {
@@ -62,7 +62,7 @@ describe("resolveKlapFinancialOutcome", () => {
     expect(result.reason).toBe("cancelled_with_fee");
     expect(result.amountClp).toBe(3_000);
     expect(result.remainingAuthorizedAmountClp).toBe(17_000);
-    expect(result.requiresRemainderRelease).toBe(true);
+    expect(result.requiresRemainderRelease).toBe(false);
   });
 
   it("CASO 4: NO SHOW captura solo 50% con tope calculado por backend", () => {
@@ -76,7 +76,7 @@ describe("resolveKlapFinancialOutcome", () => {
     expect(result.reason).toBe("no_show_fee");
     expect(result.amountClp).toBe(5_000);
     expect(result.remainingAuthorizedAmountClp).toBe(15_000);
-    expect(result.requiresRemainderRelease).toBe(true);
+    expect(result.requiresRemainderRelease).toBe(false);
   });
 
   it("fail-closed: NO SHOW superior a la autorización nunca captura", () => {

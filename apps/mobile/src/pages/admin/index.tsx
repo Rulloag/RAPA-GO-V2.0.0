@@ -1046,18 +1046,24 @@ function mapBackendPolicyChargeToAdmin(
       ? "pending_next_ride"
       : backendStatus === "attached_to_next_ride"
         ? "applied_to_next_ride"
-        : backendStatus === "waived"
-          ? "waived"
-          : "pending_admin_review";
+        : backendStatus === "paid"
+          ? "paid"
+          : backendStatus === "waived"
+            ? "waived"
+            : "pending_admin_review";
 
   const adminReviewStatus =
     backendStatus === "approved_pending_next_ride"
       ? "charge_pending_next_ride"
       : backendStatus === "attached_to_next_ride"
         ? "applied_to_next_ride"
-        : backendStatus === "waived"
-          ? "waived"
-          : "pending_admin_review";
+        : backendStatus === "paid"
+          ? item.type === "no_show"
+            ? "no_show_charge_paid"
+            : "late_cancel_charge_paid"
+          : backendStatus === "waived"
+            ? "waived"
+            : "pending_admin_review";
 
   return {
     id: item.id,

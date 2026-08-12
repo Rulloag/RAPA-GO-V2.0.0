@@ -20,6 +20,7 @@ const mockMarkEnRoute = vi.fn();
 const mockMarkArrived = vi.fn();
 const mockMarkNoShow = vi.fn();
 const mockCreatePolicyCharge = vi.fn();
+const mockMarkPolicyChargePaidByCardCapture = vi.fn();
 
 const mockReleaseDriverAfterRide = vi.fn();
 const mockAssertDriverCanAcceptRide = vi.fn();
@@ -75,6 +76,8 @@ vi.mock("../rides.repository.js", () => ({
     markArrived: mockMarkArrived,
     markNoShow: mockMarkNoShow,
     createPolicyCharge: mockCreatePolicyCharge,
+    markPolicyChargePaidByCardCapture:
+      mockMarkPolicyChargePaidByCardCapture,
   })),
 }));
 
@@ -262,6 +265,15 @@ describe("RidesService - contrato actual", () => {
     mockFindApprovedByRideId.mockResolvedValue(null);
     mockFindPaymentByRideId.mockResolvedValue(null);
     mockCaptureAuthorizedKlapPayment.mockResolvedValue({ ok: true, status: "success" });
+    mockMarkPolicyChargePaidByCardCapture.mockImplementation(
+      async ({ capturedAmountClp }: { capturedAmountClp: number }) =>
+        makeNoShowCharge({
+          status: "paid",
+          paymentMethod: "card",
+          approvedAmountClp: capturedAmountClp,
+          settledAt: NOW,
+        }),
+    );
     mockRefundCardPaymentForCancelledRide.mockResolvedValue({
       ok: true,
       processed: false,
@@ -866,6 +878,81 @@ describe("RidesService - contrato actual", () => {
     });
   });
 
+  describe("Klap cancellation settlement", () => {
+    it("marks a captured late-cancellation charge as paid", async () => {
+      const existing = makeRide({
+        status: "accepted",
+        driverUserId: "driver-1",
+        acceptedAt: new Date(Date.now() - 2 * 60 * 1000),
+        estimatedFareClp: 500,
+        notes: "PaymentMethod: card\nPaymentProvider: klap",
+        paymentMethod: "card",
+        paymentProvider: "klap",
+      });
+
+      mockFindById.mockResolvedValue(existing);
+      mockCancelAccepted.mockResolvedValue(
+        makeRide({
+          ...existing,
+          status: "cancelled",
+          cancelledAt: NOW,
+          cancelledByUserId: "user-123",
+          cancelledByRole: "passenger",
+        }),
+      );
+      mockCreatePolicyCharge.mockResolvedValue(
+        makeNoShowCharge({
+          type: "late_cancellation",
+          paymentMethod: "card",
+          applicableFareClp: 500,
+          feePercent: 30,
+          feeCapClp: 3000,
+          calculatedAmountClp: 150,
+        }),
+      );
+      mockRefundCardPaymentForCancelledRide.mockResolvedValue({
+        ok: true,
+        processed: true,
+        refunded: false,
+        paymentId: "payment-cancel",
+        capturedCancellationFeeClp: 150,
+        remainderReleaseRequired: false,
+      });
+      mockMarkPolicyChargePaidByCardCapture.mockResolvedValue(
+        makeNoShowCharge({
+          type: "late_cancellation",
+          status: "paid",
+          paymentMethod: "card",
+          applicableFareClp: 500,
+          feePercent: 30,
+          feeCapClp: 3000,
+          calculatedAmountClp: 150,
+          approvedAmountClp: 150,
+          settledAt: NOW,
+        }),
+      );
+
+      const result = await service.cancelAcceptedRide(
+        "token",
+        "ride-1",
+        { reason: "test cancellation" },
+      );
+
+      expect(result.ok).toBe(true);
+      expect(mockRefundCardPaymentForCancelledRide).toHaveBeenCalledWith(
+        expect.objectContaining({ cancellationFeeClp: 150 }),
+      );
+      expect(mockMarkPolicyChargePaidByCardCapture).toHaveBeenCalledWith({
+        id: "charge-1",
+        capturedAmountClp: 150,
+      });
+      if (!result.ok) return;
+      expect(
+        (result.ride as Record<string, any>)["policyCharge"]?.status,
+      ).toBe("paid");
+    });
+  });
+
   describe("no show", () => {
     it("rechaza no show antes de marcar llegada", async () => {
       mockFindUserById.mockResolvedValue({
@@ -1019,6 +1106,14 @@ describe("RidesService - contrato actual", () => {
           authorizationExpired: false,
         },
       );
+      expect(mockMarkPolicyChargePaidByCardCapture).toHaveBeenCalledWith({
+        id: "charge-1",
+        capturedAmountClp: 5000,
+      });
+      if (!result.ok) return;
+      expect(
+        (result.ride as Record<string, any>)["policyCharge"]?.status,
+      ).toBe("paid");
     });
   });
 

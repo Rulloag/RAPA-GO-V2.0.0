@@ -61,9 +61,11 @@ export interface KlapFinancialResolution {
   authorizedAmountClp: number;
   remainingAuthorizedAmountClp: number;
   /**
-   * true significa que, tras una captura parcial, el saldo restante debe
-   * liberarse según el contrato oficial de Klap. No se asume que Klap lo haga
-   * automáticamente hasta tener confirmación.
+   * For a zero-charge cancellation (void), true means the full authorization
+   * still has to be released. For a Klap partial capture confirmed by the
+   * Order API, false means no second refund POST is required: /capture closes
+   * the order for the captured amount and the issuer may reflect the unused
+   * authorization release asynchronously.
    */
   requiresRemainderRelease: boolean;
   /** Clave estable de idempotencia interna de RAPA GO. */
@@ -192,8 +194,7 @@ export function resolveKlapFinancialOutcome(
       amountClp: finalAmount,
       remainingAuthorizedAmountClp:
         input.authorizedAmountClp - finalAmount,
-      requiresRemainderRelease:
-        finalAmount < input.authorizedAmountClp,
+      requiresRemainderRelease: false,
     });
   }
 
@@ -229,8 +230,7 @@ export function resolveKlapFinancialOutcome(
       amountClp: noShowFee,
       remainingAuthorizedAmountClp:
         input.authorizedAmountClp - noShowFee,
-      requiresRemainderRelease:
-        noShowFee < input.authorizedAmountClp,
+      requiresRemainderRelease: false,
     });
   }
 
@@ -272,7 +272,6 @@ export function resolveKlapFinancialOutcome(
     amountClp: cancellationFee,
     remainingAuthorizedAmountClp:
       input.authorizedAmountClp - cancellationFee,
-    requiresRemainderRelease:
-      cancellationFee < input.authorizedAmountClp,
+    requiresRemainderRelease: false,
   });
 }

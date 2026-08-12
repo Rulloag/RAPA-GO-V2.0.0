@@ -501,6 +501,40 @@ async function rideHasApprovedCardPayment(ride: RideRequest): Promise<boolean> {
   }
 }
 
+async function settlePolicyChargeAfterConfirmedKlapCapture(
+  charge: RidePolicyCharge | null,
+  capturedAmountClp: unknown,
+): Promise<RidePolicyCharge | null> {
+  if (!charge) return null;
+
+  const captured = Math.max(
+    0,
+    Math.round(Number(capturedAmountClp ?? 0)),
+  );
+
+  if (
+    !Number.isSafeInteger(captured) ||
+    captured <= 0 ||
+    captured !== charge.calculatedAmountClp
+  ) {
+    return charge;
+  }
+
+  const paid = await ridesRepo.markPolicyChargePaidByCardCapture({
+    id: charge.id,
+    capturedAmountClp: captured,
+  });
+
+  if (!paid) {
+    console.error(
+      `[RAPA GO] Klap captured ${captured} CLP but policy charge ${charge.id} could not be settled.`,
+    );
+    return charge;
+  }
+
+  return paid;
+}
+
 function paymentNotApprovedResult(): {
   ok: false;
   code: string;
@@ -1190,6 +1224,16 @@ export class RidesService {
           policyCharge?.calculatedAmountClp ?? 0,
       });
 
+    if (
+      policyCharge &&
+      paymentRefund?.["capturedCancellationFeeClp"] != null
+    ) {
+      policyCharge = await settlePolicyChargeAfterConfirmedKlapCapture(
+        policyCharge,
+        paymentRefund["capturedCancellationFeeClp"],
+      );
+    }
+
     const response = toResponse(cancelled) as RideRequestResponse &
       Record<string, unknown>;
 
@@ -1848,6 +1892,16 @@ export class RidesService {
           })
         : null;
 
+    if (
+      policyCharge &&
+      paymentRefund?.["capturedCancellationFeeClp"] != null
+    ) {
+      policyCharge = await settlePolicyChargeAfterConfirmedKlapCapture(
+        policyCharge,
+        paymentRefund["capturedCancellationFeeClp"],
+      );
+    }
+
     const responseRide = toResponse(cancelled) as RideRequestResponse &
       Record<string, unknown>;
 
@@ -2310,7 +2364,7 @@ export class RidesService {
         "Pasajero no se presentó después de 5 minutos.",
     });
 
-    const charge =
+    let charge =
       chargeData.calculatedAmountClp > 0
         ? await ridesRepo.createPolicyCharge(chargeData)
         : null;
@@ -2355,21 +2409,38 @@ export class RidesService {
               },
             );
 
-          noShowPaymentResolution = captureResult.ok
+          const captureConfirmed =
+            captureResult.ok && captureResult.status === "success";
+
+          if (captureConfirmed && charge) {
+            charge = await settlePolicyChargeAfterConfirmedKlapCapture(
+              charge,
+              chargeData.calculatedAmountClp,
+            );
+          }
+
+          noShowPaymentResolution = captureConfirmed
             ? {
                 processed: true,
                 paymentId: payment.id,
-                status: captureResult.status,
+                status: "success",
                 capturedNoShowFeeClp: chargeData.calculatedAmountClp,
               }
-            : {
-                processed: false,
-                paymentId: payment.id,
-                requiresAttention: true,
-                code: captureResult.code,
-              };
+            : captureResult.ok
+              ? {
+                  processed: false,
+                  paymentId: payment.id,
+                  requiresAttention: true,
+                  status: captureResult.status,
+                }
+              : {
+                  processed: false,
+                  paymentId: payment.id,
+                  requiresAttention: true,
+                  code: captureResult.code,
+                };
 
-          if (!captureResult.ok) {
+          if (!captureConfirmed) {
             const { AuditService } = await import(
               "../audit/audit.service.js"
             );
@@ -2381,7 +2452,9 @@ export class RidesService {
               metadata: {
                 rideId: closed.id,
                 noShowFeeClp: chargeData.calculatedAmountClp,
-                code: captureResult.code,
+                code: captureResult.ok
+                  ? `STATUS_${String(captureResult.status).toUpperCase()}`
+                  : captureResult.code,
               },
             });
           }

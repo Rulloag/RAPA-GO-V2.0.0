@@ -1251,6 +1251,57 @@ export class RidesRepository {
     }
   }
 
+  /**
+   * Marks a policy charge as already paid when Klap confirms a card capture.
+   * A paid charge must never be approved later or attached to the next ride.
+   */
+  async markPolicyChargePaidByCardCapture(input: {
+    id: string;
+    capturedAmountClp: number;
+  }): Promise<RidePolicyCharge | null> {
+    const capturedAmountClp = Math.max(
+      0,
+      Math.round(Number(input.capturedAmountClp ?? 0)),
+    );
+
+    if (!Number.isSafeInteger(capturedAmountClp) || capturedAmountClp <= 0) {
+      return null;
+    }
+
+    try {
+      const now = new Date();
+      const [row] = await db
+        .update(ridePolicyCharges)
+        .set({
+          status: "paid",
+          approvedAmountClp: capturedAmountClp,
+          adminDecisionReason:
+            "Automatically charged from the Klap card authorization.",
+          appliedToRideId: null,
+          appliedAt: null,
+          settledAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(ridePolicyCharges.id, input.id),
+            eq(ridePolicyCharges.calculatedAmountClp, capturedAmountClp),
+            inArray(ridePolicyCharges.status, [
+              "pending_admin_review",
+              "approved_pending_next_ride",
+            ]),
+          ),
+        )
+        .returning();
+
+      return row ?? null;
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to settle policy charge after Klap capture: ${String(err)}`,
+      );
+    }
+  }
+
   async approvePolicyCharge(input: {
     id: string;
     reviewedByUserId: string;

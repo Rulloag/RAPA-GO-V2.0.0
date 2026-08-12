@@ -68,6 +68,14 @@ describe("RAPA GO financial ride contract regression", () => {
     );
   });
 
+  it("card-captured policy charges are settled and excluded from next-ride debt", () => {
+    expect(repository).toContain("markPolicyChargePaidByCardCapture");
+    expect(repository).toContain('status: "paid"');
+    expect(repository).toContain("settledAt: now");
+    expect(service).toContain("settlePolicyChargeAfterConfirmedKlapCapture");
+    expect(service).toContain('paymentRefund["capturedCancellationFeeClp"]');
+  });
+
   it("no show requires driver_arrived plus five minutes", () => {
     const start = service.indexOf("async declareNoShow(");
     expect(start).toBeGreaterThanOrEqual(0);
