@@ -207,6 +207,30 @@ public class RapaGoBackgroundLocationPlugin extends Plugin {
         call.resolve(RapaGoLocationService.stateObject());
     }
 
+    /**
+     * Empuja un token nuevo al servicio ya corriendo, sin reiniciar el GPS ni
+     * la notificación.
+     *
+     * Si el servicio no está corriendo esto es intencionalmente un no-op: no
+     * hay nada que enviar sin un viaje activo, así que no vale la pena
+     * arriesgar el crash de `ForegroundServiceDidNotStartInTimeException` que
+     * traería iniciar el servicio solo para esto.
+     */
+    @PluginMethod
+    public void updateAccessToken(PluginCall call) {
+        String accessToken = call.getString("accessToken");
+        if (accessToken == null || accessToken.trim().isEmpty()) {
+            call.reject("accessToken is required.");
+            return;
+        }
+
+        Intent intent = new Intent(getContext(), RapaGoLocationService.class);
+        intent.setAction(RapaGoLocationService.ACTION_UPDATE_TOKEN);
+        intent.putExtra(RapaGoLocationService.EXTRA_ACCESS_TOKEN, accessToken.trim());
+        ContextCompat.startForegroundService(getContext(), intent);
+        call.resolve();
+    }
+
     @PluginMethod
     public void stopTracking(PluginCall call) {
         Intent intent = new Intent(getContext(), RapaGoLocationService.class);

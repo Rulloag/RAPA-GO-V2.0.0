@@ -29,8 +29,26 @@ export const rideLocationUpdateSchema = z.object({
   isMocked: z.boolean().default(false),
 });
 
+/**
+ * Tope por lote. 200 puntos son ~36 KB de JSON, que a 1 punto/segundo cubren
+ * algo más de 3 minutos sin señal. Colas más largas se drenan en varias
+ * llamadas: el índice único de la tabla hace que reenviar sea idempotente.
+ */
+export const MAX_LOCATION_BATCH_POINTS = 200;
+
+export const rideLocationBatchSchema = z.object({
+  points: z
+    .array(rideLocationUpdateSchema)
+    .min(1, "A batch needs at least one point.")
+    .max(
+      MAX_LOCATION_BATCH_POINTS,
+      `A batch cannot exceed ${MAX_LOCATION_BATCH_POINTS} points.`,
+    ),
+});
+
 export const rideLocationRouteQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).default(500),
 });
 
 export type RideLocationUpdateInput = z.infer<typeof rideLocationUpdateSchema>;
+export type RideLocationBatchInput = z.infer<typeof rideLocationBatchSchema>;

@@ -40,6 +40,26 @@
 }
 
 
+/* Impide que el motor infle el texto por su cuenta.
+
+   En un teléfono, el WebView aplica al contenido web el ajuste de "Tamaño de
+   fuente" del sistema. Esta interfaz está construida casi entera en píxeles
+   fijos (~2600 valores en px frente a ~390 en rem/em), así que cuando el texto
+   crece las cajas NO crecen con él: el contenido desborda, las tarjetas se
+   aprietan y la app entera se ve "con zoom". Por eso el síntoma solo aparece
+   en móvil y no en el navegador de escritorio.
+
+   Esto ataca la inflación automática. El escalado que el usuario pide a
+   propósito desde Ajustes se acota en MainActivity, no aquí: bloquearlo del
+   todo sería ignorar una preferencia de accesibilidad legítima.
+
+   El arreglo de fondo es que el layout tolere texto grande —migrar de px a
+   unidades relativas—, pero eso es un trabajo aparte y mucho mayor. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 html,
 body,
 #root,

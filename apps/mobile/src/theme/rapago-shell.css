@@ -188,6 +188,19 @@
   --rp-danger-fg: #f0906e;
   --rp-danger-bd: rgba(184, 79, 46, 0.6);
 
+  /* Acción principal del conductor, un color por etapa del viaje.
+     Antes las tres ("Llegué al punto", "Iniciar viaje", "Finalizar viaje")
+     compartían el dorado de marca: cambiaba el icono y el texto, pero de
+     reojo —que es como se mira conduciendo— el botón era siempre el mismo.
+     "Llegué al punto" se queda en dorado por ser el paso por defecto; las
+     otras dos toman los ejes que ya usa la app: laguna para arrancar, océano
+     para cerrar. Fondo sólido con texto claro, no el token -fg (que se
+     invierte entre temas y aquí daría texto claro sobre claro de día). */
+  --rp-action-go-bg: #2e7d5b;
+  --rp-action-go-fg: #f6f2ec;
+  --rp-action-finish-bg: #12697e;
+  --rp-action-finish-fg: #f6f2ec;
+
   /* Velo de la barra superior. No es decoración: el fondo de página es una
      FOTOGRAFÍA y su propio velo está sólo al 32% en el primer tramo, que es
      justo donde vive la barra. Si la foto tiene cielo claro ahí, el título se
@@ -347,6 +360,13 @@
   --rp-err-bd: rgba(184, 79, 46, 0.38);
   --rp-danger-fg: #b03a1c;
   --rp-danger-bd: rgba(184, 79, 46, 0.55);
+
+  /* Contrapartes de día de la acción por etapa: se oscurecen para conservar el
+     contraste del texto claro bajo el sol, que es donde de verdad se usan. */
+  --rp-action-go-bg: #1f6347;
+  --rp-action-go-fg: #ffffff;
+  --rp-action-finish-bg: #0e5566;
+  --rp-action-finish-fg: #ffffff;
 
   /* Contraparte de día del velo de la barra: aclara en vez de oscurecer, para
      que el texto oscuro conserve contraste sobre las zonas claras de la foto. */

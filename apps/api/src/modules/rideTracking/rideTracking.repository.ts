@@ -83,6 +83,39 @@ export class RideTrackingRepository {
     }
   }
 
+  /**
+   * Inserta un lote en una sola sentencia.
+   *
+   * Devuelve SOLO las filas realmente insertadas: `onConflictDoNothing` sobre
+   * el índice único (ride, driver, capturedAt) omite las que ya existían, así
+   * que `rows.length - devueltas` son los duplicados. Reenviar un lote entero
+   * es por tanto inofensivo, y eso es lo que permite que el cliente reintente
+   * sin miedo cuando no sabe si su envío anterior llegó.
+   */
+  async insertMany(
+    inputs: NewRideLocationUpdate[],
+  ): Promise<RideLocationUpdate[]> {
+    if (inputs.length === 0) return [];
+
+    try {
+      return await db
+        .insert(rideLocationUpdates)
+        .values(inputs)
+        .onConflictDoNothing({
+          target: [
+            rideLocationUpdates.rideId,
+            rideLocationUpdates.driverUserId,
+            rideLocationUpdates.capturedAt,
+          ],
+        })
+        .returning();
+    } catch (error) {
+      throw AppError.internal(
+        `Failed to save ride location batch: ${String(error)}`,
+      );
+    }
+  }
+
   async listRoute(rideId: string, limit: number): Promise<RideLocationUpdate[]> {
     try {
       const rows = await db

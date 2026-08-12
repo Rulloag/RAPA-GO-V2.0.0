@@ -83,7 +83,6 @@ import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
 import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
-import { rideLocationService } from "../../features/location/rideLocation.service.js";
 import {
   MapFallback,
   loadRapaGoGoogleMaps,
@@ -116,9 +115,6 @@ type DriverRideData =
   import("../../features/rides/rides.service").DriverRideData;
 type ActiveRideOfferData =
   import("../../features/rides/rides.service").ActiveRideOfferData;
-type DriverRideLocationPoint = Parameters<
-  typeof rideLocationService.publish
->[2];
 
 type RapaGoConnectivityMode = "checking" | "online" | "poor" | "offline";
 type RapaGoConnectivityRole = "driver" | "passenger" | "admin";
@@ -1819,7 +1815,11 @@ const RAPAGO_NAV_SHEET_GRIP_H = 34;
    cola de los botones en pantallas reales. Este colchón cubre esos 12px de
    diferencia (46 - 34) más margen, sin importar el ancho del dispositivo —el
    problema era vertical, no de una pantalla en particular. */
-const RAPAGO_NAV_SHEET_ACTIONS_CLEARANCE = 20;
+/* Respiro sobre el ETA. Antes valía 28 para esquivar las píldoras flotantes de
+   Cancelar y la acción principal, que se superponían a esta franja. Con los
+   botones movidos al dock inferior ya no hay nada encima, así que vuelve a ser
+   un espaciado normal —múltiplo de 4, como el resto de la rejilla. */
+const RAPAGO_NAV_SHEET_ACTIONS_CLEARANCE = 12;
 
 /* Reposos de la hoja de navegación, como fracción del recorrido total.
    `expanded` = 0 (hoja arriba del todo, se ve todo el contenido);
@@ -2963,7 +2963,12 @@ function UberDriverNavigationMap({
 
         const map = new google.maps.Map(mapElementRef.current, {
           center,
-          zoom: driverPointRef.current ? 18 : 14,
+          /* 16 y no 18 al abrir: 18 es nivel de manzana, pensado para la
+             cámara de navegación (que sigue usándolo, con tilt). Al ENTRAR al
+             panel el conductor todavía se está ubicando, y a 18 no ve ni la
+             calle siguiente. A 16 alcanza a leer por dónde va sin tener que
+             alejar a mano cada vez que abre la pantalla. */
+          zoom: driverPointRef.current ? 16 : 14,
           mapTypeId: google.maps.MapTypeId.ROADMAP,
           disableDefaultUI: true,
           zoomControl: true,
@@ -3720,12 +3725,6 @@ function UberDriverNavigationMap({
           </div>
         )}
 
-        {/* Flota con position:absolute (ver CSS): así queda por encima de la
-            franja del asa —que captura el gesto de arrastre en todo su
-            ancho— sin competir por ese gesto ni depender del orden del DOM. */}
-        {!isCompactPreview && sheetPrimaryAction}
-        {!isCompactPreview && sheetCancelAction}
-
         {/* Una sola columna. Antes esta franja llevaba dos botones de 58px a los
             lados del ETA: "soltar cámara" (✕) y "recentrar ruta".
             El ✕ desapareció porque soltar el seguimiento no es una intención
@@ -3771,12 +3770,28 @@ function UberDriverNavigationMap({
           <div style={{ flex: "0 0 auto", marginTop: 8 }}>{sheetHeader}</div>
         )}
 
-        {/* Acciones principales ANTES que los avisos, y no al final. El orden
-            del DOM decide qué sobrevive al plegado: la hoja se desplaza hacia
-            abajo, así que lo último se oculta primero. Con las acciones al
-            fondo, el reposo intermedio escondía justo los botones y dejaba a la
-            vista los avisos, que es exactamente al revés de lo que necesita
-            quien va conduciendo. */}
+        {/* Dock de acciones (patrón "button dock" de Base, el sistema de Uber):
+            la acción principal a ancho completo, un solo primario sólido por
+            vista, y Cancelar degradado a texto debajo.
+
+            Va AQUÍ y no al final del DOM, y esa es la parte que no se puede
+            mover: la hoja se pliega desplazándose hacia abajo, así que lo
+            último es lo primero que se oculta. En el reposo intermedio —donde
+            transcurre casi todo el viaje— un dock al fondo desaparecería justo
+            cuando más se necesita. Colocado tras el estado queda dentro del
+            núcleo siempre visible, y lo que se oculta al plegar son los avisos,
+            que es información de consulta.
+
+            El respiro inferior del aparato ya lo pone el padding de la hoja
+            (`max(12px, --rp-driver-tabbar-clearance)`), así que aquí no se
+            vuelve a sumar: contarlo dos veces empujaría el dock hacia arriba. */}
+        {!isCompactPreview && (sheetPrimaryAction || sheetCancelAction) && (
+          <div className="rapago-driver-nav-sheet__dock">
+            {sheetPrimaryAction}
+            {sheetCancelAction}
+          </div>
+        )}
+
         {!isCompactPreview && sheetActions && (
           <div
             style={{
@@ -15861,192 +15876,6 @@ function AssignedRidesPage({
   }, []);
   void nextRideQueueVersion;
 
-  useEffect(() => {
-    const accessToken = session?.accessToken;
-    const rideId = activeRideTrackingId;
-
-    if (!accessToken || !rideId) {
-      void rideLocationService.stopNativeBackground();
-      return;
-    }
-
-    let cancelled = false;
-    let stopForegroundWatch: (() => Promise<void>) | null = null;
-    let publishing = false;
-    let pendingPoint: DriverRideLocationPoint | null = null;
-    let lastBackendWarningAt = 0;
-
-    const publishLatestPoint = async (
-      initialPoint: DriverRideLocationPoint,
-    ): Promise<void> => {
-      pendingPoint = initialPoint;
-      if (publishing) return;
-
-      publishing = true;
-
-      try {
-        while (!cancelled && pendingPoint) {
-          const point = pendingPoint;
-          pendingPoint = null;
-
-          try {
-            await rideLocationService.publish(accessToken, rideId, point);
-          } catch (caught) {
-            const now = Date.now();
-
-            if (now - lastBackendWarningAt >= 15_000) {
-              lastBackendWarningAt = now;
-              console.warn(
-                "[RAPA GO] No se pudo sincronizar una ubicación del conductor",
-                caught,
-              );
-            }
-          }
-        }
-      } finally {
-        publishing = false;
-      }
-    };
-
-    const applyRealDriverPoint = (point: DriverRideLocationPoint): void => {
-      if (cancelled) return;
-
-      const lat = Number(point.lat);
-      const lng = Number(point.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-
-      const nextLocation = { lat, lng };
-      const previousLocation = lastPublishedDriverLocationRef.current;
-      const movedMeters = previousLocation
-        ? distanceMetersForLiveDriverGps(previousLocation, nextLocation)
-        : Number.POSITIVE_INFINITY;
-
-      let heading =
-        point.headingDegrees != null &&
-        Number.isFinite(Number(point.headingDegrees))
-          ? Number(point.headingDegrees)
-          : liveDriverHeadingRef.current;
-
-      if (previousLocation && movedMeters >= 4) {
-        heading = bearingDegreesForLiveDriverGps(
-          previousLocation,
-          nextLocation,
-        );
-      }
-
-      liveDriverHeadingRef.current = heading ?? null;
-      lastPublishedDriverLocationRef.current = nextLocation;
-      driverLocationRef.current = nextLocation;
-      setDriverLocation(nextLocation);
-      setLocationError(null);
-
-      const trackedRide = activeRideTrackingPayloadRef.current;
-      if (trackedRide && String(trackedRide.id) === rideId) {
-        publishDriverLiveLocationForPassenger(
-          trackedRide,
-          {
-            lat,
-            lng,
-            heading: heading ?? null,
-            speed: point.speedMetersPerSecond ?? null,
-            accuracy: point.accuracyMeters ?? null,
-          },
-          heading ?? null,
-          driverTrackingUserRef.current,
-        );
-      }
-
-      try {
-        localStorage.setItem(
-          "rapago_current_driver_location",
-          JSON.stringify({
-            rideId,
-            lat,
-            lng,
-            heading: heading ?? null,
-            speed: point.speedMetersPerSecond ?? null,
-            accuracy: point.accuracyMeters ?? null,
-            updatedAt: point.capturedAt,
-            ...getDriverVehiclePublicPayload(driverTrackingUserRef.current),
-          }),
-        );
-      } catch {
-        // El backend sigue siendo la autoridad del GPS.
-      }
-
-      void publishLatestPoint({
-        ...point,
-        headingDegrees: heading ?? point.headingDegrees ?? null,
-      });
-    };
-
-    async function startTracking(): Promise<void> {
-      try {
-        const initialPoint = await rideLocationService.current();
-        applyRealDriverPoint(initialPoint);
-      } catch (caught) {
-        if (!cancelled) {
-          setLocationError(
-            caught instanceof Error
-              ? caught.message
-              : "No se pudo obtener la ubicación real del conductor.",
-          );
-        }
-      }
-
-      try {
-        const stop = await rideLocationService.watch(
-          applyRealDriverPoint,
-          (message) => {
-            if (!cancelled) {
-              setLocationError(
-                message || "Se interrumpió la señal GPS del conductor.",
-              );
-            }
-          },
-        );
-
-        if (cancelled) {
-          await stop();
-        } else {
-          stopForegroundWatch = stop;
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setLocationError(
-            caught instanceof Error
-              ? caught.message
-              : "No se pudo iniciar el seguimiento GPS.",
-          );
-        }
-      }
-
-      try {
-        await rideLocationService.startNativeBackground(accessToken, rideId);
-      } catch (caught) {
-        // El seguimiento foreground continúa. En Android/iOS se registra el
-        // problema para revisarlo sin ocultar el mapa al conductor.
-        console.warn(
-          "[RAPA GO] Seguimiento nativo en segundo plano no disponible",
-          caught,
-        );
-      }
-    }
-
-    void startTracking();
-
-    return () => {
-      cancelled = true;
-      pendingPoint = null;
-
-      if (stopForegroundWatch) {
-        void stopForegroundWatch();
-      }
-
-      void rideLocationService.stopNativeBackground();
-    };
-  }, [activeRideTrackingId, activeRideTrackingStatus, session?.accessToken]);
-
   const stopRideRequestAlert = useCallback((clearCurrentRide = true): void => {
     rideAlertControllerRef.current?.stop();
     rideAlertControllerRef.current = null;
@@ -19067,17 +18896,20 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           ? checkmarkCircleOutline
           : flagOutline;
 
-    /* El botón cancelar flota en la esquina superior izquierda de la hoja,
-       al mismo nivel que la acción principal (esquina derecha). */
+    /* Cancelar deja de ser una píldora gemela de la acción principal y baja a
+       texto, dentro del dock. Regla del sistema de Uber: un solo primario
+       sólido por vista. Tenerlos idénticos ponía una acción destructiva al
+       mismo peso visual que confirmar, y en movimiento eso se toca por error.
+       Sigue a un toque de distancia y conserva 44px de alto táctil. */
     const sheetActions = null;
     const sheetCancelAction = (
       <button
         type="button"
-        className="rapago-driver-nav-sheet__cancel-pill"
+        className="rapago-driver-nav-sheet__cancel-link"
         aria-label="Cancelar el viaje"
         onClick={() => requestCancelActiveRide(ride)}>
         <IonIcon icon={closeOutline} aria-hidden="true" />
-        <span>Cancelar</span>
+        <span>Cancelar viaje</span>
       </button>
     );
 
@@ -19125,15 +18957,26 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     );
 
     /* Acción principal ("Llegué al punto" / "Iniciar viaje" / "Finalizar
-       viaje"), en la esquina superior derecha de la hoja completa —junto al
-       asa de arrastre, no dentro de la tarjeta de estado—, igual que el atajo
-       "Confirmar" del pasajero (rp-request-map-head-confirm). Se pasa como
-       prop aparte (sheetPrimaryAction) porque UberDriverNavigationMap es quien
-       controla esa zona absoluta de la hoja. */
+       viaje"). Antes era una píldora de 172px flotando en la esquina superior;
+       ahora ocupa el ancho completo del dock, al pie del núcleo de la hoja.
+       El objetivo pasa de una esquina estrecha a toda la franja, que es lo que
+       hace falta para acertarle sin mirar. Se sigue pasando como prop porque
+       UberDriverNavigationMap es quien compone la hoja. */
+    /* Un color por etapa. El icono ya distinguía las tres acciones, pero de
+       reojo —única forma de mirar esto conduciendo— el botón era siempre el
+       mismo dorado. "Llegué al punto" se queda sin modificador por ser el
+       paso por defecto. */
+    const sheetPrimaryTone =
+      ride.status === "driver_arrived"
+        ? " rapago-driver-nav-sheet__confirm--go"
+        : ride.status === "in_progress"
+          ? " rapago-driver-nav-sheet__confirm--finish"
+          : "";
+
     const sheetPrimaryAction = (
       <button
         type="button"
-        className="rapago-driver-nav-sheet__confirm"
+        className={`rapago-driver-nav-sheet__confirm${sheetPrimaryTone}`}
         // El texto visible puede recortarse con ellipsis en pantallas
         // angostas; aria-label conserva siempre la etiqueta completa.
         aria-label={sheetPrimaryLabel}

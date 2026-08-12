@@ -6280,7 +6280,13 @@ function MapPointPicker({
 
         const map = new google.maps.Map(mapElementRef.current, {
           center,
-          zoom: 17,
+          /* 15 y no 17: a 17 se ven un par de calles y en Rapa Nui, con los
+             caminos separados, la pantalla queda casi vacía y sin referencias
+             para ubicarse. A 15 entra el barrio y se entiende dónde estás
+             respecto del pueblo, que es lo que hace falta para elegir el punto
+             de partida. Acercarse es un gesto; alejarse cuando ya te perdiste
+             de contexto, no tanto. */
+          zoom: 15,
           mapTypeControl: false,
           fullscreenControl: false,
           streetViewControl: false,
@@ -6315,7 +6321,9 @@ function MapPointPicker({
           if (cancelled) return;
           google.maps.event.trigger(map, "resize");
           map.setCenter(center);
-          map.setZoom(17);
+          // Debe coincidir con el zoom inicial de arriba: este reajuste tras el
+          // resize lo reimponía en 17 y deshacía el valor de apertura.
+          map.setZoom(15);
           setReady(true);
         }, 120);
 

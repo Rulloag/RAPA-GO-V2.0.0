@@ -43,7 +43,11 @@ describe("flujo global y mapa grande del conductor", () => {
     expect(driverSource).not.toContain('setError("Activa tu ubicación real para tomar este viaje.")');
     expect(driverSource).toContain("const acceptedLocation = driverLocationRef.current ?? driverLocation;");
     expect(locationRuntimeSource).toContain("Boolean(activeRide)");
-    expect(locationRuntimeSource).toContain("!isDriver || !activeRide || !foregroundGranted(permissions)");
+    // El guardia se mudó: ya no vive en un efecto que abre el GPS, sino en el
+    // que DECLARA el estado deseado al coordinador. Misma garantía —no se pide
+    // ubicación sin viaje activo— expresada en el nuevo dueño único.
+    expect(locationRuntimeSource).toContain("!isDriver || !accessToken || !activeRide");
+    expect(locationRuntimeSource).toContain("rideTrackingCoordinator.setDesired(null)");
     expect(locationRuntimeSource).toContain("Aceptaste un viaje. Activa el GPS");
   });
 

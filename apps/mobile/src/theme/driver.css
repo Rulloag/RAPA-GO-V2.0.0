@@ -3052,23 +3052,38 @@
    en este árbol, ver .request-map-page). position:absolute la saca del flujo
    de la franja del asa, que captura el gesto de arrastre en todo su ancho:
    así el botón nunca compite por ese gesto. */
+/* ---- Dock de acciones de la hoja ----
+   Patrón "button dock" de Base, el sistema de diseño de Uber: la acción
+   principal ocupa el ancho completo al pie del bloque, en vez de ser una
+   píldora estrecha en una esquina. El objetivo pasa de ~172px de ancho a la
+   franja entera, que es lo que permite acertarle sin apartar la vista.
+
+   La rejilla es de 4px, también de Base: 56 de alto en el primario, 44 en el
+   secundario, 8 de separación. */
+.rapago-driver-page .rapago-driver-nav-sheet__dock {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .rapago-driver-page .rapago-driver-nav-sheet__confirm {
-  position: absolute;
-  top: 8px;
-  right: 14px;
-  z-index: 1;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  max-width: 152px;
-  min-height: 38px;
-  padding: 0 14px;
+  gap: 10px;
+  width: 100%;
+  /* 56px: cómodamente por encima del mínimo táctil (44 iOS / 48 Android) y
+     múltiplo de 4. Con el ancho completo ya no hace falta recortar el texto:
+     "Finalizar viaje" entra entero. */
+  min-height: 56px;
+  padding: 0 20px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 16px;
   background: var(--rp-btn-primary);
   color: var(--rp-btn-primary-fg);
-  font-size: 0.8rem;
+  font-size: 1rem;
   font-weight: 900;
   letter-spacing: 0.01em;
   line-height: 1;
@@ -3083,7 +3098,7 @@
 
 .rapago-driver-page .rapago-driver-nav-sheet__confirm ion-icon {
   flex: 0 0 auto;
-  font-size: 1rem;
+  font-size: 1.15rem;
 }
 
 /* El propio texto se recorta con ellipsis: el aria-label en el JSX conserva
@@ -3108,102 +3123,96 @@
   outline-offset: 2px;
 }
 
-/* Pantallas muy angostas: la píldora se compacta para no invadir el asa. */
+/* Color por etapa del viaje. El icono ya cambiaba, pero el color no: de reojo
+   —única forma de mirar esto conduciendo— las tres acciones eran idénticas.
+   "Llegué al punto" se queda con el dorado de marca por ser el paso por
+   defecto y no necesita modificador. */
+.rapago-driver-page .rapago-driver-nav-sheet__confirm--go {
+  background: var(--rp-action-go-bg);
+  color: var(--rp-action-go-fg);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm--finish {
+  background: var(--rp-action-finish-bg);
+  color: var(--rp-action-finish-fg);
+}
+
+/* Pantallas muy angostas: el ancho ya es del 100%, así que no hay nada que
+   estrechar. Solo cede algo de alto y letra, y nunca por debajo de 48px —el
+   mínimo de Android, y múltiplo de 4. */
 @media (max-width: 360px) {
   .rapago-driver-page .rapago-driver-nav-sheet__confirm {
-    top: 6px;
-    right: 10px;
-    max-width: 112px;
-    min-height: 34px;
-    padding: 0 10px;
-    font-size: 0.74rem;
-    gap: 4px;
+    min-height: 48px;
+    padding: 0 16px;
+    font-size: 0.92rem;
+    gap: 8px;
   }
 
   .rapago-driver-page .rapago-driver-nav-sheet__confirm ion-icon {
-    font-size: 0.9rem;
+    font-size: 1.05rem;
   }
 }
 
-/* Botón cancelar: espejo del __confirm pero en la esquina izquierda. En rojo
-   (mismos tokens --rp-danger-* que ya usa el SOS) porque es una acción
-   destructiva: el contorno neutro anterior no la distinguía de una acción
-   cualquiera y el conductor podía tocarla sin registrar qué estaba haciendo. */
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill {
-  position: absolute;
-  top: 8px;
-  left: 14px;
-  z-index: 1;
-  display: inline-flex;
+/* Cancelar: texto, no píldora sólida.
+
+   Antes era un espejo exacto de la acción principal —misma forma, mismo alto,
+   misma prominencia—, lo que ponía una acción destructiva al mismo peso visual
+   que confirmar. Base (el sistema de Uber) fija un solo primario sólido por
+   vista, y aquí había dos compitiendo por la atención del conductor.
+
+   Baja a texto pero conserva 44px de alto táctil y el ancho completo del dock:
+   deja de gritar sin volverse difícil de acertar. El subrayado es lo que lo
+   mantiene legible como algo pulsable ahora que no tiene fondo. */
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link {
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  max-width: 130px;
-  min-height: 38px;
-  padding: 0 14px;
-  border: 1.5px solid var(--rp-danger-bd, rgba(220, 38, 38, 0.55));
-  border-radius: 999px;
-  background: var(--rp-surface);
+  gap: 7px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
   color: var(--rp-danger-fg, #dc2626);
-  font-size: 0.8rem;
-  font-weight: 900;
+  font-size: 0.88rem;
+  font-weight: 800;
   letter-spacing: 0.01em;
   line-height: 1;
   cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
   touch-action: manipulation;
   transition:
-    transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
-    background 120ms cubic-bezier(0.22, 1, 0.36, 1);
+    background 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill ion-icon {
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link ion-icon {
   flex: 0 0 auto;
   font-size: 1rem;
 }
 
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill span {
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link span {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill:hover {
-  background: color-mix(
-    in srgb,
-    var(--rp-danger-fg, #dc2626) 12%,
-    var(--rp-surface)
-  );
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link:hover {
+  background: var(--rp-err-bg, rgba(184, 79, 46, 0.12));
 }
 
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill:active {
-  transform: translateY(1px) scale(0.97);
-  background: color-mix(
-    in srgb,
-    var(--rp-danger-fg, #dc2626) 12%,
-    var(--rp-surface)
-  );
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link:active {
+  transform: translateY(1px);
+  background: var(--rp-err-bg, rgba(184, 79, 46, 0.12));
 }
 
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-pill:focus-visible {
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link:focus-visible {
   outline: 2px solid var(--rp-danger-fg, #dc2626);
   outline-offset: 2px;
-}
-
-@media (max-width: 360px) {
-  .rapago-driver-page .rapago-driver-nav-sheet__cancel-pill {
-    top: 6px;
-    left: 10px;
-    max-width: 100px;
-    min-height: 34px;
-    padding: 0 10px;
-    font-size: 0.74rem;
-    gap: 4px;
-  }
-
-  .rapago-driver-page .rapago-driver-nav-sheet__cancel-pill ion-icon {
-    font-size: 0.9rem;
-  }
 }
 
 /* ==========================================================================

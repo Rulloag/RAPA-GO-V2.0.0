@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import driverSource from "../../driver/index.tsx?raw";
+import coordinatorSource from "../../../features/location/rideTrackingCoordinator.ts?raw";
 import passengerSource from "./TripsPage.tsx?raw";
 
 describe("seguimiento real del vehículo para el pasajero", () => {
@@ -54,19 +54,33 @@ describe("seguimiento real del vehículo para el pasajero", () => {
   });
 });
 
+/**
+ * El dueño del GPS dejó de ser la página del conductor.
+ *
+ * Antes estas comprobaciones miraban `driver/index.tsx`, porque allí vivía el
+ * ciclo de vida del seguimiento. Eso era justamente el bug: la página se
+ * desmontaba al cambiar de pestaña y mataba el servicio nativo. Ahora el dueño
+ * es `rideTrackingCoordinator`, un módulo sin `unmount`, y es ahí donde hay que
+ * garantizar que el GPS se arranca y se publica de verdad.
+ *
+ * Que la página YA NO lo haga lo cubre `singleOwner.arch.test.ts`.
+ */
 describe("publicación real del GPS del conductor", () => {
   it("inicia GPS foreground y publica cada punto en el backend", () => {
-    expect(driverSource).toContain("rideLocationService.watch(");
-    expect(driverSource).toContain(
-      "await rideLocationService.publish(accessToken, rideId, point)",
+    expect(coordinatorSource).toContain("rideLocationService.watch(");
+    // El coordinador extrae rideId/accessToken a variables locales antes de
+    // llamar a publish, para que la cola offline pueda capturarlos en el
+    // closure del .catch() sin arrastrar todo el objeto `current`.
+    expect(coordinatorSource).toContain(
+      ".publish(accessToken, rideId, point)",
     );
   });
 
   it("activa y detiene el seguimiento nativo en segundo plano", () => {
-    expect(driverSource).toContain(
+    expect(coordinatorSource).toContain(
       "rideLocationService.startNativeBackground(",
     );
-    expect(driverSource).toContain(
+    expect(coordinatorSource).toContain(
       "rideLocationService.stopNativeBackground()",
     );
   });

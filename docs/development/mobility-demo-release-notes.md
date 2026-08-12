@@ -51,6 +51,10 @@ El flujo completo —desde solicitud del pasajero hasta ganancias del conductor�
 - Transiciones de estado atómicas con validación de secuencia
 - Liberación automática del conductor al completar o cancelar un viaje
 - Endpoint de ubicación del conductor accesible solo al pasajero propietario del viaje
+- Tracking GPS en segundo plano con plugin propio (`RapaGoBackgroundLocation`): foreground
+  service en Android y `UIBackgroundModes: location` en iOS. Solo con viaje activo, con
+  cola offline que reenvía los puntos por lotes al recuperar señal.
+  Ver `docs/architecture/mobile-architecture.md`
 - Ganancias calculadas sobre viajes completados en el día UTC actual
 - 36 tests unitarios cubriendo auth, rides y earnings
 
@@ -61,7 +65,6 @@ El flujo completo —desde solicitud del pasajero hasta ganancias del conductor�
 | Funcionalidad | Motivo de exclusión |
 |---------------|-------------------|
 | WebSocket / realtime | Requiere infraestructura adicional; diferido a fase siguiente |
-| Tracking GPS automático en background | Capacitor Background Geolocation no configurado; es manual |
 | Notificaciones push | Requiere FCM/APNs setup; diferido |
 | Pagos reales / cobro al pasajero | Fuera de alcance MVP; los montos son referenciales |
 | Wallet / saldo | Módulo existente pero sin lógica de pago real |

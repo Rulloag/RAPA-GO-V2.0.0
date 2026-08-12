@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { sendError, sendOk } from "../../shared/http/apiResponse.js";
 import {
+  rideLocationBatchSchema,
   rideLocationRouteQuerySchema,
   rideLocationUpdateSchema,
 } from "./rideTracking.schemas.js";
@@ -57,6 +58,43 @@ export const rideTrackingController = {
     }
 
     sendOk(reply, result.data, 201);
+  },
+
+  /**
+   * Responde 200 incluso con puntos rechazados: el éxito parcial es normal en
+   * un lote y el cliente debe poder vaciar su cola con cualquier 2xx. Si esto
+   * devolviera un error por un solo punto malo, ese punto bloquearía la cabeza
+   * de la cola para siempre.
+   */
+  async publishBatch(
+    request: FastifyRequest<{ Params: { id: string } }>,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const token = requireToken(request, reply);
+    if (!token) return;
+
+    const parsed = rideLocationBatchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      sendError(reply, {
+        code: "VALIDATION_ERROR",
+        message:
+          parsed.error.errors[0]?.message ?? "Invalid location batch payload.",
+        statusCode: 400,
+      });
+      return;
+    }
+
+    const result = await service.publishBatch(
+      token,
+      request.params.id,
+      parsed.data.points,
+    );
+    if (!result.ok) {
+      serviceError(reply, result);
+      return;
+    }
+
+    sendOk(reply, result.data);
   },
 
   async latest(

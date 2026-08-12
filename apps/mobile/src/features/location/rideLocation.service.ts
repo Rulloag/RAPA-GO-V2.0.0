@@ -92,6 +92,37 @@ type RouteEnvelope = {
   statusCode: number;
 };
 
+type BatchEnvelope = {
+  ok: true;
+  data: {
+    received: number;
+    accepted: number;
+    duplicates: number;
+    rejected: { index: number; code: string }[];
+    latest: RideLocationPointResponse | null;
+  };
+  statusCode: number;
+};
+
+export interface LocationBatchOutcome {
+  /**
+   * Si el cliente debe BORRAR de su cola los puntos que acaba de enviar.
+   *
+   * Es la regla más importante del diseño de la cola: se drena con cualquier
+   * 2xx (aunque el servidor haya rechazado puntos concretos) y también con los
+   * errores permanentes, porque reintentarlos no cambiará nada. Si un punto
+   * irrecuperable se conservara, bloquearía la cabeza de la cola para siempre.
+   */
+  drain: boolean;
+  statusCode: number;
+  accepted: number;
+  duplicates: number;
+  rejected: number;
+}
+
+/** Errores que no mejoran reintentando: el punto nunca va a entrar. */
+const PERMANENT_BATCH_STATUSES = new Set([400, 403, 404, 409]);
+
 export const rideLocationService = {
   async current(): Promise<RapaGoLocationPoint> {
     const position = await Geolocation.getCurrentPosition({
@@ -160,6 +191,50 @@ export const rideLocationService = {
     }
 
     return (result.data as PointEnvelope).data as RideLocationPointResponse;
+  },
+
+  /**
+   * Envía un lote acumulado sin señal.
+   *
+   * A diferencia de `publish`, NUNCA lanza: quien drena una cola necesita
+   * distinguir "esto ya no sirve, bórralo" de "vuelve a intentarlo luego", y
+   * una excepción borra esa distinción. Tampoco reintenta por dentro — el
+   * drenador aplica su propio backoff, y reintentar aquí retrasaría el envío
+   * del siguiente lote.
+   */
+  async publishBatch(
+    accessToken: string,
+    rideId: string,
+    points: RapaGoLocationPoint[],
+  ): Promise<LocationBatchOutcome> {
+    const safePoints = points.map(sanitizeLocationPoint);
+
+    const result = await apiClient.post<BatchEnvelope>(
+      `/rides/${encodeURIComponent(rideId)}/location/batch`,
+      { points: safePoints },
+      { token: accessToken, timeoutMs: 20000 },
+      0,
+    );
+
+    if (result.ok === false) {
+      return {
+        drain: PERMANENT_BATCH_STATUSES.has(result.statusCode),
+        statusCode: result.statusCode,
+        accepted: 0,
+        duplicates: 0,
+        rejected: 0,
+      };
+    }
+
+    const data = (result.data as BatchEnvelope).data;
+
+    return {
+      drain: true,
+      statusCode: result.statusCode,
+      accepted: data?.accepted ?? 0,
+      duplicates: data?.duplicates ?? 0,
+      rejected: data?.rejected?.length ?? 0,
+    };
   },
 
   async latest(

@@ -14,6 +14,7 @@
 		A95300012E50000100000001 /* RapaGoGoogleAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95300012E50000100000002 /* RapaGoGoogleAuthPlugin.swift */; };
 		A95300012E50000100000006 /* MyViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95300012E50000100000007 /* MyViewController.swift */; };
 		A95300012E50000100000008 /* RapaGoBackgroundLocationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95300012E50000100000009 /* RapaGoBackgroundLocationPlugin.swift */; };
+		A95300022E50000100000010 /* RapaGoLocationQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95300022E50000100000011 /* RapaGoLocationQueue.swift */; };
 		A95300012E50000100000003 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = A95300012E50000100000005 /* GoogleSignIn */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
@@ -29,6 +30,7 @@
 		A95300012E50000100000002 /* RapaGoGoogleAuthPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RapaGoGoogleAuthPlugin.swift; sourceTree = "<group>"; };
 		A95300012E50000100000007 /* MyViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyViewController.swift; sourceTree = "<group>"; };
 		A95300012E50000100000009 /* RapaGoBackgroundLocationPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RapaGoBackgroundLocationPlugin.swift; sourceTree = "<group>"; };
+		A95300022E50000100000011 /* RapaGoLocationQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RapaGoLocationQueue.swift; sourceTree = "<group>"; };
 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -76,6 +78,7 @@
 				A95300012E50000100000002 /* RapaGoGoogleAuthPlugin.swift */,
 				A95300012E50000100000007 /* MyViewController.swift */,
 				A95300012E50000100000009 /* RapaGoBackgroundLocationPlugin.swift */,
+				A95300022E50000100000011 /* RapaGoLocationQueue.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -174,6 +177,7 @@
 				A95300012E50000100000001 /* RapaGoGoogleAuthPlugin.swift in Sources */,
 				A95300012E50000100000006 /* MyViewController.swift in Sources */,
 				A95300012E50000100000008 /* RapaGoBackgroundLocationPlugin.swift in Sources */,
+				A95300022E50000100000010 /* RapaGoLocationQueue.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

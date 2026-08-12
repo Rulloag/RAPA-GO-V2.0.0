@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { rideLocationUpdateSchema } from "../rideTracking.schemas.js";
+import {
+  MAX_LOCATION_BATCH_POINTS,
+  rideLocationBatchSchema,
+  rideLocationUpdateSchema,
+} from "../rideTracking.schemas.js";
 
 const basePoint = {
   lat: -33.49,
@@ -39,5 +43,40 @@ describe("rideLocationUpdateSchema", () => {
         lat: 120,
       }),
     ).toThrow();
+  });
+});
+
+describe("rideLocationBatchSchema", () => {
+  it("acepta un lote en el tope exacto", () => {
+    const parsed = rideLocationBatchSchema.parse({
+      points: Array.from({ length: MAX_LOCATION_BATCH_POINTS }, () => basePoint),
+    });
+
+    expect(parsed.points).toHaveLength(MAX_LOCATION_BATCH_POINTS);
+  });
+
+  it("rechaza un lote por encima del tope", () => {
+    // Sin esto, un cliente roto podría mandar su cola entera en una petición.
+    expect(() =>
+      rideLocationBatchSchema.parse({
+        points: Array.from(
+          { length: MAX_LOCATION_BATCH_POINTS + 1 },
+          () => basePoint,
+        ),
+      }),
+    ).toThrow();
+  });
+
+  it("rechaza un lote vacío", () => {
+    expect(() => rideLocationBatchSchema.parse({ points: [] })).toThrow();
+  });
+
+  it("aplica la misma sanitización a cada punto del lote", () => {
+    const parsed = rideLocationBatchSchema.parse({
+      points: [{ ...basePoint, accuracyMeters: 50000, headingDegrees: -1 }],
+    });
+
+    expect(parsed.points[0]?.accuracyMeters).toBeNull();
+    expect(parsed.points[0]?.headingDegrees).toBeNull();
   });
 });
