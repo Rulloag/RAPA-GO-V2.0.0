@@ -2637,7 +2637,7 @@ function buildPassengerCancelledRide(
   const candidateFeeClp = Math.max(0, Math.round(policy.candidateFeeClp));
   const approvedFrontendFeeClp = policy.exemptionRequested ? 0 : Math.max(0, Math.round(policy.feeClp));
 
-  if (candidateFeeClp > 0) {
+  if (candidateFeeClp > 0 && (!isCardPayment || policy.exemptionRequested)) {
     savePassengerPendingChargeFromCancellation(ride, policy);
   }
 
@@ -2663,7 +2663,8 @@ function buildPassengerCancelledRide(
     passengerCancellationReasonCode: policy.cancellationReasonCode ?? null,
     passengerCancellationReasonLabel: policy.cancellationReasonLabel ?? null,
     cancellationExemptionRequested: policy.exemptionRequested,
-    passengerCancellationRequiresAdminReview: policy.requiresAdminReview,
+    passengerCancellationRequiresAdminReview:
+      policy.exemptionRequested || (!isCardPayment && policy.requiresAdminReview),
     passengerCancellationChargedAt: null,
     paymentPendingClp: 0,
     passengerPendingChargeNextRide: false,
@@ -2673,14 +2674,15 @@ function buildPassengerCancelledRide(
           ? `Solicitaste exención por: ${policy.cancellationReasonLabel ?? "causa informada"}. Administración revisará el cargo referencial de ${formatClp(candidateFeeClp)}.`
           : `Existe un cargo referencial de ${formatClp(candidateFeeClp)} pendiente de revisión. Solo backend/admin puede aprobarlo.`
         : null,
-    // En tarjeta, el reembolso/crédito real debe ejecutarlo el backend.
+    // En tarjeta/Klap, el frontend nunca ejecuta la operación financiera.
+    // Backend captura la multa o libera la autorización según la política.
     cardRefundRequested: isCardPayment,
     mercadoPagoRefundRequested: isCardPayment,
     mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
     cardRefundNotice: isCardPayment
       ? candidateFeeClp > 0
-        ? `Tu viaje fue cancelado. La devolución queda pendiente de revisión segura. El cargo referencial de ${formatClp(candidateFeeClp)} no se aplica automáticamente desde el frontend.`
-        : "Tu viaje fue cancelado. La devolución debe ser procesada por el backend y el proveedor de tarjeta. No ingreses tarjeta, claves ni códigos bancarios."
+        ? `El backend procesa automáticamente con Klap el cargo de ${formatClp(candidateFeeClp)}. No se agrega nuevamente al próximo viaje.`
+        : "Cancelación gratuita: el backend procesa automáticamente con Klap la liberación de la autorización. No ingreses tarjeta, claves ni códigos bancarios."
       : null,
     cardWalletCreditRequested: false,
     cardWalletCreditClp: 0,
@@ -8592,7 +8594,11 @@ function PassengerRideCard({
   );
   const passengerCancelledPolicyText = String((ride as RideRequestData & Record<string, unknown>).passengerCancellationPolicyText ?? "").trim();
   const passengerCancelledCardRefundNotice = String((ride as RideRequestData & Record<string, unknown>).cardRefundNotice ?? "").trim();
-  const showCardCancelRefundButton = shouldShowRapaGoCardCancelRefundButton(ride, effectiveStatus);
+  const cancelledRideRecord = ride as RideRequestData & Record<string, unknown>;
+  const isCancelledCardPayment = isPassengerCancellationCardPaymentForRefundAction(cancelledRideRecord);
+  const passengerCancellationRequiresAdminReview = Boolean(
+    cancelledRideRecord.passengerCancellationRequiresAdminReview,
+  );
 
   return (
     <IonCard
@@ -8725,12 +8731,22 @@ function PassengerRideCard({
                 lineHeight: 1.35,
               }}
             >
-              <IonIcon icon={warningOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
-              Revision backend pendiente: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
-              <br />El backend/admin debe confirmar y aplicar cualquier cobro. Esta pantalla no crea cargos locales.
-              {passengerCancelledCardRefundNotice && (
+              {isCancelledCardPayment && !passengerCancellationRequiresAdminReview ? (
                 <>
-                  <br /><span style={{ fontSize: ".76rem" }}>{passengerCancelledCardRefundNotice}</span>
+                  <IonIcon icon={cardOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                  Cargo por cancelación: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
+                  <br />El backend procesa automáticamente el monto aplicable con Klap. Este cargo no se vuelve a sumar al próximo viaje.
+                  {passengerCancelledCardRefundNotice && (
+                    <>
+                      <br /><span style={{ fontSize: ".76rem" }}>{passengerCancelledCardRefundNotice}</span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <IonIcon icon={warningOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                  Revisión backend pendiente: <strong>{formatClp(passengerCancelledChargeClp)}</strong>.
+                  <br />El backend/admin debe confirmar cualquier excepción o cargo no resuelto automáticamente.
                 </>
               )}
               {passengerCancelledPolicyText && (
@@ -8738,26 +8754,13 @@ function PassengerRideCard({
                   <br /><span style={{ fontSize: ".76rem" }}>{passengerCancelledPolicyText}</span>
                 </>
               )}
-              {showCardCancelRefundButton && (
-                <IonButton
-                  size="small"
-                  color="warning"
-                  style={{ marginTop: 10, "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
-                  onClick={() => openRapaGoCardCancelRefundWhatsApp(ride)}
-                >
-                  Cancelar/devolución
-                </IonButton>
-              )}
             </div>
           )}
 
-          {effectiveStatus === "cancelled" && showCardCancelRefundButton && passengerCancelledChargeClp <= 0 && (
+          {effectiveStatus === "cancelled" && isCancelledCardPayment && passengerCancelledChargeClp <= 0 && !passengerCancellationRequiresAdminReview && (
             <div
               style={{
                 marginBottom: 12,
-                /* Iba en gradiente hex fijo (#fff7db→#fffaf0): quedaba claro
-                   incluso en modo noche. Se pasa a var(--rp-warn-bg), la
-                   misma pareja tonal que usa color: var(--rp-warn-fg) abajo. */
                 background: "var(--rp-warn-bg)",
                 borderRadius: 18,
                 padding: "12px",
@@ -8768,17 +8771,27 @@ function PassengerRideCard({
               }}
             >
               <IonIcon icon={cardOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
-              Pago con tarjeta.
-              <br />La devolución se procesa al medio de pago original mediante backend y el proveedor de tarjeta y queda sujeta a revisión administrativa. No se convierte en Beneficios. No entregues claves ni datos de tu tarjeta.
-              <IonButton
-                expand="block"
-                size="small"
-                color="warning"
-                style={{ marginTop: 10, "--border-radius": "999px", fontWeight: 950 } as CSSProperties}
-                onClick={() => openRapaGoCardCancelRefundWhatsApp(ride)}
-              >
-                Cancelar/devolución
-              </IonButton>
+              <strong>Cancelación gratuita.</strong>
+              <br />El backend procesa automáticamente con Klap la liberación de la autorización. No se convierte en Beneficios y no debes ingresar claves ni datos de tu tarjeta.
+            </div>
+          )}
+
+          {effectiveStatus === "cancelled" && isCancelledCardPayment && passengerCancelledChargeClp <= 0 && passengerCancellationRequiresAdminReview && (
+            <div
+              style={{
+                marginBottom: 12,
+                background: "var(--rp-warn-bg)",
+                borderRadius: 18,
+                padding: "12px",
+                border: "1px solid var(--rp-warn-bd)",
+                color: "var(--rp-warn-fg)",
+                fontWeight: 900,
+                lineHeight: 1.35,
+              }}
+            >
+              <IonIcon icon={warningOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              <strong>Solicitud de exención en revisión.</strong>
+              <br />El backend/admin revisará el motivo informado antes de resolver el cargo.
             </div>
           )}
 

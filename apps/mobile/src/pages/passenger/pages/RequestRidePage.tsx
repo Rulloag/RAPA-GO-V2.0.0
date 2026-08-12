@@ -8759,8 +8759,8 @@ export default function RequestRidePage(): JSX.Element {
         (input as CreateRideInput & { paymentMethod?: string }).paymentMethod = activePaymentMethod;
         (input as CreateRideInput & { paymentProvider?: string | null }).paymentProvider =
           activePaymentMethod === "card" ? "klap" : null;
-        // Phase 3 security:
-        // Cancellation/no-show charges are backend/admin authority only.
+        // Klap deferred capture:
+        // Cancellation/no-show amounts are calculated and settled by backend.
         // Do not send passengerPendingChargeClp or finalFareWithPendingChargesClp from frontend.
         // El frontend solo expresa la decisión. El backend bloquea la cuenta,
         // verifica el saldo y calcula el monto real a consumir.
@@ -8787,7 +8787,7 @@ export default function RequestRidePage(): JSX.Element {
           reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: "klap",
           cardCancellationCreditToWallet: false,
-          cardCancellationAdminReviewRequired: reservationRequiresCard && String(activePaymentMethod) === "card",
+          cardCancellationAdminReviewRequired: false,
           cardCancellationCreditName: null,
         });
       } else if (selectedRoundTripPromotion) {
@@ -9169,7 +9169,7 @@ export default function RequestRidePage(): JSX.Element {
           reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: reservationRequiresCard ? "klap" : null,
           cardCancellationCreditToWallet: false,
-          cardCancellationAdminReviewRequired: reservationRequiresCard && String(activePaymentMethod) === "card",
+          cardCancellationAdminReviewRequired: false,
           cardCancellationCreditName: null,
         } as LocalPassengerRideData;
 
