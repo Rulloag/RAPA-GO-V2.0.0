@@ -424,6 +424,7 @@ function normalizeKlapOrderStatus(value: unknown): KlapReconciledStatus {
       "canceled",
       "expired",
       "voided",
+      "refund",
       "refunded",
     ].includes(status)
   ) {
