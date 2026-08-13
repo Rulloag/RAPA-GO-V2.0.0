@@ -242,6 +242,12 @@ function getKlapConfig(): KlapConfig {
   const captureSuccessStatuses = parseCaptureSuccessStatuses(
     process.env["KLAP_CAPTURE_SUCCESS_STATUSES"],
   );
+  // Opcional a propósito: si todavía no está configurada en este entorno,
+  // la orden se crea igual sin los customs de notificación al comercio (ver
+  // createHostedOrder). Nunca debe bloquear pagos por faltar esta variable.
+  const merchantNotificationEmail = String(
+    process.env["KLAP_MERCHANT_NOTIFICATION_EMAIL"] ?? "",
+  ).trim();
 
   if (!authorizationModeEnabled && (captureContractConfirmed || captureDiscoveryMode)) {
     throw new KlapProviderError(
@@ -325,6 +331,7 @@ function getKlapConfig(): KlapConfig {
         ? captureDiscoveryMaxAmountClp
         : 0,
     captureSuccessStatuses,
+    merchantNotificationEmail,
   };
 }
 
@@ -608,6 +615,30 @@ export class KlapProvider implements PaymentProvider {
       });
     }
 
+    // Comprobante de pago (confirmado por Klap para POST /orders): el aviso
+    // al pasajero depende únicamente de que tengamos su correo, y es
+    // independiente del aviso al comercio — cada uno se agrega solo si su
+    // propio dato está disponible, sin bloquear la creación de la orden si
+    // falta uno de los dos.
+    const passengerEmail = String(params.passengerEmail ?? "").trim();
+    if (passengerEmail) {
+      customs.push({
+        key: "notify_payment_user",
+        value: "true",
+      });
+    }
+
+    if (config.merchantNotificationEmail) {
+      customs.push({
+        key: "notify_payment_merchant",
+        value: "true",
+      });
+      customs.push({
+        key: "notify_payment_email_merchant",
+        value: config.merchantNotificationEmail,
+      });
+    }
+
     const body: KlapOrderRequest = {
       reference_id: params.orderId,
       generate_token: "none",
@@ -627,6 +658,10 @@ export class KlapProvider implements PaymentProvider {
         webhook_reject: config.webhookRejectUrl,
       },
     };
+
+    if (passengerEmail) {
+      body.user = { email: passengerEmail };
+    }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
