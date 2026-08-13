@@ -7622,6 +7622,43 @@ export default function RequestRidePage(): JSX.Element {
 
   const [requestSheetDragging, setRequestSheetDragging] = useState(false);
 
+  /* Mide el recorrido REAL: alto del shell menos el alto de la cabecera (asa +
+     AHORA/RESERVAR), que es lo único que queda visible con la hoja abajo del
+     todo. El ResizeObserver lo mantiene al día al girar el aparato o al
+     encogerse la barra del navegador; sin números mágicos de alto.
+
+     Sin este efecto `sheetMaxShift` se queda para siempre en su valor inicial
+     (0) y el arrastre no arranca nunca: `handleRequestGripPointerDown` corta
+     con `if (sheetMaxShift <= 0) return`. Es la causa de que subir/bajar la
+     hoja no respondiera en producción. */
+  useEffect(() => {
+    const shell = requestShellRef.current;
+    if (!shell || typeof ResizeObserver === "undefined") return;
+
+    const measure = (): void => {
+      const shellHeight = shell.getBoundingClientRect().height;
+      if (shellHeight <= 0) return;
+
+      const headHeight =
+        requestSheetHeadRef.current?.getBoundingClientRect().height ??
+        REQUEST_SHEET_HANDLE_FALLBACK;
+      const max = Math.max(0, shellHeight - headHeight);
+
+      setSheetMaxShift(max);
+      setSheetShift((prev) =>
+        prev == null
+          ? Math.round(max * REQUEST_SHEET_REST_FRACTION)
+          : Math.min(prev, max),
+      );
+    };
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(shell);
+    measure();
+
+    return () => observer.disconnect();
+  }, []);
+
   function handleRequestGripPointerDown(
     event: ReactPointerEvent<HTMLElement>,
   ): void {
