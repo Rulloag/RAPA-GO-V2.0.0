@@ -142,11 +142,6 @@ export function AccountDeletionCard({
     const cleanReason = reason.trim();
     const cleanComment = comment.trim();
 
-    if (cleanReason.length < 3) {
-      setError("Debes indicar un motivo de al menos 3 caracteres.");
-      return;
-    }
-
     if (!confirmed) {
       setError(
         "Debes confirmar que la solicitud será revisada por el administrador.",
@@ -160,10 +155,11 @@ export function AccountDeletionCard({
 
     try {
       const payload: {
-        reason: string;
+        reason?: string;
         comment?: string;
         requesterSnapshot?: AccountDeletionClientSnapshot;
-      } = { reason: cleanReason };
+      } = {};
+      if (cleanReason) payload.reason = cleanReason;
       if (cleanComment) payload.comment = cleanComment;
 
       if (requesterSnapshot) {
@@ -197,7 +193,7 @@ export function AccountDeletionCard({
   const hasOpenRequest =
     request != null && OPEN_STATUSES.has(request.status);
 
-  const canSubmit = confirmed && reason.trim().length >= 3 && !submitting;
+  const canSubmit = confirmed && !submitting;
 
   return (
     <IonCard>
@@ -213,7 +209,7 @@ export function AccountDeletionCard({
           La cuenta no se elimina automáticamente. Tu solicitud
           llegará al administrador, quien verificará tu identidad y
           revisará únicamente viajes, pagos, beneficios o casos pendientes.
-          Debes indicar un motivo para que la solicitud pueda enviarse.
+          El motivo es opcional y no condiciona el ejercicio de tu solicitud.
         </p>
 
         {loading && (
@@ -287,7 +283,7 @@ export function AccountDeletionCard({
               <div style={{ marginTop: 12 }}>
                 <IonItem lines="none" className="rapago-profile-field">
                   <IonLabel position="stacked">
-                    Motivo (obligatorio)
+                    Motivo (opcional)
                   </IonLabel>
 
                   <IonTextarea
@@ -296,7 +292,7 @@ export function AccountDeletionCard({
                       setReason(String(event.detail.value ?? ""));
                       setError("");
                     }}
-                    placeholder="Indica por qué quieres eliminar la cuenta"
+                    placeholder="Puedes indicar un motivo o dejar este campo en blanco"
                     maxlength={500}
                     counter
                     autoGrow
@@ -304,8 +300,21 @@ export function AccountDeletionCard({
                   />
 
                   <IonNote slot="helper">
-                    Obligatorio. Entre 3 y 500 caracteres.
+                    Opcional. Máximo 500 caracteres.
                   </IonNote>
+
+                  <IonButton
+                    type="button"
+                    fill="clear"
+                    size="small"
+                    onClick={() => {
+                      setReason("Prefiero no indicar");
+                      setError("");
+                    }}
+                    disabled={submitting}
+                  >
+                    Prefiero no indicar el motivo
+                  </IonButton>
                 </IonItem>
 
 

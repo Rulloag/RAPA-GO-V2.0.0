@@ -19,21 +19,10 @@ const emailSchema = z
   .max(255, "El correo no puede superar 255 caracteres.");
 
 const reasonSchema = z
-  .string({
-    required_error: "Debes indicar el motivo de eliminación.",
-    invalid_type_error: "Debes indicar el motivo de eliminación.",
-  })
+  .string()
   .trim()
-  .min(3, "Debes indicar un motivo de al menos 3 caracteres.")
   .max(500, "El motivo no puede superar 500 caracteres.")
-  .refine(
-    (value) => {
-      const normalized = value.toLocaleLowerCase("es-CL");
-      return normalized !== "prefiero no indicar" &&
-        normalized !== "prefiero no indicar el motivo";
-    },
-    "Debes indicar un motivo concreto para solicitar la eliminación.",
-  );
+  .optional();
 
 const commentSchema = z
   .string()

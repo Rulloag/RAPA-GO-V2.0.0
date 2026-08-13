@@ -329,41 +329,58 @@ export class MailService {
     applicationId: string;
     contractVersion: string;
     pdfBuffer: Buffer;
+    privacyPolicyVersion: string;
+    privacyPolicyPdfBuffer: Buffer;
   }): Promise<void> {
-    const safeName = input.name.replace(/[<>]/g, "").trim() || "Conductor/a";
+    const plainName = input.name.trim() || "Conductor/a";
+    const safeName = escapeHtml(plainName);
 
     await this.getTransporter().sendMail({
       from: this.getFrom(),
       to: input.to,
-      subject: "Confirmación de aceptación de contrato y postulación en RAPA GO",
+      subject: "Confirmación de aceptación de contrato y proceso de habilitación en Rapa Go",
       text: [
-        `Estimado/a ${safeName}:`,
+        `Estimado/a ${plainName}:`,
         "",
-        `Confirmamos que aceptaste electrónicamente el Contrato de Prestación de Servicios de Conductor Independiente de RAPA GO, versión ${input.contractVersion}.`,
+        `Junto con saludar, confirmamos que aceptaste electrónicamente el Contrato de Prestación de Servicios de Conductor Independiente de Rapa Go, versión ${input.contractVersion}, junto con sus anexos y políticas aplicables.`,
         `Identificador de postulación: ${input.applicationId}`,
         "",
-        "Adjuntamos una copia íntegra en PDF para tu registro.",
+        "Adjuntamos una copia íntegra en formato PDF para tu registro. El contrato vigente también permanecerá disponible para consulta o descarga dentro de tu cuenta en la aplicación.",
+        `También adjuntamos la Política de Privacidad vigente, versión ${input.privacyPolicyVersion}.`,
         "",
-        "La aceptación contractual no implica por sí sola la activación definitiva. RAPA GO continuará revisando documentos, vehículo, residencia, domicilio tributario, capacitación, franja de desconexión y demás condiciones previas.",
+        "La aceptación contractual no implica por sí sola la activación definitiva. El equipo de Rapa Go continuará verificando los antecedentes documentales, el vehículo, la residencia y domicilio tributario en Rapa Nui, la capacitación, la franja de desconexión y las restantes condiciones legales y operativas aplicables.",
         "",
-        "Recibirás una notificación cuando la postulación sea habilitada, requiera antecedentes adicionales o no sea aprobada.",
+        "Una vez concluida la revisión, recibirás un correo informando uno de los siguientes estados: habilitado/a; antecedentes pendientes; o postulación no aprobada, con indicación de las razones y del canal para presentar antecedentes adicionales.",
         "",
-        "Consultas: conductores@rapago.cl · +56 9 4796 4171",
+        "Para consultas relacionadas con tu postulación, contrato, liquidaciones o reclamos, puedes escribir a conductores@rapago.cl o comunicarte al +56 9 4796 4171. Cuando corresponda atención presencial, esta se coordinará a través del canal oficial en Miru s/n, Isla de Pascua.",
+        "",
+        "Agradecemos tu interés en integrarte a Rapa Go y tu compromiso con una movilidad segura, responsable y respetuosa de la cultura y el territorio de Rapa Nui.",
+        "",
+        "Atentamente,",
+        "Equipo Rapa Go",
+        "Haka Taiko SpA",
+        "Miru s/n, Isla de Pascua",
+        "conductores@rapago.cl",
+        "+56 9 4796 4171",
       ].join("\n"),
       html: `
         <div style="font-family:Arial,sans-serif;background:#f4efe7;padding:28px;color:#171717">
           <div style="max-width:620px;margin:auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #d6a640">
-            <h1 style="margin:0 0 14px;color:#8f3c24">RAPA GO</h1>
-            <h2 style="margin:0 0 14px">Contrato aceptado</h2>
+            <h1 style="margin:0 0 8px;color:#8f3c24">RAPA GO</h1>
+            <h2 style="margin:0 0 16px">Confirmación de aceptación de contrato y proceso de habilitación</h2>
             <p>Estimado/a <strong>${safeName}</strong>:</p>
-            <p>Confirmamos la aceptación electrónica del Contrato de Prestación de Servicios de Conductor Independiente, versión <strong>${input.contractVersion}</strong>.</p>
-            <p><strong>Postulación:</strong> ${input.applicationId}</p>
-            <p>Adjuntamos una copia íntegra en PDF para tu registro.</p>
+            <p>Junto con saludar, confirmamos que aceptaste electrónicamente el Contrato de Prestación de Servicios de Conductor Independiente de Rapa Go, versión <strong>${escapeHtml(input.contractVersion)}</strong>, junto con sus anexos y políticas aplicables.</p>
+            <p><strong>Identificador de postulación:</strong> ${escapeHtml(input.applicationId)}</p>
+            <p>Adjuntamos una copia íntegra en formato PDF para tu registro. El contrato vigente también permanecerá disponible para consulta o descarga dentro de tu cuenta en la aplicación.</p>
+            <p>También adjuntamos la Política de Privacidad vigente, versión <strong>${escapeHtml(input.privacyPolicyVersion)}</strong>.</p>
             <div style="margin:20px 0;padding:16px;border-radius:14px;background:#fff8df;border:1px solid #d6a640">
-              <strong>La aceptación no habilita automáticamente tu cuenta.</strong>
-              <p style="margin-bottom:0">Revisaremos documentos, vehículo, residencia, domicilio tributario, capacitación y franja de desconexión antes de informar el resultado.</p>
+              <strong>La aceptación contractual no implica por sí sola la activación definitiva.</strong>
+              <p style="margin-bottom:0">El equipo de Rapa Go continuará verificando los antecedentes documentales, el vehículo, la residencia y domicilio tributario en Rapa Nui, la capacitación, la franja de desconexión y las restantes condiciones legales y operativas aplicables.</p>
             </div>
-            <p>Consultas: <a href="mailto:conductores@rapago.cl">conductores@rapago.cl</a> · +56 9 4796 4171</p>
+            <p>Una vez concluida la revisión, recibirás un correo informando uno de los siguientes estados: habilitado/a; antecedentes pendientes; o postulación no aprobada, con indicación de las razones y del canal para presentar antecedentes adicionales.</p>
+            <p>Para consultas relacionadas con tu postulación, contrato, liquidaciones o reclamos, puedes escribir a <a href="mailto:conductores@rapago.cl">conductores@rapago.cl</a> o comunicarte al +56 9 4796 4171. Cuando corresponda atención presencial, esta se coordinará a través del canal oficial en Miru s/n, Isla de Pascua.</p>
+            <p>Agradecemos tu interés en integrarte a Rapa Go y tu compromiso con una movilidad segura, responsable y respetuosa de la cultura y el territorio de Rapa Nui.</p>
+            <p>Atentamente,<br/>Equipo Rapa Go<br/>Haka Taiko SpA<br/>Miru s/n, Isla de Pascua<br/>conductores@rapago.cl<br/>+56 9 4796 4171</p>
           </div>
         </div>
       `,
@@ -371,6 +388,11 @@ export class MailService {
         {
           filename: `Contrato-Rapa-Go-Conductor-v${input.contractVersion}.pdf`,
           content: input.pdfBuffer,
+          contentType: "application/pdf",
+        },
+        {
+          filename: `Politica-Privacidad-Rapa-Go-v${input.privacyPolicyVersion}.pdf`,
+          content: input.privacyPolicyPdfBuffer,
           contentType: "application/pdf",
         },
       ],

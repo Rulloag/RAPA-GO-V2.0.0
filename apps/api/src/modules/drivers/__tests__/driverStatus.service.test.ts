@@ -43,6 +43,20 @@ vi.mock("../../users/users.repository.js", () => ({
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────────
+
+// DriverStatusService construye dependencias de compliance al cargar el modulo.
+// Este test de ganancias debe permanecer aislado de la base de datos real.
+vi.mock("../driverCompliance.service.js", () => ({
+  DriverComplianceService: vi.fn().mockImplementation(() => ({
+    canReceiveNewOffers: vi.fn(),
+  })),
+}));
+
+vi.mock("../driverCompliance.repository.js", () => ({
+  DriverComplianceRepository: vi.fn().mockImplementation(() => ({
+    findActiveRideIdForDriver: vi.fn(),
+  })),
+}));
 const { DriverStatusService } = await import("../driverStatus.service.js");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -86,7 +100,7 @@ describe("DriverStatusService.getTodayEarnings", () => {
     expect(result.earnings.grossFareClp).toBe(0);
     expect(result.earnings.appCommissionClp).toBe(0);
     expect(result.earnings.netEarningsClp).toBe(0);
-    expect(result.earnings.appCommissionPercent).toBe(20);
+    expect(result.earnings.appCommissionPercent).toBe(23);
   });
 
   it("one completed ride is counted correctly", async () => {
@@ -99,8 +113,8 @@ describe("DriverStatusService.getTodayEarnings", () => {
     if (!result.ok) return;
     expect(result.earnings.completedRides).toBe(1);
     expect(result.earnings.grossFareClp).toBe(10000);
-    expect(result.earnings.appCommissionClp).toBe(2000);
-    expect(result.earnings.netEarningsClp).toBe(8000);
+    expect(result.earnings.appCommissionClp).toBe(2300);
+    expect(result.earnings.netEarningsClp).toBe(7700);
   });
 
   it("multiple completed rides sum correctly", async () => {
@@ -117,8 +131,8 @@ describe("DriverStatusService.getTodayEarnings", () => {
     if (!result.ok) return;
     expect(result.earnings.completedRides).toBe(3);
     expect(result.earnings.grossFareClp).toBe(25000);
-    expect(result.earnings.appCommissionClp).toBe(5000);
-    expect(result.earnings.netEarningsClp).toBe(20000);
+    expect(result.earnings.appCommissionClp).toBe(5750);
+    expect(result.earnings.netEarningsClp).toBe(19250);
   });
 
   it("ride with null estimatedFareClp is treated as 0", async () => {
@@ -136,17 +150,17 @@ describe("DriverStatusService.getTodayEarnings", () => {
     expect(result.earnings.grossFareClp).toBe(6000);
   });
 
-  it("commission is exactly 20% rounded", async () => {
+  it("commission is exactly 23% rounded", async () => {
     mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
-    // 13333 * 0.20 = 2666.6 → rounds to 2667
+    // 13333 * 0.23 = 3066.59 → rounds to 3067
     mockFindCompletedByDriverIdOnDate.mockResolvedValue([makeRide({ estimatedFareClp: 13333 })]);
 
     const result = await service.getTodayEarnings("token");
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.earnings.appCommissionClp).toBe(Math.round(13333 * 0.20));
-    expect(result.earnings.netEarningsClp).toBe(13333 - Math.round(13333 * 0.20));
+    expect(result.earnings.appCommissionClp).toBe(Math.round(13333 * 0.23));
+    expect(result.earnings.netEarningsClp).toBe(13333 - Math.round(13333 * 0.23));
   });
 
   it("passenger cannot query driver earnings", async () => {

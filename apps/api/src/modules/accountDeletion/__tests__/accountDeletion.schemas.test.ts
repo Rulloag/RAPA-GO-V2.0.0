@@ -6,35 +6,35 @@ import {
 } from "../accountDeletion.schemas.js";
 
 describe("account deletion schemas", () => {
-  it("exige motivo en una solicitud autenticada", () => {
+  it("permite una solicitud autenticada sin motivo", () => {
     const result = createAccountDeletionRequestSchema.safeParse({});
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
-  it("rechaza un motivo vacío", () => {
+  it("permite motivo vacío y el repositorio lo normaliza a null", () => {
     const result = createAccountDeletionRequestSchema.safeParse({
       reason: "   ",
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
-  it("exige motivo en una solicitud pública verificada", () => {
+  it("permite una solicitud pública verificada sin motivo", () => {
     const result = publicAccountDeletionSubmitSchema.safeParse({
       email: "usuario@rapago.cl",
       code: "123456",
       accepted: true,
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
-  it("rechaza la antigua opción de no indicar motivo", () => {
+  it("permite elegir Prefiero no indicar", () => {
     const result = createAccountDeletionRequestSchema.safeParse({
       reason: "Prefiero no indicar",
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
-  it("acepta un motivo válido", () => {
+  it("acepta un motivo voluntario válido", () => {
     const result = createAccountDeletionRequestSchema.safeParse({
       reason: "Ya no utilizaré la aplicación.",
     });

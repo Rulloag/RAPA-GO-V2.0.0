@@ -112,9 +112,8 @@ export function PublicAccountDeletionPage(): JSX.Element {
     () =>
       validEmail(normalizeEmail(email)) &&
       /^\d{6}$/.test(code.trim()) &&
-      reason.trim().length >= 3 &&
       accepted,
-    [accepted, code, email, reason],
+    [accepted, code, email],
   );
 
   async function requestCode(): Promise<void> {
@@ -155,7 +154,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
 
     if (!canSubmit) {
       setError(
-        "Completa el correo, el código, el motivo y la confirmación.",
+        "Completa el correo, el código y la confirmación.",
       );
       return;
     }
@@ -232,7 +231,7 @@ export function PublicAccountDeletionPage(): JSX.Element {
         </h2>
         <ol style={{ ...publicSiteStyles.muted, paddingLeft: 22 }}>
           <li>Verificamos el correo mediante un código de 6 números.</li>
-          <li>Debes indicar un motivo y generamos un número de seguimiento.</li>
+          <li>El motivo es opcional; puedes indicar uno o elegir no informarlo.</li>
           <li>La solicitud llega al panel administrativo.</li>
           <li>La cuenta no se elimina automáticamente.</li>
           <li>Si se aprueba, se anonimizan los datos no necesarios y se cierran las sesiones.</li>
@@ -332,23 +331,35 @@ export function PublicAccountDeletionPage(): JSX.Element {
                 </IonItem>
 
                 <IonItem style={inputStyle}>
-                  <IonLabel position="stacked">Motivo (obligatorio)</IonLabel>
+                  <IonLabel position="stacked">Motivo (opcional)</IonLabel>
                   <IonTextarea
                     autoGrow
                     maxlength={500}
                     value={reason}
                     disabled={loading}
-                    placeholder="Indica por qué deseas eliminar la cuenta"
+                    placeholder="Puedes indicar un motivo o dejar este campo en blanco"
                     onIonInput={(event) => {
                       setReason(String(event.detail.value ?? ""));
                       setError("");
                     }}
                   />
                   <IonNote slot="helper">
-                    Obligatorio. Entre 3 y 500 caracteres.
+                    Opcional. Máximo 500 caracteres.
                   </IonNote>
                 </IonItem>
 
+                <IonButton
+                  expand="block"
+                  fill="clear"
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    setReason("Prefiero no indicar");
+                    setError("");
+                  }}
+                >
+                  Prefiero no indicar el motivo
+                </IonButton>
 
                 <IonItem style={inputStyle}>
                   <IonLabel position="stacked">Observación opcional</IonLabel>

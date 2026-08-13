@@ -51,7 +51,7 @@ function getAppleLegalLabel(document: LegalDocumentData): string {
     return `He leído y acepto las Condiciones de Usuarios, versión ${document.version}, como anexo subordinado a los Términos Generales.`;
   }
 
-  return `Declaro haber leído la Política de Privacidad, versión ${document.version}, y conocer cómo Rapa Go trata mis datos personales, geolocalización, pagos, autenticación, soporte y eliminación de cuenta.`;
+  return `He leído la Política de Privacidad de Rapa Go, versión ${document.version}, y consiento el tratamiento de mis datos personales conforme a ella en los casos en que dicho tratamiento requiera mi consentimiento.`;
 }
 
 function getAppleLegalHref(type: string): string {
