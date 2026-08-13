@@ -544,6 +544,53 @@ describe("RidesService - contrato actual", () => {
       expect(notes).toContain("PaymentMethod: card");
     });
 
+    it("valida en backend la cantidad de collares de una reserva Mataveri", async () => {
+      const pickup = new Date(Date.now() + 90 * 60 * 1000).toISOString();
+
+      const result = await service.createRideRequest("token", {
+        originText: "Aeropuerto Internacional Mataveri",
+        destinationText: "Hotel Hanga Roa",
+        rideMode: "scheduled",
+        tripFareMode: "one_way",
+        scheduledPickupAt: pickup,
+        paymentMethod: "card",
+        paymentProvider: "klap",
+        estimatedFareClp: 5000,
+        airportWelcomeOption: "flower_lei",
+        flowerLeiQuantity: 3,
+      });
+
+      expect(result.ok).toBe(true);
+      const notes = mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
+      expect(notes).toContain("RAPAGO_FLOWER_LEI_QUANTITY: 3");
+      expect(notes).toContain("RAPAGO_FLOWER_LEI_UNIT_PRICE_CLP: 4000");
+      expect(notes).toContain("RAPAGO_FLOWER_LEI_SURCHARGE_CLP: 12000");
+      expect(notes).toContain("3 collares de flores");
+      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(17000);
+    });
+
+    it("no aplica el recargo de collares fuera de una reserva Mataveri", async () => {
+      const pickup = new Date(Date.now() + 90 * 60 * 1000).toISOString();
+
+      const result = await service.createRideRequest("token", {
+        originText: "Ahu Tahai",
+        destinationText: "Hotel Hanga Roa",
+        rideMode: "scheduled",
+        tripFareMode: "one_way",
+        scheduledPickupAt: pickup,
+        paymentMethod: "card",
+        paymentProvider: "klap",
+        estimatedFareClp: 5000,
+        airportWelcomeOption: "flower_lei",
+        flowerLeiQuantity: 3,
+      });
+
+      expect(result.ok).toBe(true);
+      const notes = mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
+      expect(notes).not.toContain("RAPAGO_FLOWER_LEI_QUANTITY");
+      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(5000);
+    });
+
     it("rechaza un proveedor no permitido para una reserva", async () => {
       const pickup = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 

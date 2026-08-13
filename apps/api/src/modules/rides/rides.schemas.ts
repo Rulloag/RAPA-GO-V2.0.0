@@ -47,6 +47,12 @@ export const createRideRequestSchema = z.object({
   scheduledReturnAt: z.string().trim().nullable().optional(),
   scheduledActivationAt: z.string().trim().nullable().optional(),
   scheduledReturnActivationAt: z.string().trim().nullable().optional(),
+
+  // Reserva Mataveri: el backend recibe únicamente la opción y la cantidad.
+  // El valor unitario del collar se define en servidor; nunca se confía en un
+  // recargo calculado por el cliente.
+  airportWelcomeOption: z.enum(["none", "flower_lei"]).optional(),
+  flowerLeiQuantity: z.number().int().min(1).max(20).nullable().optional(),
 });
 
 export type CreateRideRequestInput = z.infer<

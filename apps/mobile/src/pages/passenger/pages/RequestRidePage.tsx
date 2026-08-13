@@ -61,14 +61,10 @@ import {
   type CreateRideInput,
 } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
-import { KlapCheckoutModal } from "../../../features/payments/KlapCheckoutModal.js";
 import {
-  cancelPendingKlapRide,
-  clearPendingKlapPayment,
   createKlapHostedOrder,
-  readPendingKlapPayment,
-  resetKlapCheckoutForNextOrder,
-  savePendingKlapPayment,
+  markPendingKlapPaymentStarted,
+  openKlapHostedCheckout,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
@@ -1130,6 +1126,7 @@ function createLocalPassengerRide(input: {
   passengerFareLabel?: string | null;
   airportWelcomeOption?: AirportWelcomeOption | null;
   flowerLeiRequested?: boolean | null;
+  flowerLeiQuantity?: number | null;
   airportWelcomeSurchargeClp?: number | null;
   optionalServicesTotalClp?: number | null;
   baseFareBeforeExtrasClp?: number | null;
@@ -1196,6 +1193,7 @@ function createLocalPassengerRide(input: {
           ? "Solo recogida"
           : null),
     flowerLeiRequested: input.flowerLeiRequested ?? false,
+    flowerLeiQuantity: input.flowerLeiQuantity ?? (input.flowerLeiRequested ? 1 : 0),
     flowerLeiSurchargeClp: input.airportWelcomeSurchargeClp ?? 0,
     airportWelcomeSurchargeClp: input.airportWelcomeSurchargeClp ?? 0,
     optionalServicesTotalClp:
@@ -1285,6 +1283,7 @@ function createLocalAdminScheduledRide(input: {
   passengerFareLabel?: string | null;
   airportWelcomeOption?: AirportWelcomeOption | null;
   flowerLeiRequested?: boolean | null;
+  flowerLeiQuantity?: number | null;
   airportWelcomeSurchargeClp?: number | null;
   optionalServicesTotalClp?: number | null;
   baseFareBeforeExtrasClp?: number | null;
@@ -1352,6 +1351,7 @@ function saveLocalPassengerRide(input: {
   passengerFareLabel?: string | null;
   airportWelcomeOption?: AirportWelcomeOption | null;
   flowerLeiRequested?: boolean | null;
+  flowerLeiQuantity?: number | null;
   airportWelcomeSurchargeClp?: number | null;
   optionalServicesTotalClp?: number | null;
   baseFareBeforeExtrasClp?: number | null;
@@ -1476,6 +1476,7 @@ type PaymentMethod = "cash" | "card" | null;
 type AirportWelcomeOption = "none" | "flower_lei";
 
 const AIRPORT_FLOWER_LEI_SURCHARGE_CLP = 4000;
+const AIRPORT_FLOWER_LEI_MAX_QUANTITY = 20;
 const AIRPORT_FLOWER_LEI_LABEL = "Collar de flores Rapa Nui";
 
 
@@ -1793,9 +1794,9 @@ const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace
     id: "aeropuerto-mataveri",
     name: "Aeropuerto Internacional Mataveri",
     subtitle: "Terminal de pasajeros",
-    address: "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.16395,
-    lng: -109.42465,
+    address: "Aeropuerto Internacional Mataveri (IPC), Hanga Roa, Rapa Nui, Chile",
+    lat: -27.16472,
+    lng: -109.42167,
     aliases: ["aero", "aeropuerto", "airport", "mataveri", "terminal"],
     placeTypes: ["airport", "point_of_interest", "establishment"],
   },
@@ -2904,12 +2905,12 @@ const ROUND_TRIP_DESTINATION_FIXED_POINTS: Record<string, Omit<PickerResult, "or
 
 const RAPA_NUI_AIRPORT_DESTINATION: PickerResult = {
   text: "Aeropuerto Internacional Mataveri",
-  address: "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
-  // Punto de recogida del pasajero en la zona pública/terminal del aeropuerto.
-  // No usamos el centroide oficial del aeródromo porque Google lo muestra corrido
-  // hacia la pista/camino interior, lejos del punto real de espera del pasajero.
-  lat: -27.16395,
-  lng: -109.42465,
+  address: "Aeropuerto Internacional Mataveri (IPC), Hanga Roa, Rapa Nui, Chile",
+  // Referencia fija del Aeropuerto Internacional Mataveri (IPC/SCIP).
+  // Se usa una sola coordenada canónica para Reserva para evitar que el origen
+  // quede desplazado por un punto antiguo guardado localmente.
+  lat: -27.16472,
+  lng: -109.42167,
   placeId: "rapago-fixed-mataveri-airport-terminal",
   originalLat: null,
   originalLng: null,
@@ -7401,134 +7402,6 @@ export default function RequestRidePage(): JSX.Element {
     [history],
   );
 
-  const [klapPayment, setKlapPayment] =
-    useState<PendingKlapPaymentRecord | null>(null);
-
-  const restorePendingKlapPayment = useCallback((): void => {
-    if (!session?.accessToken) return;
-    const pending = readPendingKlapPayment();
-    if (pending) setKlapPayment(pending);
-  }, [session?.accessToken]);
-
-  useEffect(() => {
-    restorePendingKlapPayment();
-    window.addEventListener(
-      "rapago:resume-klap-payment",
-      restorePendingKlapPayment,
-    );
-
-    return () => {
-      window.removeEventListener(
-        "rapago:resume-klap-payment",
-        restorePendingKlapPayment,
-      );
-    };
-  }, [restorePendingKlapPayment]);
-
-  const handleKlapApproved = useCallback(
-    (pending: PendingKlapPaymentRecord): void => {
-      const approvedAt = new Date().toISOString();
-
-      if (pending.scheduledRideMirror) {
-        upsertLocalAdminScheduledRide({
-          ...pending.scheduledRideMirror,
-          serverRideId: pending.rideRequestId,
-          originalRideId: pending.rideRequestId,
-          paymentStatus: "approved",
-          paymentApproved: true,
-          paymentApprovedAt: approvedAt,
-          paymentProvider: "klap",
-        });
-      }
-
-      clearPendingKlapPayment();
-      setKlapPayment(null);
-      window.dispatchEvent(
-        new CustomEvent("rapago:passenger-rides-updated", {
-          detail: {
-            rideId: pending.rideRequestId,
-            source: "klap-payment-approved",
-          },
-        }),
-      );
-      goToTripsAfterRequest(pending.rideRequestId);
-    },
-    [goToTripsAfterRequest],
-  );
-
-  const handleKlapRejected = useCallback(
-    (_pending: PendingKlapPaymentRecord, message: string): void => {
-      // El modal permanece abierto para que el pasajero vea el motivo y pueda
-      // probar otra tarjeta. Solo limpiamos la orden terminal del almacenamiento.
-      clearPendingKlapPayment();
-      setSubmitError(message);
-    },
-    [],
-  );
-
-  const handleRetryKlapPayment = useCallback(
-    async (pending: PendingKlapPaymentRecord): Promise<PendingKlapPaymentRecord> => {
-      if (!session?.accessToken) {
-        throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
-      }
-
-      // Conserva el registro anterior hasta que el backend entregue una orden
-      // nueva o recupere de forma segura la existente. Así no perdemos la
-      // referencia local si Klap está temporalmente inaccesible.
-      resetKlapCheckoutForNextOrder();
-
-      const order = await createKlapHostedOrder(
-        session.accessToken,
-        pending.rideRequestId,
-      );
-
-      const nextPayment: PendingKlapPaymentRecord = {
-        ...pending,
-        paymentId: order.paymentId,
-        orderId: order.publicCheckoutData.orderId,
-        redirectUrl: order.publicCheckoutData.redirectUrl,
-        provider: "klap",
-        createdAt: new Date().toISOString(),
-        checkoutStartedAt: null,
-      };
-
-      savePendingKlapPayment(nextPayment);
-      setSubmitError(null);
-      setKlapPayment(nextPayment);
-      return nextPayment;
-    },
-    [session?.accessToken],
-  );
-
-  const handleCloseKlapCheckout = useCallback(
-    (pending: PendingKlapPaymentRecord): void => {
-      setKlapPayment(null);
-      goToTripsAfterRequest(pending.rideRequestId);
-    },
-    [goToTripsAfterRequest],
-  );
-
-  const handleCancelKlapRequest = useCallback(
-    async (pending: PendingKlapPaymentRecord): Promise<void> => {
-      if (!session?.accessToken) {
-        throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
-      }
-
-      await cancelPendingKlapRide(session.accessToken, pending);
-      setKlapPayment(null);
-      tripsRedirectStartedRef.current = false;
-      window.dispatchEvent(
-        new CustomEvent("rapago:passenger-rides-updated", {
-          detail: {
-            rideId: pending.rideRequestId,
-            source: "klap-request-cancelled-before-payment",
-          },
-        }),
-      );
-    },
-    [session?.accessToken],
-  );
-
   useEffect(() => {
     preSearchLocationService.read();
     return () => preSearchLocationService.clear();
@@ -7576,6 +7449,7 @@ export default function RequestRidePage(): JSX.Element {
   const [returnScheduledAt, setReturnScheduledAt] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
   const [airportWelcomeOption, setAirportWelcomeOption] = useState<AirportWelcomeOption>("none");
+  const [flowerLeiQuantity, setFlowerLeiQuantity] = useState(1);
   const [locating, setLocating] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -8005,6 +7879,7 @@ export default function RequestRidePage(): JSX.Element {
     setPaymentMethod("card");
     setShowPaymentBox(false);
     setAirportWelcomeOption("none");
+    setFlowerLeiQuantity(1);
     setFlightNumber("");
     setSelectedRoundTripPromotionId(promotion.id);
     setTripFareMode("round_trip");
@@ -8078,6 +7953,7 @@ export default function RequestRidePage(): JSX.Element {
     setScheduledAt("");
     setReturnScheduledAt("");
     setAirportWelcomeOption("none");
+    setFlowerLeiQuantity(1);
     setPaymentMethod(null);
     setShowPaymentBox(false);
     setOriginPoint(null);
@@ -8098,6 +7974,7 @@ export default function RequestRidePage(): JSX.Element {
     setPaymentMethod("card");
     setShowPaymentBox(false);
     setAirportWelcomeOption("none");
+    setFlowerLeiQuantity(1);
     setFlightNumber("");
     applyRapaNuiAirportOrigin();
     setDestinationPoint(null);
@@ -8303,9 +8180,13 @@ export default function RequestRidePage(): JSX.Element {
     };
   }, [session?.user]);
 
+  const normalizedFlowerLeiQuantity = Math.min(
+    AIRPORT_FLOWER_LEI_MAX_QUANTITY,
+    Math.max(1, Math.round(Number(flowerLeiQuantity) || 1)),
+  );
   const airportWelcomeSurchargeClp =
     isAirportScheduledRide && airportWelcomeOption === "flower_lei"
-      ? AIRPORT_FLOWER_LEI_SURCHARGE_CLP
+      ? AIRPORT_FLOWER_LEI_SURCHARGE_CLP * normalizedFlowerLeiQuantity
       : 0;
   const hasAirportFlowerLei = airportWelcomeSurchargeClp > 0;
   const localPendingPassengerCharges =
@@ -8644,8 +8525,9 @@ export default function RequestRidePage(): JSX.Element {
           notes.push("Servicio de aeropuerto: no aplica para esta experiencia.");
         } else if (airportWelcomeOption === "flower_lei") {
           notes.push(`Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`);
-          notes.push(`Admin debe gestionar el collar de flores para la llegada del pasajero en Mataveri.`);
-          notes.push(`Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}.`);
+          notes.push(`Cantidad de collares de flores: ${normalizedFlowerLeiQuantity}.`);
+          notes.push(`Admin debe gestionar ${normalizedFlowerLeiQuantity} collar(es) de flores para la llegada del pasajero en Mataveri.`);
+          notes.push(`Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${normalizedFlowerLeiQuantity} x ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} = ${formatCLP(airportWelcomeSurchargeClp)}.`);
           notes.push(`Total final con recibimiento: ${formatCLP(selectedFareAmount)}.`);
         } else {
           notes.push("Recibimiento aeropuerto: solo recogida.");
@@ -8722,7 +8604,8 @@ export default function RequestRidePage(): JSX.Element {
           0,
           Math.round(
             (selectedFareAmountBeforeWallet ?? 0) -
-              pendingPassengerChargeTotalClp,
+              pendingPassengerChargeTotalClp -
+              airportWelcomeSurchargeClp,
           ),
         );
         (input as CreateRideInput & {
@@ -8778,14 +8661,15 @@ export default function RequestRidePage(): JSX.Element {
         (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
       }
 
-      // Conservador: no enviamos un campo nuevo que el backend todavía podría
-      // rechazar. La nota viaja dentro de `notes` con marcadores explícitos.
+      // La reserva envía opción y cantidad de collares como datos estructurados.
+      // El backend conserva la autoridad sobre el valor unitario y el recargo.
       Object.assign(input as CreateRideInput & Record<string, unknown>, scheduleFields);
       if (isAirportScheduledRide) {
         Object.assign(input as CreateRideInput & Record<string, unknown>, {
           airportWelcomeOption,
           airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
           flowerLeiRequested: hasAirportFlowerLei,
+          flowerLeiQuantity: hasAirportFlowerLei ? normalizedFlowerLeiQuantity : null,
           flowerLeiSurchargeClp: airportWelcomeSurchargeClp,
           airportWelcomeSurchargeClp,
           optionalServicesTotalClp: airportWelcomeSurchargeClp,
@@ -8882,6 +8766,7 @@ export default function RequestRidePage(): JSX.Element {
             airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
             airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
             flowerLeiRequested: hasAirportFlowerLei,
+            flowerLeiQuantity: hasAirportFlowerLei ? normalizedFlowerLeiQuantity : null,
             airportWelcomeSurchargeClp,
             optionalServicesTotalClp: airportWelcomeSurchargeClp,
             baseFareBeforeExtrasClp: selectedBaseFareAmount,
@@ -8938,8 +8823,15 @@ export default function RequestRidePage(): JSX.Element {
             : null,
         };
 
-        savePendingKlapPayment(pendingKlapPayment);
-        setKlapPayment(pendingKlapPayment);
+        const redirectUrl = String(pendingKlapPayment.redirectUrl ?? "").trim();
+        if (!redirectUrl) {
+          throw new Error("Klap no entregó el enlace seguro de pago para esta orden.");
+        }
+
+        // Flujo directo: el botón de pago abre inmediatamente el Checkout
+        // oficial alojado por Klap. No mostramos un modal intermedio de RAPA GO.
+        const startedPayment = markPendingKlapPaymentStarted(pendingKlapPayment);
+        openKlapHostedCheckout(String(startedPayment.redirectUrl ?? redirectUrl));
         return;
       }
 
@@ -8963,6 +8855,7 @@ export default function RequestRidePage(): JSX.Element {
       setReturnScheduledAt("");
       setFlightNumber("");
       setAirportWelcomeOption("none");
+      setFlowerLeiQuantity(1);
       setOriginSuggestions([]);
       setDestSuggestions([]);
       setRideMode("now");
@@ -9085,8 +8978,9 @@ export default function RequestRidePage(): JSX.Element {
             localNotes.push("Servicio de aeropuerto: no aplica para esta experiencia.");
           } else if (airportWelcomeOption === "flower_lei") {
             localNotes.push(`Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`);
-            localNotes.push(`Admin debe gestionar el collar de flores para la llegada del pasajero en Mataveri.`);
-            localNotes.push(`Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}.`);
+            localNotes.push(`Cantidad de collares de flores: ${normalizedFlowerLeiQuantity}.`);
+            localNotes.push(`Admin debe gestionar ${normalizedFlowerLeiQuantity} collar(es) de flores para la llegada del pasajero en Mataveri.`);
+            localNotes.push(`Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${normalizedFlowerLeiQuantity} x ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} = ${formatCLP(airportWelcomeSurchargeClp)}.`);
             localNotes.push(`Total final con recibimiento: ${formatCLP(selectedFareAmount)}.`);
           } else {
             localNotes.push("Recibimiento aeropuerto: solo recogida.");
@@ -9152,6 +9046,7 @@ export default function RequestRidePage(): JSX.Element {
             airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
             airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
             flowerLeiRequested: hasAirportFlowerLei,
+            flowerLeiQuantity: hasAirportFlowerLei ? normalizedFlowerLeiQuantity : null,
             airportWelcomeSurchargeClp,
             optionalServicesTotalClp: airportWelcomeSurchargeClp,
             baseFareBeforeExtrasClp: selectedBaseFareAmount,
@@ -9225,6 +9120,7 @@ export default function RequestRidePage(): JSX.Element {
             airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
             airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
             flowerLeiRequested: hasAirportFlowerLei,
+            flowerLeiQuantity: hasAirportFlowerLei ? normalizedFlowerLeiQuantity : null,
             airportWelcomeSurchargeClp,
             optionalServicesTotalClp: airportWelcomeSurchargeClp,
             baseFareBeforeExtrasClp: selectedBaseFareAmount,
@@ -9240,6 +9136,7 @@ export default function RequestRidePage(): JSX.Element {
         setReturnScheduledAt("");
         setFlightNumber("");
         setAirportWelcomeOption("none");
+        setFlowerLeiQuantity(1);
         setOriginSuggestions([]);
         setDestSuggestions([]);
         setRideMode("now");
@@ -10460,7 +10357,7 @@ return (
                       id: "flower_lei" as AirportWelcomeOption,
                       icon: flowerOutline,
                       title: "Collar de flores",
-                      text: `Bienvenida Rapa Nui al llegar · +${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}`,
+                      text: `Bienvenida Rapa Nui al llegar · ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} por persona`,
                     },
                   ]).map((option) => {
                     const active = airportWelcomeOption === option.id;
@@ -10469,7 +10366,19 @@ return (
                       <button
                         key={option.id}
                         type="button"
-                        onClick={() => setAirportWelcomeOption(option.id)}
+                        onClick={() => {
+                          setAirportWelcomeOption(option.id);
+                          if (option.id === "flower_lei") {
+                            setFlowerLeiQuantity((current) =>
+                              Math.min(
+                                AIRPORT_FLOWER_LEI_MAX_QUANTITY,
+                                Math.max(1, Math.round(Number(current) || 1)),
+                              ),
+                            );
+                          } else {
+                            setFlowerLeiQuantity(1);
+                          }
+                        }}
                         style={{
                           border: active
                             ? "2px solid #D2A43A"
@@ -10531,7 +10440,7 @@ return (
                         : "1px solid rgba(210,164,58,.42)",
                       color: isDark ? "#f1c864" : "#4F350D",
                       borderRadius: "14px",
-                      padding: "10px 12px",
+                      padding: "12px",
                       fontSize: "0.74rem",
                       lineHeight: 1.35,
                       fontWeight: 900,
@@ -10541,7 +10450,86 @@ return (
                         : "0 10px 22px rgba(210,164,58,.14)",
                     }}
                   >
-                    <><IonIcon icon={flowerOutline} style={{ verticalAlign: "middle", marginRight: 4, fontSize: "1rem" }} />{" "}<strong>Collar de flores agregado.</strong> Sumamos {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} al total para preparar tu bienvenida Rapa Nui al llegar.</>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <IonIcon icon={flowerOutline} style={{ fontSize: "1rem" }} />
+                      <strong>¿Para cuántas personas?</strong>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "grid",
+                        gridTemplateColumns: "44px minmax(72px,1fr) 44px",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Quitar un collar de flores"
+                        disabled={normalizedFlowerLeiQuantity <= 1}
+                        onClick={() =>
+                          setFlowerLeiQuantity((current) =>
+                            Math.max(1, Math.round(Number(current) || 1) - 1),
+                          )
+                        }
+                        style={{
+                          height: 40,
+                          borderRadius: 12,
+                          border: "1px solid rgba(210,164,58,.55)",
+                          background: isDark ? "rgba(255,255,255,.08)" : "#fff",
+                          color: isDark ? "#F8D879" : "#4F350D",
+                          fontWeight: 950,
+                          opacity: normalizedFlowerLeiQuantity <= 1 ? 0.45 : 1,
+                        }}
+                      >
+                        <IonIcon icon={removeOutline} />
+                      </button>
+                      <div
+                        aria-live="polite"
+                        style={{
+                          minHeight: 40,
+                          display: "grid",
+                          placeItems: "center",
+                          borderRadius: 12,
+                          background: isDark ? "rgba(0,0,0,.22)" : "rgba(255,255,255,.72)",
+                          border: "1px solid rgba(210,164,58,.35)",
+                          fontSize: "1rem",
+                          fontWeight: 950,
+                        }}
+                      >
+                        {normalizedFlowerLeiQuantity}
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Agregar un collar de flores"
+                        disabled={normalizedFlowerLeiQuantity >= AIRPORT_FLOWER_LEI_MAX_QUANTITY}
+                        onClick={() =>
+                          setFlowerLeiQuantity((current) =>
+                            Math.min(
+                              AIRPORT_FLOWER_LEI_MAX_QUANTITY,
+                              Math.max(1, Math.round(Number(current) || 1) + 1),
+                            ),
+                          )
+                        }
+                        style={{
+                          height: 40,
+                          borderRadius: 12,
+                          border: "1px solid rgba(210,164,58,.55)",
+                          background: "linear-gradient(135deg,#D2A43A,#F8D879)",
+                          color: "#111",
+                          fontWeight: 950,
+                          opacity: normalizedFlowerLeiQuantity >= AIRPORT_FLOWER_LEI_MAX_QUANTITY ? 0.5 : 1,
+                        }}
+                      >
+                        <IonIcon icon={addOutline} />
+                      </button>
+                    </div>
+                    <div style={{ marginTop: 9 }}>
+                      {normalizedFlowerLeiQuantity} {normalizedFlowerLeiQuantity === 1 ? "collar" : "collares"} · {formatCLP(airportWelcomeSurchargeClp)} en total
+                    </div>
+                    <div style={{ marginTop: 3, opacity: 0.78, fontSize: ".66rem" }}>
+                      {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} por persona.
+                    </div>
                   </div>
                 )}
                   </>
@@ -10728,7 +10716,7 @@ return (
                   </span>
                   {hasAirportFlowerLei && (
                     <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(248,216,121,.16)", border: "1px solid rgba(248,216,121,.28)", color: "#F8D879", fontSize: ".66rem", fontWeight: 950 }}>
-                      <IonIcon icon={flowerOutline} style={{ verticalAlign: "middle", fontSize: "0.8rem" }} />{" "}Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
+                      <IonIcon icon={flowerOutline} style={{ verticalAlign: "middle", fontSize: "0.8rem" }} />{" "}{normalizedFlowerLeiQuantity} {normalizedFlowerLeiQuantity === 1 ? "collar" : "collares"} +{formatCLP(airportWelcomeSurchargeClp)}
                     </span>
                   )}
                 </div>
@@ -11236,15 +11224,6 @@ return (
           />
         )}
 
-        <KlapCheckoutModal
-          payment={klapPayment}
-          accessToken={session?.accessToken}
-          onApproved={handleKlapApproved}
-          onRejected={handleKlapRejected}
-          onRetryRequest={handleRetryKlapPayment}
-          onClose={handleCloseKlapCheckout}
-          onCancelRequest={handleCancelKlapRequest}
-        />
       </IonContent>
     </IonPage>
   );
