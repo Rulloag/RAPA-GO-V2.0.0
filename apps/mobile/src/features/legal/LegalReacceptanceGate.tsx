@@ -3,6 +3,7 @@ import {
   IonCheckbox,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonModal,
@@ -11,7 +12,8 @@ import {
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { checkmarkCircleOutline, closeOutline } from "ionicons/icons";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { useAuth } from "../auth/useAuth.js";
 import {
@@ -32,6 +34,8 @@ export function LegalReacceptanceGate(): JSX.Element | null {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [dismissed, setDismissed] = useState(false);
+  const [completed, setCompleted] = useState(false);
 
   const appliesToUser =
     user != null &&
@@ -66,6 +70,8 @@ export function LegalReacceptanceGate(): JSX.Element | null {
   }, [appliesToUser, session?.accessToken]);
 
   useEffect(() => {
+    setDismissed(false);
+    setCompleted(false);
     void load();
   }, [load]);
 
@@ -91,7 +97,7 @@ export function LegalReacceptanceGate(): JSX.Element | null {
         );
       }
 
-      await load();
+      setCompleted(true);
     } catch (acceptError) {
       setError(
         acceptError instanceof Error
@@ -103,39 +109,132 @@ export function LegalReacceptanceGate(): JSX.Element | null {
     }
   }
 
+  function closeNotice(): void {
+    setDismissed(true);
+  }
+
+  function closeCompleted(): void {
+    setCompleted(false);
+    setDocuments([]);
+    setAcceptedIds(new Set());
+    setDismissed(true);
+  }
+
   if (!appliesToUser || !session?.accessToken) return null;
 
-  // No bloqueamos toda la aplicación por una caída temporal de red.
-  // El modal solo se abre cuando el backend confirmó que faltan
-  // aceptaciones de documentos actualmente vigentes.
-  const isOpen = documents.length > 0;
+  // El backend sigue siendo la fuente de verdad de las aceptaciones legales.
+  // La X solo cierra el aviso visual; nunca registra una aceptación.
+  // Si una operación exige una versión vigente, el backend debe mantener
+  // su validación aunque el usuario haya cerrado este modal.
+  const isOpen =
+    !dismissed &&
+    (completed || documents.length > 0);
 
   return (
     <IonModal
       isOpen={isOpen}
       backdropDismiss={false}
       canDismiss={false}
+      style={{
+        "--width": "min(92vw, 640px)",
+        "--height": "min(86vh, 760px)",
+        "--border-radius": "22px",
+      } as CSSProperties}
     >
       <IonHeader>
         <IonToolbar color="primary">
-          <IonTitle>Documentos actualizados</IonTitle>
+          <IonTitle>
+            {completed
+              ? "Actualización completada"
+              : "Documentos y políticas actualizados"}
+          </IonTitle>
+
+          <IonButton
+            slot="end"
+            fill="clear"
+            color="light"
+            aria-label={
+              completed
+                ? "Cerrar confirmación"
+                : "Cerrar aviso de documentos actualizados"
+            }
+            onClick={completed ? closeCompleted : closeNotice}
+            style={{
+              "--padding-start": "10px",
+              "--padding-end": "10px",
+              marginRight: 6,
+            }}
+          >
+            <IonIcon icon={closeOutline} slot="icon-only" />
+          </IonButton>
         </IonToolbar>
       </IonHeader>
 
       <IonContent className="ion-padding">
-        {loading ? (
+        {completed ? (
+          <div
+            style={{
+              minHeight: "100%",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <section
+              style={{
+                width: "100%",
+                maxWidth: 460,
+                textAlign: "center",
+                padding: "28px 18px",
+              }}
+            >
+              <IonIcon
+                icon={checkmarkCircleOutline}
+                color="success"
+                style={{ fontSize: 68, marginBottom: 12 }}
+              />
+
+              <h2 style={{ margin: "0 0 12px", fontSize: "1.35rem" }}>
+                Tus documentos y políticas se actualizaron correctamente
+              </h2>
+
+              <p style={{ margin: "0 0 22px", lineHeight: 1.55 }}>
+                Tus nuevas aceptaciones quedaron registradas y las versiones
+                anteriores permanecen guardadas como historial.
+              </p>
+
+              <IonButton
+                expand="block"
+                color="primary"
+                onClick={closeCompleted}
+              >
+                Continuar
+              </IonButton>
+            </section>
+          </div>
+        ) : loading ? (
           <div style={{ textAlign: "center", padding: 30 }}>
             <IonSpinner name="crescent" />
             <p>Comprobando versiones legales vigentes…</p>
           </div>
         ) : (
           <>
-            <p>
-              RAPA GO actualizó documentos relevantes. Para continuar con
-              operaciones que los requieren, revisa y acepta las versiones
-              vigentes. Tus aceptaciones anteriores permanecen guardadas como
+            <p style={{ lineHeight: 1.55, marginTop: 4 }}>
+              RAPA GO actualizó algunos documentos y políticas. Revisa y acepta
+              las versiones vigentes para continuar con las operaciones que las
+              requieran. Tus aceptaciones anteriores permanecen guardadas como
               historial.
             </p>
+
+            <IonNote
+              style={{
+                display: "block",
+                margin: "0 0 16px",
+                lineHeight: 1.45,
+              }}
+            >
+              Puedes cerrar este aviso con la X. Cerrar la ventana no registra
+              una aceptación.
+            </IonNote>
 
             {error && (
               <div
