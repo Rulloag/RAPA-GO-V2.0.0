@@ -260,21 +260,10 @@ export class GoogleAuthService {
         await this.credentialsRepository.findByUserId(emailOwner.id);
 
       if (!emailOwnerCredentials) {
-        this.auditService.recordSafe({
-          eventType: "auth.google.login.conflict",
-          entityType: "user",
-          entityId: emailOwner.id,
-          metadata: { reason: "email_taken_password_unavailable" },
-        });
-
-        return {
-          ok: false,
-          code: "AUTH_GOOGLE_LINK_PASSWORD_UNAVAILABLE",
-          message:
-            "Esta cuenta no tiene contraseÃ±a RAPA GO. Inicia sesiÃ³n con tu mÃ©todo actual, crea una contraseÃ±a de respaldo en Perfil y luego vuelve a vincular Google.",
-          statusCode: 409,
-          displayEmail: identity.email,
-        };
+        return this.linkPasswordlessVerifiedEmailAccount(
+          identity,
+          emailOwner,
+        );
       }
 
       if (!payload.linkPassword) {
@@ -396,6 +385,155 @@ export class GoogleAuthService {
       },
       refreshToken: session.refreshToken,
     };
+  }
+
+  /**
+   * Vincula Google cuando el correo verificado por Google ya pertenece a una
+   * cuenta RAPA GO verificada que todavía no tiene contraseña local.
+   *
+   * Esto evita el callejón sin salida donde una cuenta social sin contraseña
+   * no podía entrar con Google ni crear la contraseña de respaldo. El vínculo
+   * solo se permite con correo verificado en ambos lados y nunca reemplaza una
+   * identidad Google distinta ya asociada al mismo usuario.
+   */
+  private async linkPasswordlessVerifiedEmailAccount(
+    identity: VerifiedGoogleIdentity,
+    user: User,
+  ): Promise<GoogleAuthResult> {
+    if (user.status === "deleted") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_DELETED",
+        message: "Esta cuenta fue eliminada.",
+        statusCode: 403,
+        displayEmail: identity.email,
+      };
+    }
+
+    if (user.status === "pending") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_PENDING",
+        message: "Tu cuenta todavía está pendiente de aprobación.",
+        statusCode: 403,
+        displayEmail: identity.email,
+      };
+    }
+
+    if (user.status === "suspended" || user.status === "banned") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_SUSPENDED",
+        message: "Esta cuenta está bloqueada. Contacta a soporte.",
+        statusCode: 403,
+        displayEmail: identity.email,
+      };
+    }
+
+    if (!user.isVerified) {
+      this.auditService.recordSafe({
+        eventType: "auth.google.login.conflict",
+        entityType: "user",
+        entityId: user.id,
+        metadata: { reason: "email_owner_not_verified" },
+      });
+
+      return {
+        ok: false,
+        code: "AUTH_GOOGLE_LINK_PASSWORD_UNAVAILABLE",
+        message:
+          "La cuenta RAPA GO existente todavía no tiene un método de acceso confirmado. Inicia sesión con tu método actual o recupera el acceso por correo antes de vincular Google.",
+        statusCode: 409,
+        displayEmail: identity.email,
+      };
+    }
+
+    const alreadyLinked =
+      await this.identitiesRepository.findByUserAndProvider(
+        user.id,
+        PROVIDER,
+      );
+
+    if (alreadyLinked) {
+      if (alreadyLinked.providerUserId !== identity.sub) {
+        return {
+          ok: false,
+          code: "AUTH_GOOGLE_ALREADY_LINKED",
+          message:
+            "Esta cuenta RAPA GO ya tiene otra cuenta de Google vinculada.",
+          statusCode: 409,
+          displayEmail: identity.email,
+        };
+      }
+
+      return this.signInExisting(
+        identity,
+        user.id,
+        alreadyLinked.id,
+      );
+    }
+
+    const attached =
+      await this.identitiesRepository.attachToExistingUser({
+        userId: user.id,
+        provider: PROVIDER,
+        providerUserId: identity.sub,
+        providerClientId: identity.aud,
+        providerEmail: identity.email,
+        providerEmailVerified: true,
+        providerIsPrivateEmail: false,
+        encryptedRefreshToken: undefined,
+      });
+
+    if (!attached) {
+      const winner =
+        await this.identitiesRepository.findByProviderAndSub(
+          PROVIDER,
+          identity.sub,
+        );
+
+      if (!winner || winner.userId !== user.id) {
+        this.auditService.recordSafe({
+          eventType: "auth.google.link.failure",
+          entityType: "user",
+          entityId: user.id,
+          actorUserId: user.id,
+          metadata: { reason: "passwordless_link_race_conflict" },
+        });
+
+        return {
+          ok: false,
+          code: "AUTH_GOOGLE_ALREADY_LINKED",
+          message:
+            "Esta cuenta de Google ya está vinculada a otra cuenta RAPA GO.",
+          statusCode: 409,
+          displayEmail: identity.email,
+        };
+      }
+
+      return this.signInExisting(
+        identity,
+        user.id,
+        winner.id,
+      );
+    }
+
+    this.auditService.recordSafe({
+      eventType: "auth.google.link.success",
+      entityType: "user",
+      entityId: user.id,
+      actorUserId: user.id,
+      metadata: {
+        provider: PROVIDER,
+        method: "verified_email_without_local_password",
+      },
+    });
+
+    return this.signInExisting(
+      identity,
+      user.id,
+      attached.id,
+    );
   }
 
   private async linkExistingAccount(
@@ -865,6 +1003,18 @@ export class GoogleAuthService {
     refreshToken: string;
     expiresAt: string;
   }> {
+    const [credentials, oauthProviders] = await Promise.all([
+      this.credentialsRepository.findByUserId(user.id),
+      this.identitiesRepository.listProviders(user.id),
+    ]);
+
+    const authProviders = Array.from(
+      new Set([
+        ...(credentials ? (["password"] as const) : []),
+        ...oauthProviders,
+      ]),
+    );
+
     const authUser: AuthUser = {
       id: user.id,
       email: user.email,
@@ -872,6 +1022,8 @@ export class GoogleAuthService {
       role: toUserRole(user.role),
       avatarUrl: user.avatarUrl,
       isVerified: user.isVerified,
+      authProviders,
+      hasPassword: Boolean(credentials),
     };
     const accessToken = this.tokenService.issueAccessToken(authUser);
     const refreshToken = this.tokenService.issueRefreshToken();
