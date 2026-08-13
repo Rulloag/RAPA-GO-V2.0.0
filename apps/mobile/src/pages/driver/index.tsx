@@ -69,6 +69,9 @@ import {
   logOutOutline,
   moonOutline,
   sunnyOutline,
+  chevronDownOutline,
+  chevronUpOutline,
+  warningOutline,
 } from "ionicons/icons";
 import {
   driverProfileService,
@@ -1784,16 +1787,10 @@ function getCurrentLocationForNavigation(destination: {
   );
 }
 
-function uberPanelStyle(extra?: CSSProperties): CSSProperties {
-  return {
-    background: "rgba(15,15,15,.96)",
-    color: "#F6F2EC",
-    borderRadius: "20px",
-    border: "1px solid rgba(255,255,255,.08)",
-    boxShadow: "0 18px 40px rgba(0,0,0,.35)",
-    ...extra,
-  };
-}
+// Aquí vivía `uberPanelStyle()`, la fábrica de estilo inline del cromo del
+// mapa (panel oscuro fijo, sin relación con el tema día/noche). Su último
+// consumidor era el chip de "Activando GPS"; ahora todo ese cromo tiene clases
+// propias en driver.css y sigue el tema de la pantalla.
 
 // ── Capas del mapa de navegación (UberDriverNavigationMap) ─────────────────
 // Alto real de la hoja inferior (duración/distancia + soltar cámara/recentrar)
@@ -1867,6 +1864,7 @@ function UberDriverNavigationMap({
   sheetActions = null,
   sheetPrimaryAction = null,
   sheetCancelAction = null,
+  sosAction = null,
 }: {
   ride: {
     id?: string | null;
@@ -1902,6 +1900,13 @@ function UberDriverNavigationMap({
   // Acción de cancelar, flotando en la esquina superior izquierda de la hoja,
   // al mismo nivel que sheetPrimaryAction.
   sheetCancelAction?: JSX.Element | null;
+  // SOS. Se compone aquí, en la cabecera del riel derecho de controles, y no
+  // como hermano suelto del mapa: la cabecera del viaje pasó a ocupar todo el
+  // ancho superior, así que la esquina donde vivía antes ya no está libre. En
+  // el riel queda dentro del mismo sistema visual que el resto de controles y
+  // sigue alcanzable en los tres reposos de la hoja, que es la garantía que
+  // importaba. No se muestra en previsualizaciones (no son interactivas).
+  sosAction?: JSX.Element | null;
 }): JSX.Element {
   // Alto en px para los desplazamientos de cámara (panBy). Cuando `height`
   // es "100%" (mapa a pantalla completa) no hay forma barata de conocer el
@@ -3171,90 +3176,52 @@ function UberDriverNavigationMap({
 
   return (
     <div
-      style={{
-        position: "relative",
-        height,
-        overflow: "hidden",
-        borderRadius: "22px",
-        background: "#f3f4ef",
-      }}>
+      className="rp-navmap"
+      /* A pantalla completa el mapa llega hasta el borde del aparato: las
+         esquinas redondeadas y el marco sólo tienen sentido cuando este mismo
+         componente se usa como tarjeta de previsualización. */
+      data-compact={isCompactPreview ? "true" : undefined}
+      style={{ height }}>
       <div
+        className="rp-navmap__canvas"
         ref={(el) => {
           mapElementRef.current = el;
         }}
-        style={{ width: "100%", height: "100%" }}
       />
 
-      {/* Panel superior estilo Google Maps: instrucción principal + siguiente maniobra */}
+      {/* Tarjeta de cabecera del viaje: hacia dónde vamos + cuánto falta.
+          Es la primera de las tres zonas de la pantalla (cabecera / mapa /
+          hoja) y responde la pregunta "¿dónde voy?" de un vistazo. Toda su
+          presentación vive en driver.css (.rp-nav-head*): antes era estilo
+          inline con un teal fijo sin relación con la marca, invisible para el
+          tema día/noche. La estructura de datos y el estado de plegado no
+          cambian. */}
+      <div className="rp-nav-top">
       <div
-        style={{
-          position: "absolute",
-          left: "12px",
-          right: "12px",
-          top: "10px",
-          background: "rgba(0, 105, 96, .96)",
-          color: "#ffffff",
-          borderRadius: "22px",
-          boxShadow: "var(--rp-shadow)",
-          overflow: "hidden",
-          zIndex: "var(--rp-z-map-panel)",
-          pointerEvents: "none",
-        }}>
+        className={`rp-nav-head${instructionBannerCollapsed ? " is-collapsed" : ""}`}
+        data-compact={isCompactPreview ? "true" : undefined}>
         <button
           type="button"
+          className="rp-nav-head__toggle"
           onClick={() => setInstructionBannerCollapsed((prev) => !prev)}
           aria-label={
             instructionBannerCollapsed
               ? "Expandir indicaciones"
               : "Minimizar indicaciones"
-          }
-          style={{
-            position: "absolute",
-            right: 6,
-            top: 6,
-            width: 26,
-            height: 26,
-            borderRadius: 999,
-            border: "0",
-            background: "rgba(255,255,255,.16)",
-            color: "#ffffff",
-            fontSize: 14,
-            lineHeight: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 13,
-            pointerEvents: "auto",
-          }}>
-          {instructionBannerCollapsed ? "▾" : "▴"}
+          }>
+          <IonIcon
+            icon={instructionBannerCollapsed ? chevronDownOutline : chevronUpOutline}
+            aria-hidden="true"
+          />
         </button>
 
-        <div
-          style={{
-            minHeight: instructionBannerCollapsed ? 0 : 74,
-            maxHeight: instructionBannerCollapsed ? 0 : undefined,
-            padding: instructionBannerCollapsed ? "0 16px" : "12px 16px",
-            overflow: "hidden",
-            display: "grid",
-            gridTemplateColumns: "48px 1fr",
-            gap: 12,
-            alignItems: "center",
-            transition:
-              "min-height .2s ease, max-height .2s ease, padding .2s ease",
-          }}>
+        <div className="rp-nav-head__main">
           {/* Flecha/bandera de maniobra: puramente visual. La misma información
               (hacia dónde va y por qué calle) ya se lee en el bloque de texto
               de al lado, así que para un lector de pantalla es ruido. */}
-          <div
-            aria-hidden="true"
-            style={{
-              fontSize: "2.25rem",
-              fontWeight: 950,
-              lineHeight: 1,
-              textAlign: "center",
-            }}>
+          <div className="rp-nav-head__maneuver" aria-hidden="true">
             {nextInstruction?.maneuver === "arrive" ? (
-              <IonIcon icon={flagOutline} style={{ fontSize: "1em" }} />
+              <IonIcon icon={flagOutline} />
             ) : (
               maneuverArrow(nextInstruction?.maneuver)
             )}
@@ -3265,56 +3232,43 @@ function UberDriverNavigationMap({
               aria-live aquí sí aporta. Sin aria-atomic: cada lector anuncia
               el fragmento que cambió (dirección o calle) en vez de repetir
               todo el bloque cada vez. */}
-          <div aria-live="polite" style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: ".82rem",
-                fontWeight: 850,
-                color: "rgba(255,255,255,.82)",
-                lineHeight: 1.1,
-              }}>
+          <div className="rp-nav-head__text" aria-live="polite">
+            <div className="rp-nav-head__eyebrow">
               {goingToPickup
-                ? "en dirección a la recogida"
+                ? "En dirección a la recogida"
                 : waitingPassenger
-                  ? "esperando en"
-                  : "en dirección a"}
+                  ? "Esperando en"
+                  : "En dirección a"}
             </div>
-            <div
-              style={{
-                marginTop: 2,
-                fontSize: "1.38rem",
-                lineHeight: 1.05,
-                fontWeight: 950,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                letterSpacing: "-.02em",
-              }}>
+            <div className="rp-nav-head__title">
               {nextInstruction?.street || targetLabel || "Punto de ruta"}
             </div>
             {/* Duración/distancia se recalculan con cada punto de GPS: puestas
                 dentro de la región viva de arriba, el lector anunciaría el
                 tiempo restante varias veces por minuto. aria-live="off" las
-                saca de esa región sin sacarlas del bloque visual. */}
-            <div
-              aria-live="off"
-              style={{
-                marginTop: 4,
-                fontSize: ".78rem",
-                fontWeight: 850,
-                color: "rgba(255,255,255,.78)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}>
-              {routeInfo?.duration
-                ? `${routeInfo.duration}`
-                : "Calculando ruta"}
-              {routeInfo?.distance ? ` · ${routeInfo.distance}` : ""}
+                saca de esa región sin sacarlas del bloque visual.
+
+                Cada dato lleva su icono y su propia celda en vez de ir
+                concatenados en una sola línea con puntos medios: distancia y
+                tiempo se distinguen de reojo por la forma del icono, sin
+                llegar a leer las unidades. Los valores son los MISMOS de
+                routeInfo, sin recalcular nada. */}
+            <div className="rp-nav-head__metrics" aria-live="off">
+              <span className="rp-nav-head__metric">
+                <IonIcon icon={locationOutline} aria-hidden="true" />
+                <span>{routeInfo?.distance || "Calculando"}</span>
+              </span>
+              <span className="rp-nav-head__metric-sep" aria-hidden="true" />
+              <span className="rp-nav-head__metric">
+                <IonIcon icon={timeOutline} aria-hidden="true" />
+                <span>{routeInfo?.duration || "Calculando ruta"}</span>
+              </span>
               {/* Sin conexión la ruta sigue en pantalla y la distancia sigue
                   bajando; solo se avisa que el tráfico no está actualizado. */}
               {routeOffline && routeInfo ? (
-                <span style={{ color: "#fbbf24" }}> · sin conexión</span>
+                <span className="rp-nav-head__metric rp-nav-head__metric--stale">
+                  sin conexión
+                </span>
               ) : null}
             </div>
           </div>
@@ -3327,52 +3281,26 @@ function UberDriverNavigationMap({
             maniobra no llega a anunciarse en varios lectores de pantalla,
             porque nunca la vieron "montada" para poder avisar del cambio. */}
         <div
-          aria-live="polite"
-          style={{
-            background: "rgba(0, 72, 68, .92)",
-            padding:
-              !instructionBannerCollapsed &&
-              nextInstruction &&
-              nextInstruction.maneuver !== "arrive"
-                ? "10px 16px"
-                : 0,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            minHeight:
-              !instructionBannerCollapsed &&
-              nextInstruction &&
-              nextInstruction.maneuver !== "arrive"
-                ? 48
-                : 0,
-            overflow: "hidden",
-          }}>
+          className="rp-nav-head__then"
+          data-open={
+            !instructionBannerCollapsed &&
+            nextInstruction &&
+            nextInstruction.maneuver !== "arrive"
+              ? "true"
+              : "false"
+          }
+          aria-live="polite">
           {!instructionBannerCollapsed &&
             nextInstruction &&
             nextInstruction.maneuver !== "arrive" && (
               <>
-                <span
-                  style={{
-                    fontSize: "1.42rem",
-                    fontWeight: 950,
-                    lineHeight: 1,
-                  }}>
+                <span className="rp-nav-head__then-lead">
                   Luego{" "}
                   <span aria-hidden="true">
                     {maneuverArrow(nextInstruction.maneuver)}
                   </span>
                 </span>
-                <span
-                  style={{
-                    minWidth: 0,
-                    flex: 1,
-                    fontSize: ".86rem",
-                    fontWeight: 800,
-                    color: "rgba(255,255,255,.84)",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}>
+                <span className="rp-nav-head__then-text">
                   {nextInstruction.text}
                 </span>
               </>
@@ -3380,73 +3308,49 @@ function UberDriverNavigationMap({
         </div>
       </div>
 
-      {driverOutsideRapaNui && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="rapago-driver-gps-chip rapago-driver-gps-chip--outside"
-          style={{
-            position: "absolute",
-            left: "14px",
-            top: instructionBannerCollapsed
-              ? "56px"
-              : nextInstruction
-                ? "146px"
-                : "96px",
-            background: "rgba(239,68,68,.92)",
-            color: "#ffffff",
-            borderRadius: "999px",
-            padding: "5px 9px",
-            fontSize: ".64rem",
-            fontWeight: 950,
-            boxShadow: "0 6px 14px rgba(0,0,0,.20)",
-            zIndex: "var(--rp-z-map-panel)",
-            pointerEvents: "none",
-          }}>
-          GPS fuera de Rapa Nui
-        </div>
-      )}
+      {/* Avisos del mapa, en UNA columna que fluye bajo la cabecera.
+          Antes cada aviso traía su propio `top` calculado con un árbol de
+          ternarios (56/88/96/128/146/178px) que replicaba a mano el alto del
+          banner según su estado de plegado, y los tres —fuera de Rapa Nui,
+          activando GPS y el error de mapa— podían coincidir en el mismo
+          rectángulo. Apilados en un flex column anclado al borde inferior de
+          la cabecera, la separación la pone el `gap` y nunca hay que volver a
+          adivinar un número. El error de mapa (role="alert") se une aquí
+          abajo, en la misma columna, por el mismo motivo. */}
+      <div className="rp-nav-alerts">
+        {driverOutsideRapaNui && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rapago-driver-gps-chip rapago-driver-gps-chip--outside">
+            <IonIcon icon={warningOutline} aria-hidden="true" />
+            <span>GPS fuera de Rapa Nui</span>
+          </div>
+        )}
 
-      {!driverGpsReady && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="rapago-driver-gps-chip rapago-driver-gps-chip--acquiring"
-          style={{
-            position: "absolute",
-            left: "14px",
-            right: "78px",
-            top: instructionBannerCollapsed
-              ? driverOutsideRapaNui
-                ? "88px"
-                : "56px"
-              : nextInstruction
-                ? driverOutsideRapaNui
-                  ? "178px"
-                  : "146px"
-                : driverOutsideRapaNui
-                  ? "128px"
-                  : "96px",
-            ...uberPanelStyle({
-              background: "rgba(17,17,17,.82)",
-              padding: "7px 10px",
-              borderRadius: "999px",
-              border: "1px solid rgba(239,68,68,.35)",
-            }),
-            color: "#F6F2EC",
-            fontSize: ".70rem",
-            fontWeight: 900,
-            zIndex: "var(--rp-z-map-panel)",
-            pointerEvents: "none",
-          }}>
-          <IonIcon
-            icon={locationOutline}
-            aria-hidden="true"
-            style={{ fontSize: "1em", verticalAlign: "-0.125em" }}
-          />{" "}
-          Activando GPS real...
-        </div>
-      )}
+        {!driverGpsReady && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rapago-driver-gps-chip rapago-driver-gps-chip--acquiring">
+            <IonIcon icon={locationOutline} aria-hidden="true" />
+            <span>Activando GPS real...</span>
+          </div>
+        )}
+
+        {/* Único caso de la pantalla de mapa que corta la navegación de verdad
+            (el GPS falló y no hay ruta que seguir): role="alert" -implícito
+            aria-live="assertive"- es a propósito el único assertive de este
+            componente. El resto de avisos usa "polite"/"status" para no
+            interrumpir al conductor a cada rato. */}
+        {mapError && (
+          <div role="alert" className="active-ride-map-error">
+            <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+            <span>{mapError}</span>
+          </div>
+        )}
+      </div>
+      </div>
 
       {/* Rieles laterales y botón "Centrar": ocultos en previsualizaciones
           chicas (isCompactPreview) porque no tienen alto libre garantizado
@@ -3464,35 +3368,19 @@ function UberDriverNavigationMap({
           "right:14px" fijo que en algunos recortes de viewport quedaba justo
           en el borde. */}
           <div
+            className="rp-map-rail rp-map-rail--right"
             style={{
-              position: "absolute",
-              right: "calc(14px + env(safe-area-inset-right, 0px))",
               bottom: navRailBottom,
               transition: navRailTransition,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 12,
-              zIndex: "var(--rp-z-map-controls)",
             }}>
+            {sosAction}
+
             <button
               type="button"
+              className="rp-map-btn"
               onClick={() => {
                 calculateRouteOnce();
                 focusNavigationCameraInsideApp(true);
-              }}
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 999,
-                border: "1px solid var(--rp-border-c)",
-                background: "var(--rp-surface)",
-                color: "var(--rp-icon-fg)",
-                boxShadow: "var(--rp-shadow)",
-                fontSize: 22,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
               }}
               aria-label="Recalcular ruta">
               <IonIcon icon={refreshOutline} aria-hidden="true" />
@@ -3500,40 +3388,16 @@ function UberDriverNavigationMap({
 
             <button
               type="button"
+              className="rp-map-btn rp-map-btn--primary"
               onClick={openExternalNavigationToTarget}
-              style={{
-                width: 58,
-                height: 58,
-                borderRadius: 999,
-                border: "1px solid rgba(255,255,255,.25)",
-                background: "#00a884",
-                color: "#ffffff",
-                boxShadow: "0 12px 28px rgba(0,0,0,.42)",
-                fontSize: 25,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
               aria-label="Acercar mapa y seguir ruta dentro de Rapa Go">
               <IonIcon icon={navigateOutline} aria-hidden="true" />
             </button>
 
             <button
               type="button"
+              className="rp-map-btn"
               onClick={() => setMapVoiceMuted((current) => !current)}
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 999,
-                border: "1px solid var(--rp-border-c)",
-                background: "var(--rp-surface)",
-                color: "var(--rp-icon-fg)",
-                boxShadow: "var(--rp-shadow)",
-                fontSize: 21,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
               /* Criterio de nombre para botones interruptor en toda esta pantalla:
              el aria-label describe la ACCIÓN que se ejecuta al tocar (mismo
              criterio que el botón de modo día/noche del encabezado), no el
@@ -3555,82 +3419,33 @@ function UberDriverNavigationMap({
           {!isNavigationCameraLocked && (
             <button
               type="button"
+              className="rp-map-recenter"
               onClick={() => focusNavigationCameraInsideApp(true)}
               style={{
-                position: "absolute",
-                left: "50%",
-                transform: "translateX(-50%)",
                 bottom: navRailBottom,
                 transition: navRailTransition,
-                border: "1px solid var(--rp-border-c)",
-                borderRadius: 999,
-                background: "var(--rp-surface)",
-                color: "var(--rp-ok-fg)",
-                padding: "10px 16px",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                minHeight: 44,
-                fontSize: ".78rem",
-                fontWeight: 950,
-                boxShadow: "var(--rp-shadow)",
-                zIndex: "var(--rp-z-map-controls)",
               }}>
-              <IonIcon
-                icon={navigateOutline}
-                aria-hidden="true"
-                style={{ fontSize: "1.1em" }}
-              />{" "}
-              Centrar
+              <IonIcon icon={navigateOutline} aria-hidden="true" />
+              <span>Centrar</span>
             </button>
           )}
 
-          {/* Riel izquierdo: informaci\u00F3n pasiva (velocidad, aviso). No es
-          interactivo (pointerEvents:none), as\u00ED que vive en su propia columna
+          {/* Riel izquierdo: informaci\u00F3n pasiva (velocidad). No es
+          interactivo (pointer-events:none), as\u00ED que vive en su propia columna
           con gap real en vez de compartir esquina con los botones de acci\u00F3n
           del riel derecho. Antes "Informar" viv\u00EDa a la DERECHA, en la misma
           esquina que el bot\u00F3n de silenciar, y uno tapaba el final del otro. */}
           <div
+            className="rp-map-rail rp-map-rail--left"
             style={{
-              position: "absolute",
-              left: "calc(14px + env(safe-area-inset-left, 0px))",
               bottom: navRailBottom,
               transition: navRailTransition,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start",
-              gap: 10,
-              zIndex: "var(--rp-z-map-panel)",
             }}>
-            <div
-              style={{
-                width: 62,
-                height: 62,
-                borderRadius: 999,
-                background: "var(--rp-surface)",
-                border: "1px solid var(--rp-border-c)",
-                color: "var(--rp-text)",
-                boxShadow: "var(--rp-shadow)",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 950,
-                pointerEvents: "none",
-              }}>
-              {/* Sube de .64rem a .7rem: ning\u00FAn texto de esta pantalla debe quedar
-              por debajo de ese piso, se lee de reojo y a un brazo de distancia. */}
-              <div style={{ fontSize: "1.15rem", lineHeight: 1 }}>
+            <div className="rp-map-speed">
+              <span className="rp-map-speed__value">
                 {speedKmh == null ? "--" : speedKmh}
-              </div>
-              <div
-                style={{
-                  fontSize: ".7rem",
-                  lineHeight: 1.1,
-                  color: "var(--rp-muted)",
-                }}>
-                km/h
-              </div>
+              </span>
+              <span className="rp-map-speed__unit">km/h</span>
             </div>
 
             {/* Aqu\u00ED viv\u00EDa una p\u00EDldora "\u26A0 Informar" que NO era un bot\u00F3n: ten\u00EDa
@@ -3641,39 +3456,21 @@ function UberDriverNavigationMap({
         </>
       )}
 
-      {/* Hoja inferior estilo navegación. Usa tokens --rp-* (no blanco fijo)
-          para que siga data-rapago-theme: antes quedaba siempre blanca,
-          pegada contra el panel de estado siempre oscuro que va debajo del
-          mapa (uberPanelStyle) y contra el resto de la pantalla en modo
-          noche, con un corte claro/oscuro muy visible. */}
+      {/* Hoja inferior. Superficie de la app —clara de día, oscura de noche—
+          con el asa dorada como única señal de que se puede arrastrar.
+          Su presentación completa vive en driver.css; aquí sólo queda el
+          desplazamiento que produce el gesto. */}
       <div
         ref={navSheetRef}
         className="rapago-driver-nav-sheet"
         data-snap={sheetSnap}
         style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "var(--rp-surface)",
-          color: "var(--rp-text)",
-          borderTop: "1px solid var(--rp-border-c)",
-          borderRadius: "26px 26px 0 0",
-          minHeight: RAPAGO_NAV_SHEET_HEIGHT,
-          /* Tope duro: la hoja nunca puede tapar el mapa entero, pase lo que
-             pase con su contenido. Es un porcentaje del mapa —no dvh— porque
-             el mapa ya está dentro del área útil que Ionic calcula descontando
-             cabecera y tab bar; dvh mediría el viewport completo e ignoraría
-             ambas, y además se re-resuelve en iOS al colapsar la barra de URL,
-             lo que provocaría un reflow del mapa a mitad de arrastre. */
-          maxHeight: "62%",
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 -12px 34px rgba(0,0,0,.24)",
-          zIndex: "var(--rp-z-map-sheet)",
-          /* max() y no suma: --rp-driver-tabbar-clearance YA incluye el
-             safe-area del aparato. Sumarlo otra vez lo contaría dos veces. */
-          padding: "0 12px max(12px, var(--rp-driver-tabbar-clearance))",
+          /* Solo lo que depende del gesto se queda inline; forma, superficie,
+             sombra y respiros viven en driver.css (.rapago-driver-nav-sheet).
+             El alto mínimo sigue atado a la constante de JS que usa el cálculo
+             del recorrido, así que se publica como variable en vez de
+             duplicar el número en la hoja de estilos. */
+          ["--rp-nav-sheet-min-h" as string]: `${RAPAGO_NAV_SHEET_HEIGHT}px`,
           transform: `translateY(${sheetShift}px)`,
           /* Sin transición mientras se arrastra: el dedo ya marca el ritmo y
              animar encima se siente como retraso. */
@@ -3689,39 +3486,25 @@ function UberDriverNavigationMap({
             arrastre vertical como desplazamiento de la página. */}
         {!isCompactPreview && (
           <div
+            className="rapago-driver-nav-sheet__grip"
             onPointerDown={handleNavSheetPointerDown}
             onPointerMove={handleNavSheetPointerMove}
             onPointerUp={handleNavSheetPointerUp}
             onPointerCancel={handleNavSheetPointerUp}
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
               height: RAPAGO_NAV_SHEET_GRIP_H,
-              touchAction: "none",
               cursor: draggingSheet ? "grabbing" : "grab",
             }}>
             <button
               type="button"
+              className="rapago-driver-nav-sheet__grip-btn"
               aria-expanded={navSheetOpen}
               aria-label={
                 navSheetOpen
                   ? "Plegar el panel de ruta y ver más mapa. También puedes arrastrar esta barra."
                   : "Mostrar el panel de ruta. También puedes arrastrar esta barra."
               }
-              onKeyDown={handleNavSheetKeyDown}
-              style={{
-                /* Se ve como una barrita fina, pero el objetivo táctil ocupa
-                   los 34px de alto de la franja: se agranda con padding en vez
-                   de engordar la barra. */
-                border: "none",
-                background: "transparent",
-                padding: "12px 22px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "inherit",
-              }}>
+              onKeyDown={handleNavSheetKeyDown}>
               <span aria-hidden="true" className="rapago-driver-nav-grip" />
             </button>
           </div>
@@ -3736,41 +3519,43 @@ function UberDriverNavigationMap({
             intención —ya está el botón verde del riel y la píldora Centrar—,
             así que se queda el del riel, donde el pulgar ya lo busca.
             Los 152px que ocupaban se los queda el ETA. */}
+        {/* Núcleo de la hoja: las dos preguntas del conductor en movimiento
+            —"qué estoy haciendo / hacia dónde" y "cuánto falta"— en dos filas
+            de la MISMA retícula (disco de icono + bloque de texto), separadas
+            por un filete. Antes el ETA era un número centrado de 2.4rem con
+            una píldora de distancia debajo, y el estado colgaba aparte en otra
+            caja: dos bloques con rejillas distintas apilados sin relación.
+            El estado va primero porque nombra el destino; la llegada lo
+            cuantifica. Ninguna de las dos se va con el scroll. */}
         <div
+          className="rapago-driver-nav-sheet__core"
           style={{
             paddingTop: isCompactPreview
               ? 14
               : RAPAGO_NAV_SHEET_ACTIONS_CLEARANCE,
           }}>
-          <div
-            className="rapago-driver-nav-eta"
-            style={{ textAlign: "center", minWidth: 0 }}>
-            {/* 2.4rem, no 1.95: con los dos botones de 58px fuera, el ETA deja de
-              competir por el ancho y puede ser lo más grande de la hoja, que es
-              lo que merece el dato que el conductor mira de reojo. */}
-            <div className="rapago-driver-nav-eta__value">
-              {routeInfo?.duration || "--"}
-            </div>
-            {/* Solo duración/distancia: el destino (targetLabel) ya aparece en
-              el banner superior y en el panel de estado bajo el mapa.
-              Repetirlo una tercera vez aquí solo restaba el poco alto
-              vertical disponible en un teléfono. */}
-            {/* Distancia con icono: el par «reloj grande + regla pequeña» deja
-              claro de un vistazo cuál de los dos números es el tiempo y cuál
-              el trayecto, sin tener que leer las unidades. */}
-            <div className="rapago-driver-nav-eta__meta">
-              <IonIcon icon={navigateOutline} aria-hidden="true" />
-              <span>{routeInfo?.distance || "Calculando distancia"}</span>
-            </div>
+          {!isCompactPreview && sheetHeader}
+
+          {/* Duración y distancia son los MISMOS valores de routeInfo que ya
+              venían pintándose; sólo cambia su presentación. Nada se
+              recalcula ni se deriva aquí. */}
+          <div className="rapago-driver-nav-eta">
+            <span className="rapago-driver-nav-eta__icon" aria-hidden="true">
+              <IonIcon icon={timeOutline} />
+            </span>
+            <span className="rapago-driver-nav-eta__text">
+              <small className="rapago-driver-nav-eta__label">Llegada en</small>
+              <strong className="rapago-driver-nav-eta__value">
+                {routeInfo?.duration || "--"}
+                {routeInfo?.distance ? (
+                  <span className="rapago-driver-nav-eta__dist">
+                    {` · ${routeInfo.distance}`}
+                  </span>
+                ) : null}
+              </strong>
+            </span>
           </div>
         </div>
-
-        {/* Estado del viaje. Zona fija, pegada al ETA: juntos responden las dos
-            preguntas del conductor en movimiento ("qué estoy haciendo" y
-            "cuánto falta") sin que ninguna se vaya con el scroll. */}
-        {!isCompactPreview && sheetHeader && (
-          <div style={{ flex: "0 0 auto", marginTop: 8 }}>{sheetHeader}</div>
-        )}
 
         {/* Dock de acciones (patrón "button dock" de Base, el sistema de Uber):
             la acción principal a ancho completo, un solo primario sólido por
@@ -3795,15 +3580,7 @@ function UberDriverNavigationMap({
         )}
 
         {!isCompactPreview && sheetActions && (
-          <div
-            style={{
-              flex: "0 0 auto",
-              marginTop: 10,
-              paddingTop: 10,
-              borderTop: "1px solid var(--rp-border-c)",
-            }}>
-            {sheetActions}
-          </div>
+          <div className="rapago-driver-nav-sheet__extra">{sheetActions}</div>
         )}
 
         {/* Avisos y acciones secundarias. ÚNICA zona con scroll de la hoja, y
@@ -3816,68 +3593,17 @@ function UberDriverNavigationMap({
             zoom o desplazamiento. */}
         {!isCompactPreview && sheetBody && (
           <div
+            className="rapago-driver-nav-sheet__body"
             ref={sheetBodyRef}
             onPointerDown={handleSheetBodyPointerDown}
             onPointerMove={handleNavSheetPointerMove}
             onPointerUp={handleNavSheetPointerUp}
-            onPointerCancel={handleNavSheetPointerUp}
-            style={{
-              flex: "1 1 auto",
-              minHeight: 0,
-              overflowY: "auto",
-              overscrollBehavior: "contain",
-              WebkitOverflowScrolling: "touch",
-              /* pan-y explícito: el navegador se queda el desplazamiento
-                 vertical y el código decide cuándo robárselo para arrastrar la
-                 hoja (sólo con el cuerpo ya en su tope). */
-              touchAction: "pan-y",
-              marginTop: 10,
-              paddingTop: 10,
-              borderTop: "1px solid var(--rp-border-c)",
-            }}>
+            onPointerCancel={handleNavSheetPointerUp}>
             {sheetBody}
           </div>
         )}
       </div>
 
-      {/* Único caso de la pantalla de mapa que corta la navegación de verdad
-          (el GPS falló y no hay ruta que seguir): role="alert" -implícito
-          aria-live="assertive"- es a propósito el único assertive de este
-          componente. El resto de avisos usa "polite"/"status" para no
-          interrumpir al conductor a cada rato. */}
-      {mapError && (
-        <div
-          role="alert"
-          className="active-ride-map-error"
-          style={{
-            position: "absolute",
-            left: 14,
-            right: 84,
-            top: instructionBannerCollapsed
-              ? driverOutsideRapaNui
-                ? 88
-                : 56
-              : nextInstruction
-                ? driverOutsideRapaNui
-                  ? 178
-                  : 146
-                : driverOutsideRapaNui
-                  ? 128
-                  : 96,
-            background: "rgba(17,17,17,.82)",
-            color: "#fff",
-            borderRadius: 999,
-            padding: "7px 10px",
-            fontSize: ".68rem",
-            fontWeight: 900,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            zIndex: "var(--rp-z-map-alert)",
-          }}>
-          {mapError}
-        </div>
-      )}
     </div>
   );
 }
@@ -19152,13 +18878,40 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       </>
     );
 
+    /* SOS. Fuera de la hoja a propósito: es el único control que debe seguir
+       alcanzable con la hoja plegada del todo. Además antes sólo existía en
+       driver_arrived e in_progress — es decir, faltaba justamente en
+       driver_en_route, el estado en que el conductor va en movimiento y más
+       riesgo corre. Sigue estando en los tres.
+       Ahora se compone dentro del mapa (prop sosAction) porque la cabecera del
+       viaje ocupa todo el ancho superior y la esquina donde flotaba dejó de
+       estar libre; en el riel derecho queda en el mismo sistema visual que el
+       resto de controles, sigue visible en los tres reposos de la hoja y no le
+       roba sitio a la información de navegación. */
+    const sosAction = (
+      <button
+        type="button"
+        className="rapago-driver-sos"
+        onClick={() => setDriverSosOpen(true)}
+        aria-label="Emergencia y reporte de accidente">
+        <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+        <span>SOS</span>
+      </button>
+    );
+
     return (
+      /* Tres zonas y nada más: cabecera del viaje, mapa y hoja inferior.
+         La barra de pestañas y la píldora de marca se ocultan mientras el
+         viaje está activo (driver.css) — no se desmontan, así que ni sus rutas
+         ni el menú de cuenta pierden nada; simplemente no compiten con el mapa
+         mientras se conduce, que es cuando toda la pantalla debe estar al
+         servicio de "dónde voy / cuánto falta / qué hago ahora". */
       <div className="rapago-driver-active-ride">
-        {/* Identidad de marca SIN coste de mapa: la píldora es absoluta, el mapa
-            pasa por debajo. Y como esta pantalla ya no lleva IonHeader en el
-            flujo, el mapa GANA los 103px que ocupaba la cabecera verde.
-            Sin campana (una notificación no debe robarle la vista a quien
-            conduce) y sin acción (durante un viaje no hay nada que refrescar). */}
+        {/* Se mantiene MONTADA (no se borra) para no tocar nada de lo que
+            cuelga de ella —menú de cuenta, cierre de sesión, tema—: sólo se
+            oculta visualmente en este contexto, igual que la barra inferior.
+            `display:none` la saca además del orden de tabulación y del árbol
+            de accesibilidad, así que no deja controles invisibles enfocables. */}
         <RapagoAppBar
           sectionId="driver-requests"
           variant="overlay"
@@ -19173,21 +18926,8 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           sheetActions={sheetActions}
           sheetPrimaryAction={sheetPrimaryAction}
           sheetCancelAction={sheetCancelAction}
+          sosAction={sosAction}
         />
-
-        {/* SOS. Fuera de la hoja a propósito: es el único control que debe
-            seguir alcanzable con la hoja plegada del todo. Además antes sólo
-            existía en driver_arrived e in_progress — es decir, faltaba
-            justamente en driver_en_route, el estado en que el conductor va en
-            movimiento y más riesgo corre. Ahora está en los tres. */}
-        <button
-          type="button"
-          className="rapago-driver-sos"
-          onClick={() => setDriverSosOpen(true)}
-          aria-label="Emergencia y reporte de accidente">
-          <IonIcon icon={alertCircleOutline} aria-hidden="true" />
-          <span>SOS</span>
-        </button>
       </div>
     );
   }
@@ -19223,7 +18963,18 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       )}
 
       <IonContent
-        className={showActiveRideOnly && activeRide ? "" : "ion-padding"}
+        /* La clase del viaje activo sólo existe como ancla de estilo: global.css
+           reserva `--padding-bottom: 96px + área segura` en TODOS los
+           `ion-content` para que la barra de pestañas —que es `position:fixed`
+           y por tanto no ocupa sitio— no tape el contenido. Aquí esa barra está
+           oculta, así que ese colchón no despeja nada: sólo encoge el área útil
+           y deja ver el fondo de la página bajo la hoja. Se neutraliza en
+           driver.css. Misma condición de antes; no cambia qué se renderiza. */
+        className={
+          showActiveRideOnly && activeRide
+            ? "rapago-driver-active-ride-content"
+            : "ion-padding"
+        }
         style={
           {
             "--background": "transparent",

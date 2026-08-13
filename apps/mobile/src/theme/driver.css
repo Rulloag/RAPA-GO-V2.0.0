@@ -85,88 +85,1173 @@
 }
 
 /* ==========================================================================
-   MAPA DE NAVEGACIÓN (UberDriverNavigationMap) — controles sin clase
+   MAPA DE NAVEGACIÓN (UberDriverNavigationMap)
 
-   Todo el overlay del mapa (pages/driver/index.tsx, ~L2790-3380) está escrito
-   en `style={{...}}` puro: ni un solo className. No es un descuido — es la
-   pieza más grande de UI inline de toda la pantalla de conductor, y esta hoja
-   no puede tocar el TSX. La mayoría de esos controles (rieles de botones,
-   hoja inferior) YA consumen los tokens --rp-* del tema compartido
-   (var(--rp-surface), var(--rp-border-c), var(--rp-icon-fg)...), así que ya
-   se leen como el resto de la app sin que haga falta nada aquí.
+   Este overlay estuvo escrito entero en `style={{...}}` inline, sin un solo
+   className, y esta hoja tenía que alcanzarlo por `aria-label` y `:has()`
+   —acoplándose a cadenas de accesibilidad— para poder corregir su aspecto.
+   Ya no: cada pieza tiene clase propia (.rp-nav-head, .rp-map-btn,
+   .rp-map-speed, .rp-nav-alerts…) y toda la presentación vive aquí. En el
+   TSX solo queda inline lo que depende del gesto de arrastre (el
+   `translateY` de la hoja y el `bottom` de los rieles, que siguen a la hoja).
 
-   Dos excepciones SÍ tenían el aspecto de "otra app" (banner teal, botón
-   verde sin relación con la marca) y sí exponen `aria-label`, que es un
-   atributo real del DOM y por tanto un selector CSS válido aunque no haya
-   className. Se usa aquí SOLO donde el valor del aria-label es estable
-   (texto fijo en español, no interpolado desde datos del viaje). Es un
-   acoplamiento a un string de accesibilidad, no a una clase de diseño: si
-   ese texto cambia de redacción en el TSX (incluida la pasada de ARIA que
-   corre en paralelo sobre este mismo archivo), estas reglas simplemente
-   dejan de aplicar — no rompen nada, vuelven al estilo inline original. */
+   Por el mismo motivo desaparecieron los `!important` de este bloque: existían
+   únicamente para vencer al estilo inline que ya no está.
+   ========================================================================== */
 
-/* Botón de plegar/expandir el banner de instrucciones (26×26 en el TSX,
-   L2823-2847): el único control redondo del mapa bajo el mínimo táctil de
-   44px. Visualmente se queda en 26px —agrandarlo de verdad lo sacaría de la
-   esquina del banner—, así que el área de toque crece con un `::after`
-   invisible en vez de con el tamaño real.
-   El botón vive a solo 6px del borde superior y del borde derecho DEL
-   BANNER (right:6, top:6 en el TSX), que a su vez recorta con
-   overflow:hidden: un inset simétrico se habría cortado por esos dos lados
-   sin llegar a los 44px reales. Se reparte asimétrico: 6px arriba/derecha
-   (todo lo que cabe sin toparse con el recorte) y 12px abajo/izquierda
-   (sobra espacio, cae sobre texto informativo sin onClick propio) — total
-   26 + 6 + 12 = 44px en ambos ejes. */
-.rapago-driver-page button[aria-label="Expandir indicaciones"]::after,
-.rapago-driver-page button[aria-label="Minimizar indicaciones"]::after {
+/* Paleta de la pantalla de viaje activo.
+   Se declara como un juego propio de variables en vez de consumir --rp-*
+   directamente porque esta pantalla tiene una necesidad que el resto de la app
+   no tiene: el cromo flota SOBRE un mapa, cuyo fondo es impredecible (calle
+   clara, agua, parque). Aquí las superficies son opacas y los contrastes se
+   fijan contra la propia superficie, no contra la página.
+   Los valores de marca siguen viniendo del sistema compartido
+   (rapago-shell.css): oro --rp-gold y el eje océano --rp-ocean*. */
+.rapago-driver-page .rp-navmap {
+  /* Día. */
+  --nav-surface: #ffffff;
+  --nav-surface-sunk: #f4f6f5;
+  --nav-line: rgba(13, 61, 61, 0.12);
+  --nav-text: #16201f;
+  --nav-muted: rgba(22, 32, 31, 0.62);
+
+  /* Petróleo: color principal. La cabecera y la acción de finalizar lo usan
+     como fondo sólido, así que se elige el tono que da texto blanco muy por
+     encima de AA (blanco sobre #0d3d3d → 11,8:1). */
+  --nav-primary: #0d3d3d;
+  --nav-primary-soft: rgba(13, 61, 61, 0.08);
+  --nav-primary-fg: #ffffff;
+
+  /* Oro de marca: acento, nunca superficie. Sobre el petróleo de la cabecera
+     el oro claro da 7,4:1; sobre superficie blanca se usa el tono oscuro. */
+  --nav-accent: var(--rp-gold, #d6a640);
+  --nav-accent-on-dark: var(--rp-gold-light, #f8d879);
+
+  --nav-danger: #c62f2f;
+  --nav-warn-bg: #b8730c;
+
+  --nav-shadow: 0 6px 20px rgba(13, 40, 40, 0.14);
+  --nav-shadow-lg: 0 12px 34px rgba(13, 40, 40, 0.2);
+
+  /* Radios y respiros: una sola escala para toda la pantalla. */
+  --nav-r-sm: 12px;
+  --nav-r: 18px;
+  --nav-r-lg: 24px;
+  --nav-gap: 12px;
+  /* Margen lateral del cromo flotante, con el recorte del aparato incluido. */
+  --nav-inset: calc(14px + env(safe-area-inset-left, 0px));
+  --nav-inset-r: calc(14px + env(safe-area-inset-right, 0px));
+}
+
+/* Noche. No es el día invertido: las superficies suben desde el carbón (no
+   bajan desde el blanco), el oro aclara para mantenerse legible y el petróleo
+   se oscurece para no brillar en la periferia de la vista mientras se conduce
+   de noche. */
+.rapago-driver-page[data-rapago-theme="dark"] .rp-navmap {
+  --nav-surface: #171b1c;
+  --nav-surface-sunk: #101314;
+  --nav-line: rgba(241, 200, 100, 0.2);
+  --nav-text: #f3f6f5;
+  --nav-muted: rgba(243, 246, 245, 0.66);
+
+  --nav-primary: #0b2f30;
+  --nav-primary-soft: rgba(47, 168, 191, 0.12);
+  --nav-primary-fg: #f3f6f5;
+
+  --nav-accent: var(--rp-gold-light, #f8d879);
+
+  --nav-danger: #ff6b6b;
+  --nav-warn-bg: #8a5606;
+
+  --nav-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --nav-shadow-lg: 0 12px 34px rgba(0, 0, 0, 0.62);
+}
+
+/* ── Lienzo ──────────────────────────────────────────────────────────────── */
+.rapago-driver-page .rp-navmap {
+  position: relative;
+  overflow: hidden;
+  background: var(--nav-surface-sunk);
+}
+
+/* A pantalla completa el mapa muere contra el borde del aparato. El marco
+   redondeado sólo aplica cuando este mismo componente se usa como tarjeta de
+   previsualización (data-compact), donde sí es una tarjeta entre otras. */
+.rapago-driver-page .rp-navmap[data-compact="true"] {
+  border-radius: var(--nav-r-lg);
+  border: 1px solid var(--nav-line);
+}
+
+.rapago-driver-page .rp-navmap__canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── 1/3 · Cabecera del viaje ────────────────────────────────────────────────
+   "¿Dónde voy?" — la primera pregunta de las tres que la pantalla debe
+   responder sin que el conductor tenga que buscar nada. Tarjeta flotante
+   sobre el mapa, petróleo sólido en ambos temas: el texto de dentro es blanco
+   y necesita una superficie constante, porque debajo pasa el mapa. */
+/* Columna flotante superior: cabecera + avisos, apilados. Un solo ancla para
+   todo el cromo de arriba, de modo que nada de aquí necesite saber el alto de
+   lo que tiene encima. */
+.rapago-driver-page .rp-nav-top {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: var(--nav-inset);
+  right: var(--nav-inset-r);
+  z-index: var(--rp-z-map-alert);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* El mapa se arrastra por debajo; sólo los controles reales (el botón de
+     plegar) recuperan los eventos. */
+  pointer-events: none;
+}
+
+.rapago-driver-page .rp-nav-head {
+  /* Ancla del botón de plegar, que va absoluto en su esquina. */
+  position: relative;
+  border-radius: var(--nav-r-lg);
+  background: var(--nav-primary);
+  color: var(--nav-primary-fg);
+  box-shadow: var(--nav-shadow-lg);
+  overflow: hidden;
+}
+
+.rapago-driver-page[data-rapago-theme="dark"] .rp-nav-head {
+  border: 1px solid var(--nav-line);
+}
+
+/* Plegar/expandir. 34px visibles —ya sobre el umbral cómodo— y el área táctil
+   se estira a 44px con un ::after invisible, sin engordar el círculo. */
+.rapago-driver-page .rp-nav-head__toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  pointer-events: auto;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--nav-accent-on-dark);
+  font-size: 17px;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.rapago-driver-page .rp-nav-head__toggle::after {
   content: "";
   position: absolute;
-  inset: -6px -6px -12px -12px;
+  inset: -5px;
 }
 
-/* Banner superior de instrucciones (TSX L2808-2949): fondo teal
-   rgba(0,105,96,.96) sin relación con ningún token de marca —ni el eje oro
-   ni el eje océano de rapago-shell.css—, así que era el elemento más "de
-   otra app" de toda la pantalla de conductor. Se selecciona por `:has()`
-   sobre su botón de plegado (hijo directo, ver TSX), que es el único hijo
-   con un hook estable. Pasa a la misma superficie oscura con filo dorado que
-   usa el resto del cromo del mapa (uberPanelStyle, la hoja inferior), pero
-   CONSTANTE en los dos temas —no var(--rp-surface)— porque el texto de
-   dentro sigue fijo en blanco (#fff, rgba(255,255,255,.78/.82/.84)) vía
-   style inline: sobre la superficie clara del tema día ese texto blanco
-   desaparecería, el mismo error que la excepción "legacy" de más abajo evita
-   para las tarjetas. Contraste verificado: blanco puro sobre el stop más
-   oscuro del degradado (rgba(42,28,16)) → 16,5:1. El texto secundario más
-   transparente que usa el banner (rgba(255,255,255,.78)) compuesto sobre ese
-   mismo fondo → ~10,4:1. Ambos muy por encima del mínimo AA de 4,5:1. */
-.rapago-driver-page div:has(> button[aria-label="Expandir indicaciones"]),
-.rapago-driver-page div:has(> button[aria-label="Minimizar indicaciones"]) {
-  background: linear-gradient(
-    135deg,
-    rgba(23, 18, 12, 0.96),
-    rgba(42, 28, 16, 0.96)
-  ) !important;
-  border: 1px solid rgba(214, 166, 64, 0.4) !important;
-  box-shadow: var(--rp-shadow-accent) !important;
+.rapago-driver-page .rp-nav-head__toggle:active {
+  background: rgba(255, 255, 255, 0.24);
 }
 
-/* Botón "Acercar mapa y seguir ruta dentro de Rapa Go" (TSX L3050-3069): el
-   único control sólido de color puro (#00a884, verde WhatsApp) en un riel
-   donde los otros dos botones ya son superficie neutra con icono dorado. Es
-   la acción principal del riel —empezar navegación asistida—, así que en vez
-   de apagarla a neutro pasa al MISMO degradado dorado que cualquier otra
-   acción primaria de la app (--rp-btn-primary), con su sombra con halo
-   (--rp-shadow-accent) en vez de la sombra negra plana que traía. Contraste
-   del icono blanco original vs. el nuevo: el ink oscuro (--rp-btn-primary-fg)
-   sobre el stop más oscuro del degradado (terracota #b84f2e) da 3,6:1 —
-   supera el mínimo de 3:1 de WCAG 1.4.11 para componentes gráficos (es un
-   ion-icon, no texto). */
+.rapago-driver-page .rp-nav-head__toggle:focus-visible {
+  outline: 2px solid var(--nav-accent-on-dark);
+  outline-offset: 2px;
+}
+
+/* Rejilla: disco de maniobra + bloque de texto. */
+.rapago-driver-page .rp-nav-head__main {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  /* Respiro a la derecha para el botón de plegar. */
+  padding: 14px 52px 14px 14px;
+  overflow: hidden;
+  transition:
+    padding 200ms ease,
+    max-height 200ms ease;
+}
+
+/* Plegada, la tarjeta NO desaparece: se queda en una sola línea con el
+   destino. Colapsarla a 0 la vaciaba del todo y, como el contenedor recorta
+   con overflow:hidden, se llevaba por delante el propio botón de expandir —el
+   conductor no tenía forma de volver a abrirla—. Además una barra vacía no
+   ahorra nada: lo que sobra al plegar son la maniobra y las métricas, no el
+   nombre del sitio al que se va. */
+.rapago-driver-page .rp-nav-head.is-collapsed .rp-nav-head__main {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 10px 52px 10px 16px;
+}
+
+.rapago-driver-page .rp-nav-head.is-collapsed .rp-nav-head__maneuver,
+.rapago-driver-page .rp-nav-head.is-collapsed .rp-nav-head__eyebrow,
+.rapago-driver-page .rp-nav-head.is-collapsed .rp-nav-head__metrics {
+  display: none;
+}
+
+.rapago-driver-page .rp-nav-head.is-collapsed .rp-nav-head__title {
+  margin-top: 0;
+  font-size: 1.06rem;
+  -webkit-line-clamp: 1;
+}
+
+/* Disco de la maniobra. Blanco sólido con la flecha en oro: es el único punto
+   de la cabecera donde el oro carga peso, y contra el petróleo destaca sin
+   necesitar tamaño. */
+.rapago-driver-page .rp-nav-head__maneuver {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--rp-gold, #d6a640);
+  font-size: 1.9rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.rapago-driver-page[data-rapago-theme="dark"] .rp-nav-head__maneuver {
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.rapago-driver-page .rp-nav-head__text {
+  min-width: 0;
+}
+
+/* Jerarquía de tres peldaños, no más: etiqueta, destino, datos.
+   El destino es lo más grande porque es la respuesta a la pregunta. */
+.rapago-driver-page .rp-nav-head__eyebrow {
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.rapago-driver-page .rp-nav-head__title {
+  margin-top: 2px;
+  font-size: 1.44rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  /* Un destino largo baja a dos líneas antes que recortarse: saber a dónde se
+     va importa más que la altura exacta de la tarjeta. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rapago-driver-page .rp-nav-head__metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.rapago-driver-page .rp-nav-head__metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  font-variant-numeric: tabular-nums;
+}
+
+.rapago-driver-page .rp-nav-head__metric ion-icon {
+  flex: 0 0 auto;
+  font-size: 1em;
+  color: var(--nav-accent-on-dark);
+}
+
+.rapago-driver-page .rp-nav-head__metric span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rapago-driver-page .rp-nav-head__metric-sep {
+  width: 1px;
+  height: 13px;
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.rapago-driver-page .rp-nav-head__metric--stale {
+  color: var(--nav-accent-on-dark);
+}
+
+/* Franja del siguiente giro. Colapsa a 0 sin desmontarse (el TSX mantiene el
+   contenedor vivo para que su aria-live siga anunciando). */
+.rapago-driver-page .rp-nav-head__then {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  min-height: 0;
+  padding: 0 16px;
+  background: rgba(0, 0, 0, 0.22);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  transition:
+    min-height 200ms ease,
+    padding 200ms ease;
+}
+
+.rapago-driver-page .rp-nav-head__then[data-open="false"] {
+  border-top-color: transparent;
+}
+
+.rapago-driver-page .rp-nav-head__then[data-open="true"] {
+  min-height: 46px;
+  padding: 9px 16px;
+}
+
+.rapago-driver-page .rp-nav-head__then-lead {
+  flex: 0 0 auto;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.rapago-driver-page .rp-nav-head__then-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.84);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ── Avisos del mapa ─────────────────────────────────────────────────────────
+   Una sola columna DEBAJO de la cabecera, dentro del mismo contenedor
+   flotante (.rp-nav-top): así los avisos empiezan donde termina la cabecera
+   mida lo que mida —plegada, con destino de dos líneas o con la franja del
+   siguiente giro abierta— sin que nadie tenga que saber su altura.
+   Antes cada aviso llevaba su propio `top` calculado con ternarios anidados
+   que replicaban ese alto a mano (56/88/96/128/146/178px) y podían caer unos
+   sobre otros. Ahora la separación la pone el `gap`.
+   No tapan el mapa: son píldoras del ancho de su texto, alineadas a la
+   izquierda, y dejan libre el carril derecho de controles. */
+.rapago-driver-page .rp-nav-alerts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  /* El carril derecho es de controles; los avisos no lo invaden. */
+  padding-right: 62px;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-gps-chip,
+.rapago-driver-page .active-ride-map-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 11px;
+  border-radius: 999px;
+  /* Opaco a propósito: sobre un mapa el fondo es impredecible y cualquier
+     translucidez haría que el contraste dependiera de por dónde vaya el
+     conductor. */
+  color: #ffffff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.25;
+  box-shadow: var(--nav-shadow);
+}
+
+.rapago-driver-page .rapago-driver-gps-chip ion-icon,
+.rapago-driver-page .active-ride-map-error ion-icon {
+  flex: 0 0 auto;
+  font-size: 1.05em;
+}
+
+.rapago-driver-page .rapago-driver-gps-chip span,
+.rapago-driver-page .active-ride-map-error span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Fuera de cobertura: es un aviso, no un fallo — ámbar, no rojo. El rojo queda
+   reservado para lo destructivo (cancelar) y para el error que corta la
+   navegación, de modo que cuando algo se pinte de rojo signifique una cosa
+   sola. Blanco sobre #b8730c → 4,6:1, por encima del mínimo AA. */
+.rapago-driver-page .rapago-driver-gps-chip--outside {
+  background: var(--nav-warn-bg);
+}
+
+.rapago-driver-page .rapago-driver-gps-chip--acquiring {
+  background: #21262a;
+}
+
+/* Único aviso que corta la navegación de verdad. Blanco sobre #c62f2f → 5,1:1. */
+.rapago-driver-page .active-ride-map-error {
+  background: var(--nav-danger);
+  /* Puede ser un mensaje largo del sistema de ubicación: cabe en dos líneas
+     en vez de recortarse a la mitad. */
+  border-radius: var(--nav-r-sm);
+}
+
+.rapago-driver-page .active-ride-map-error span {
+  white-space: normal;
+}
+
+/* ── Controles del mapa ──────────────────────────────────────────────────────
+   Un solo sistema: mismo círculo, misma superficie, misma sombra, mismo filo.
+   Antes convivían tres tratamientos distintos (dos botones neutros de 52px, un
+   disco verde WhatsApp de 58px y una píldora clara) y parecían venir de tres
+   aplicaciones. La jerarquía la marca ahora el color de UN solo botón —el de
+   navegación asistida, que es la acción principal del riel—, no el tamaño. */
+.rapago-driver-page .rp-map-rail {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: var(--rp-z-map-controls);
+}
+
+.rapago-driver-page .rp-map-rail--right {
+  right: var(--nav-inset-r);
+  align-items: center;
+}
+
+.rapago-driver-page .rp-map-rail--left {
+  left: var(--nav-inset);
+  align-items: flex-start;
+  z-index: var(--rp-z-map-panel);
+}
+
+.rapago-driver-page .rp-map-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 48px: por encima del mínimo de Android (48) y de iOS (44), y el mismo
+     tamaño para los tres — el conductor no debe pensar cuál es cuál por su
+     tamaño, sino por su icono y su posición. */
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--nav-line);
+  border-radius: 999px;
+  background: var(--nav-surface);
+  color: var(--nav-text);
+  font-size: 21px;
+  box-shadow: var(--nav-shadow);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 140ms ease;
+}
+
+.rapago-driver-page .rp-map-btn:active {
+  transform: scale(0.94);
+  background: var(--nav-surface-sunk);
+}
+
+.rapago-driver-page .rp-map-btn:focus-visible {
+  outline: 2px solid var(--nav-accent);
+  outline-offset: 2px;
+}
+
+/* Navegación asistida: la única acción destacada del riel. Petróleo sólido con
+   el icono en oro — la pareja de marca, sin recurrir al verde de otra app. */
+.rapago-driver-page .rp-map-btn--primary {
+  background: var(--nav-primary);
+  border-color: var(--nav-primary);
+  color: var(--nav-accent-on-dark);
+}
+
+.rapago-driver-page .rp-map-btn--primary:active {
+  background: var(--nav-primary);
+}
+
+/* "Centrar": aparece sólo cuando la cámara se soltó, así que es una sugerencia
+   puntual, no un control permanente. Píldora del mismo sistema. */
+.rapago-driver-page .rp-map-recenter {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--rp-z-map-controls);
+
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--nav-line);
+  border-radius: 999px;
+  background: var(--nav-surface);
+  color: var(--nav-text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  box-shadow: var(--nav-shadow);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.rapago-driver-page .rp-map-recenter ion-icon {
+  font-size: 1.15em;
+  color: var(--nav-accent);
+}
+
+.rapago-driver-page .rp-map-recenter:active {
+  transform: translateX(-50%) scale(0.97);
+}
+
+.rapago-driver-page .rp-map-recenter:focus-visible {
+  outline: 2px solid var(--nav-accent);
+  outline-offset: 2px;
+}
+
+/* Velocidad: dato de consulta, no control. Discreto a propósito — no compite
+   con el destino ni con la acción principal. Rectángulo y no círculo,
+   justamente para que no se lea como un botón más del riel. */
+.rapago-driver-page .rp-map-speed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  padding: 7px 10px;
+  border: 1px solid var(--nav-line);
+  border-radius: var(--nav-r-sm);
+  background: var(--nav-surface);
+  box-shadow: var(--nav-shadow);
+  pointer-events: none;
+}
+
+.rapago-driver-page .rp-map-speed__value {
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--nav-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.rapago-driver-page .rp-map-speed__unit {
+  margin-top: 2px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--nav-muted);
+}
+
+/* ── 3/3 · Hoja inferior ─────────────────────────────────────────────────────
+   "¿Cuánto falta?" y "¿qué debo hacer?". Superficie de la app (clara de día,
+   oscura de noche) contra el mapa, con el asa dorada como única marca de que
+   se puede arrastrar. Todo lo que era estilo inline vive aquí; en el TSX sólo
+   queda el `translateY` del gesto. */
+.rapago-driver-page .rapago-driver-nav-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--rp-z-map-sheet);
+
+  display: flex;
+  flex-direction: column;
+  min-height: var(--rp-nav-sheet-min-h, 94px);
+  /* Tope de SEGURIDAD, no una altura objetivo. La hoja mide su contenido: en
+     un viaje corriente —estado, llegada, acción y cancelar— se queda en torno
+     al 35-40% del mapa y este límite ni se toca. Sólo entra cuando aparecen
+     avisos en el cuerpo, y entonces es el cuerpo —único hijo con overflow—
+     el que scrollea, no la hoja la que crece.
+
+     Porcentaje del mapa y no dvh: el mapa ya está dentro del área útil que
+     Ionic calcula descontando cabecera y barra, así que el % ya va medido
+     contra lo que de verdad hay. dvh mediría el viewport entero ignorando
+     ambas, y en iOS se re-resuelve al colapsar la barra de URL: la hoja
+     cambiaría de tope a mitad de un arrastre.
+
+     El max() pone suelo en píxeles a ese tope. El núcleo y el dock son
+     `flex: 0 0 auto` —no encogen—, así que en una pantalla baja un 52% puede
+     quedarse por debajo de lo que miden y los botones se saldrían por fuera de
+     la superficie redondeada. 320px es lo que ocupan ya apretados, de modo que
+     por debajo de ~615px de mapa manda el píxel y por encima el porcentaje. */
+  max-height: max(52%, 320px);
+
+  border-radius: var(--nav-r-lg) var(--nav-r-lg) 0 0;
+  background: var(--nav-surface);
+  color: var(--nav-text);
+  box-shadow: 0 -10px 34px rgba(13, 40, 40, 0.16);
+  /* Durante el viaje la barra de pestañas está oculta, así que abajo sólo hay
+     que esquivar el indicador de inicio del aparato. max() y no suma: en un
+     iPhone el área segura (~34px) YA es respiro suficiente y sumarle otros
+     12px dejaría un vacío bajo "Cancelar viaje"; los 12px son sólo el mínimo
+     para los aparatos que no declaran área segura (Android sin gestos, web). */
+  padding: 0 14px max(12px, env(safe-area-inset-bottom, 0px));
+}
+
+.rapago-driver-page[data-rapago-theme="dark"] .rapago-driver-nav-sheet {
+  border-top: 1px solid var(--nav-line);
+  box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.55);
+}
+
+/* Asa: la franja entera captura el gesto para que se agarre con el pulgar sin
+   apuntar; el botón de dentro es quien da el nombre accesible y la ruta por
+   teclado. `touch-action: none` evita que el navegador lea el arrastre
+   vertical como desplazamiento de la página. */
+.rapago-driver-page .rapago-driver-nav-sheet__grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  touch-action: none;
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__grip-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Se ve como una barrita fina, pero el objetivo táctil ocupa los 34px de
+     alto de la franja: crece con padding en vez de engordar la barra. */
+  padding: 12px 26px;
+  border: none;
+  background: transparent;
+  cursor: inherit;
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__grip-btn:focus-visible {
+  outline: 2px solid var(--nav-accent);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+/* Núcleo siempre visible: estado y llegada, dos filas de la misma retícula. */
+.rapago-driver-page .rapago-driver-nav-sheet__core {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Filete entre las dos filas: las agrupa como un bloque de información en vez
+   de dos tarjetas sueltas. */
+.rapago-driver-page .rapago-driver-nav-sheet__core > * + * {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--nav-line);
+}
+
+/* ---- Fila de estado ----
+   Rejilla compartida con la fila de llegada: disco de icono + texto. Deja de
+   ser una tarjeta con borde propio (era una caja dentro de otra caja) y pasa a
+   ser una fila del mismo bloque. */
+.rapago-driver-page .rapago-driver-sheet-status {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.rapago-driver-page .rapago-driver-sheet-status__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  font-size: 21px;
+  background: var(--nav-primary-soft);
+  color: var(--nav-primary);
+}
+
+.rapago-driver-page[data-rapago-theme="dark"]
+  .rapago-driver-sheet-status__icon {
+  color: var(--rp-ocean-bright, #2fa8bf);
+}
+
+.rapago-driver-page .rapago-driver-sheet-status__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-sheet-status__text strong {
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--nav-text);
+}
+
+.rapago-driver-page .rapago-driver-sheet-status__text small {
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--nav-muted);
+  /* El nombre del destino puede ser largo: dos líneas antes que recortar. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* El tono por fase se conserva, pero sólo en el disco: el texto del estado ya
+   lleva el significado, el color únicamente lo acompaña. */
+.rapago-driver-page .rapago-driver-sheet-status--enroute,
+.rapago-driver-page .rapago-driver-sheet-status--waiting,
+.rapago-driver-page .rapago-driver-sheet-status--riding {
+  border-color: transparent;
+}
+
 .rapago-driver-page
-  button[aria-label="Acercar mapa y seguir ruta dentro de Rapa Go"] {
-  background: var(--rp-btn-primary) !important;
-  border-color: var(--rp-hero-bd) !important;
-  box-shadow: var(--rp-shadow-accent) !important;
-  color: var(--rp-btn-primary-fg) !important;
+  .rapago-driver-sheet-status--waiting
+  .rapago-driver-sheet-status__icon {
+  background: color-mix(in srgb, var(--nav-accent) 20%, transparent);
+  color: var(--rp-gold-dark, #8a641c);
+}
+
+.rapago-driver-page[data-rapago-theme="dark"]
+  .rapago-driver-sheet-status--waiting
+  .rapago-driver-sheet-status__icon {
+  color: var(--nav-accent);
+}
+
+/* ---- Fila de llegada ----
+   Misma rejilla que el estado. El dato manda: número grande, etiqueta chica
+   encima. Duración y distancia son los mismos valores de routeInfo. */
+.rapago-driver-page .rapago-driver-nav-eta {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-nav-eta__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  font-size: 21px;
+  background: var(--nav-primary-soft);
+  color: var(--nav-primary);
+}
+
+.rapago-driver-page[data-rapago-theme="dark"] .rapago-driver-nav-eta__icon {
+  color: var(--rp-ocean-bright, #2fa8bf);
+}
+
+.rapago-driver-page .rapago-driver-nav-eta__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.rapago-driver-page .rapago-driver-nav-eta__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--nav-muted);
+}
+
+.rapago-driver-page .rapago-driver-nav-eta__value {
+  font-size: 1.62rem;
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--nav-text);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* La distancia acompaña al tiempo en la misma línea, un peldaño por debajo:
+   el conductor lee primero cuánto falta en tiempo. */
+.rapago-driver-page .rapago-driver-nav-eta__dist {
+  font-size: 1.12rem;
+  font-weight: 600;
+  color: var(--nav-muted);
+}
+
+/* ---- Dock de acciones ---- */
+/* Pegado al núcleo, no flotando bajo él: la acción es la conclusión de lo que
+   se acaba de leer. El gap de 2px basta porque "Cancelar" ya se separa por sus
+   propios 44px de alto táctil —el texto queda centrado en ellos y el aire
+   aparece solo—; sumar margen encima lo alejaba del botón sin ganar nada. */
+.rapago-driver-page .rapago-driver-nav-sheet__dock {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+}
+
+/* Acción principal de toda la pantalla. Petróleo sólido, ancho completo:
+   un solo primario por vista y el objetivo táctil más grande que hay, que es
+   lo que hace falta para acertarle sin apartar la vista de la calle. */
+.rapago-driver-page .rapago-driver-nav-sheet__confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--nav-r);
+  background: var(--nav-primary);
+  color: var(--nav-primary-fg);
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+  touch-action: manipulation;
+  transition:
+    transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rapago-driver-page[data-rapago-theme="dark"]
+  .rapago-driver-nav-sheet__confirm {
+  border: 1px solid color-mix(in srgb, var(--rp-ocean-bright) 42%, transparent);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm ion-icon {
+  flex: 0 0 auto;
+  font-size: 1.2rem;
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm:active {
+  transform: scale(0.985);
+  filter: brightness(1.12);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm:focus-visible {
+  outline: 2px solid var(--nav-accent);
+  outline-offset: 3px;
+}
+
+/* Un color por etapa. El icono ya distinguía las tres acciones, pero de reojo
+   —única forma de mirar esto conduciendo— el botón era siempre igual.
+   "Llegué al punto" (sin modificador) se queda en el oro de marca por ser el
+   paso por defecto; iniciar es verde de avance; finalizar, el petróleo. */
+.rapago-driver-page .rapago-driver-nav-sheet__confirm:not([class*="--"]) {
+  background: var(--rp-btn-primary);
+  color: var(--rp-btn-primary-fg);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm--go {
+  background: var(--rp-action-go-bg, #2e7d5b);
+  color: var(--rp-action-go-fg, #ffffff);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__confirm--finish {
+  background: var(--nav-primary);
+  color: var(--nav-primary-fg);
+}
+
+/* Cancelar: claramente secundaria. Texto, no píldora sólida — un solo primario
+   sólido por vista. Conserva 44px de alto táctil y el ancho del dock, así que
+   deja de gritar sin volverse difícil de acertar. El rojo se reserva para esto
+   y para el error que corta la navegación. */
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--nav-r-sm);
+  background: transparent;
+  color: var(--nav-danger);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  touch-action: manipulation;
+  transition: background 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link ion-icon {
+  flex: 0 0 auto;
+  font-size: 1.05rem;
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link:active {
+  background: color-mix(in srgb, var(--nav-danger) 12%, transparent);
+}
+
+.rapago-driver-page .rapago-driver-nav-sheet__cancel-link:focus-visible {
+  outline: 2px solid var(--nav-danger);
+  outline-offset: 2px;
+}
+
+/* Zonas secundarias de la hoja. */
+.rapago-driver-page .rapago-driver-nav-sheet__extra {
+  flex: 0 0 auto;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--nav-line);
+}
+
+/* Avisos y acciones secundarias. ÚNICA zona con scroll de la hoja, y la
+   primera en quedar fuera de vista al plegar — es información de consulta, no
+   de conducción.
+   `min-height: 0` es imprescindible: sin él un hijo flex no encoge por debajo
+   de su contenido y la hoja crecería sin tope, ignorando el max-height.
+   `overscroll-behavior: contain` evita que al llegar al final el gesto se
+   propague al mapa, que respondería con zoom o desplazamiento.
+   `touch-action: pan-y` explícito: el navegador se queda el desplazamiento
+   vertical y el código decide cuándo robárselo para arrastrar la hoja. */
+.rapago-driver-page .rapago-driver-nav-sheet__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--nav-line);
+}
+
+/* Sin avisos, sin zona.
+
+   `sheetBody` se arma como fragmento con dos avisos condicionales dentro, así
+   que como VALOR es siempre truthy —un fragmento vacío sigue siendo un
+   elemento— y el `&&` que decide si pintar la zona daba verdadero aunque no
+   hubiera ni un aviso. El div se montaba igual, aportando su filete, sus 12px
+   de margen y sus 12px de relleno: una raya y un vacío bajo "Cancelar viaje"
+   que anunciaban contenido inexistente.
+
+   Se resuelve aquí y no en el TSX a propósito: en el DOM el div queda
+   REALMENTE vacío (React no emite nodo para una condición falsa, ni siquiera
+   texto en blanco), así que `:empty` acierta sin tocar la composición de la
+   hoja ni la condición que la monta. Cuando llega un aviso, el div deja de
+   estar vacío y la zona reaparece con su filete, sola. */
+.rapago-driver-page .rapago-driver-nav-sheet__body:empty,
+.rapago-driver-page .rapago-driver-nav-sheet__extra:empty {
+  display: none;
+}
+
+/* ── SOS ─────────────────────────────────────────────────────────────────────
+   Encabeza el riel derecho. Mismo círculo que el resto de controles —un solo
+   sistema— y el rojo sólo en el filo y el icono: es una acción crítica, no una
+   acción frecuente, y un disco rojo pleno junto al volante compite con el
+   destino sin necesidad. */
+.rapago-driver-page .rapago-driver-sos {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1.5px solid color-mix(in srgb, var(--nav-danger) 55%, transparent);
+  border-radius: 999px;
+  background: var(--nav-surface);
+  color: var(--nav-danger);
+  box-shadow: var(--nav-shadow);
+  font-weight: 800;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rapago-driver-page .rapago-driver-sos ion-icon {
+  font-size: 18px;
+}
+
+.rapago-driver-page .rapago-driver-sos span {
+  font-size: 0.54rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.rapago-driver-page .rapago-driver-sos:active {
+  transform: scale(0.94);
+}
+
+.rapago-driver-page .rapago-driver-sos:focus-visible {
+  outline: 2px solid var(--nav-danger);
+  outline-offset: 3px;
+}
+
+/* ── Cromo que se retira durante el viaje ────────────────────────────────────
+   Ni barra de pestañas ni píldora de marca mientras se conduce: el mapa se
+   queda con toda la pantalla y sólo compiten por la atención el destino, el
+   tiempo restante y la acción siguiente.
+   Ninguno de los dos se desmonta —las rutas, el menú de cuenta y el resto de
+   secciones siguen intactos—; sólo se ocultan EN ESTE CONTEXTO. `display:none`
+   además los saca del orden de tabulación y del árbol de accesibilidad, así
+   que no quedan controles invisibles pero enfocables.
+
+   `:has()` con `:not(.ion-page-hidden)` es imprescindible: Ionic mantiene las
+   páginas anteriores montadas en el DOM y sólo las marca como ocultas, así que
+   sin ese filtro la barra desaparecería también en las demás pantallas.
+   Mismo patrón que usa la pantalla de Solicitar viaje del pasajero
+   (request-ride.css). */
+ion-tabs:has(
+    .rapago-driver-page:not(.ion-page-hidden) .rapago-driver-active-ride
+  )
+  ion-tab-bar.rapago-role-tabbar {
+  display: none !important;
+}
+
+.rapago-driver-page .rapago-driver-active-ride .rp-appbar--overlay {
+  display: none;
+}
+
+/* ...y el hueco que esa barra dejaba reservado.
+
+   global.css declara DOS veces `ion-content { --padding-bottom: calc(96px +
+   env(safe-area-inset-bottom)) !important }`, sin acotar a ninguna pantalla.
+   Tiene sentido donde nació: la barra de pestañas es `position: fixed`, no
+   ocupa sitio en el flujo, y sin ese colchón taparía el final de las listas.
+
+   Pero aquí la barra está oculta (regla de arriba), así que el colchón ya no
+   despeja nada: sigue encogiendo la caja de contenido ~130px. Como el viaje
+   activo se dibuja con `height: 100%` encadenado —contenido → hoja → mapa—,
+   los tres terminaban esos 130px por encima del borde real del aparato y por
+   debajo asomaba el fondo de la página. Eso era la franja bajo la hoja, no un
+   problema de la hoja: el mapa nunca llegaba al suelo.
+
+   Hacen falta el !important (el de global.css sólo lo vence otro !important) y
+   las dos clases (para ganarle en especificidad al `ion-content` a secas). */
+.rapago-driver-page ion-content.rapago-driver-active-ride-content {
+  --padding-bottom: 0 !important;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────────
+   De 320 a 430px. Lo que cede es el tamaño del texto y los respiros; nunca los
+   objetivos táctiles, que no bajan de 44px en ningún ancho. */
+@media (max-width: 360px) {
+  .rapago-driver-page .rp-navmap {
+    --nav-inset: calc(10px + env(safe-area-inset-left, 0px));
+    --nav-inset-r: calc(10px + env(safe-area-inset-right, 0px));
+  }
+
+  .rapago-driver-page .rp-nav-head__main {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 11px;
+    padding: 12px 46px 12px 12px;
+  }
+
+  .rapago-driver-page .rp-nav-head__maneuver {
+    width: 44px;
+    height: 44px;
+    font-size: 1.6rem;
+  }
+
+  .rapago-driver-page .rp-nav-head__title {
+    font-size: 1.24rem;
+  }
+
+  .rapago-driver-page .rapago-driver-nav-sheet {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .rapago-driver-page .rapago-driver-nav-eta__value {
+    font-size: 1.42rem;
+  }
+
+  .rapago-driver-page .rapago-driver-nav-eta__dist {
+    font-size: 1rem;
+  }
+
+  .rapago-driver-page .rapago-driver-nav-sheet__confirm {
+    font-size: 0.95rem;
+    padding: 0 14px;
+  }
+}
+
+/* Pantallas bajas: la hoja se aprieta antes que perder mapa o encoger los
+   botones. */
+@media (max-height: 680px) {
+  .rapago-driver-page .rapago-driver-nav-eta__value {
+    font-size: 1.42rem;
+  }
+
+  .rapago-driver-page .rp-nav-head__title {
+    font-size: 1.28rem;
+  }
+
+  .rapago-driver-page .rapago-driver-nav-sheet__core > * + * {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+
+  .rapago-driver-page .rapago-driver-nav-sheet__dock {
+    margin-top: 9px;
+  }
+
+  /* El disco del estado es decoración: en una pantalla baja el alto se lo
+     queda el mapa antes que un círculo de 44px que no dice nada que el texto
+     de al lado no diga ya. Los objetivos táctiles no se tocan. */
+  .rapago-driver-page .rapago-driver-sheet-status,
+  .rapago-driver-page .rapago-driver-nav-eta {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .rapago-driver-page .rapago-driver-sheet-status__icon,
+  .rapago-driver-page .rapago-driver-nav-eta__icon {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+}
+
+/* ── Movimiento reducido ─────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .rapago-driver-page .rp-nav-head__main,
+  .rapago-driver-page .rp-nav-head__then,
+  .rapago-driver-page .rp-nav-head__toggle,
+  .rapago-driver-page .rp-map-btn,
+  .rapago-driver-page .rapago-driver-sos,
+  .rapago-driver-page .rapago-driver-nav-sheet__confirm,
+  .rapago-driver-page .rapago-driver-nav-sheet__cancel-link {
+    transition: none;
+  }
+
+  .rapago-driver-page .rp-map-btn:active,
+  .rapago-driver-page .rapago-driver-sos:active,
+  .rapago-driver-page .rapago-driver-nav-sheet__confirm:active {
+    transform: none;
+  }
+
+  .rapago-driver-page .rp-map-recenter:active {
+    transform: translateX(-50%);
+  }
 }
 
 /* ── Superficie de página ───────────────────────────────────────────────── */
@@ -2424,34 +3509,10 @@
 }
 
 /* ── Contraste de los elementos del viaje activo ──────────────────────────
-   Estos elementos estaban con `style={{...}}` inline y sin gancho, así que no
-   se podían alcanzar desde aquí. Ahora tienen className y se corrigen sus
-   fallos de contraste medidos.
-
-   TODAS las reglas de este bloque llevan `!important` por una única razón: los
-   valores que corrigen están escritos como estilo inline en el TSX, y un estilo
-   inline solo se puede vencer con `!important`. No es preferencia, es la única
-   vía sin editar el TSX. */
-
-/* Chip de GPS fuera de cobertura.
-   Estaba en rgba(239,68,68,.92) con texto blanco: 3,76:1 sobre el rojo pleno, y
-   aún menos con el mapa colándose por ese 8% de transparencia. Para texto chico
-   el mínimo AA es 4,5:1, así que no llegaba.
-   #dc2626 opaco da 4,68:1 con blanco. Opaco a propósito: sobre un mapa el fondo
-   es impredecible (calle clara, agua, parque) y cualquier translucidez hace que
-   el contraste dependa de por dónde vaya el conductor. */
-.rapago-driver-page .rapago-driver-gps-chip--outside {
-  background: #dc2626 !important;
-  /* .64rem ≈ 10px era muy poco para leer de reojo mientras se conduce. */
-  font-size: 0.72rem !important;
-}
-
-/* Chip de "activando GPS": mismo criterio de fondo opaco, en tono neutro. */
-.rapago-driver-page .rapago-driver-gps-chip--acquiring {
-  background: rgba(17, 17, 17, 0.94) !important;
-  color: #ffffff !important;
-  font-size: 0.72rem !important;
-}
+   Correcciones de contraste medidas sobre piezas que llevan color propio.
+   Los `!important` que quedan en este bloque cubren valores que aún vienen
+   como estilo inline desde el TSX; el cromo del mapa ya no los necesita
+   (tiene clases propias más arriba en esta hoja). */
 
 /* Círculo de estado bajo el mapa.
    #22c55e con el icono blanco encima daba 2,34:1. Es un componente de interfaz
@@ -2632,17 +3693,15 @@
 /* ==========================================================================
    Viaje activo — contenedor único
    --------------------------------------------------------------------------
-   Antes esta pantalla era un flex column con el mapa arriba y un panel oscuro
-   fijo abajo (uberPanelStyle). El panel no se podía plegar y se quedaba entre
-   190 y 380 px según el estado, así que el mapa —lo único que el conductor
-   mira mientras maneja— vivía en poco más de un tercio de la pantalla.
-   Ahora el mapa ocupa el 100% y todo lo demás vive dentro de su hoja, que SÍ
-   se pliega. Único fuera de la hoja: el SOS.
+   El mapa ocupa el 100% y todo lo demás vive flotando sobre él: cabecera
+   arriba, controles a los lados, hoja abajo. Sin barra de pestañas ni píldora
+   de marca (se ocultan más arriba en esta hoja), el mapa se queda con toda la
+   pantalla, que es el objetivo de la vista.
    ========================================================================== */
 .rapago-driver-page .rapago-driver-active-ride {
   position: relative;
   /* height (no min-height) heredado del IonContent, que Ionic ya calcula
-     descontando cabecera y tab bar. NO usar dvh aquí: mediría el viewport
+     descontando cabecera y barra. NO usar dvh aquí: mediría el viewport
      completo ignorando ambas, y en iOS se re-resuelve al colapsar la barra de
      URL, lo que reflowearía el mapa a mitad de arrastre. */
   height: 100%;
@@ -2653,142 +3712,12 @@
   /* El scroll vive DENTRO de la hoja. Si también estuviera aquí, los dos
      competirían y el gesto de arrastre se lo llevaría la página. */
   overflow: hidden;
-  background: #0f1115;
-  color: #fff;
-}
-
-/* ---- Botón SOS ---- */
-.rapago-driver-page .rapago-driver-sos {
-  position: absolute;
-  right: 14px;
-  /* Anclado al TOPE, no a la hoja: es el único control que debe seguir en el
-     mismo sitio aunque la hoja se pliegue o se expanda. Si se moviera con
-     ella, el conductor tendría que buscarlo justo cuando menos puede. */
-  top: calc(env(safe-area-inset-top, 0px) + 12px);
-  z-index: 12;
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  width: 52px;
-  height: 52px;
-  padding: 0;
-  border-radius: 999px;
-  border: 2px solid var(--rp-danger-bd, rgba(220, 38, 38, 0.55));
-  background: var(--rp-surface);
-  color: var(--rp-danger-fg, #dc2626);
-  box-shadow: var(--rp-shadow);
-  font-weight: 950;
-  cursor: pointer;
-}
-
-.rapago-driver-page .rapago-driver-sos ion-icon {
-  font-size: 21px;
-}
-
-.rapago-driver-page .rapago-driver-sos span {
-  font-size: 0.58rem;
-  letter-spacing: 0.04em;
-  line-height: 1;
-}
-
-.rapago-driver-page .rapago-driver-sos:active {
-  transform: scale(0.96);
-}
-
-.rapago-driver-page .rapago-driver-sos:focus-visible {
-  outline: 2px solid var(--rp-danger-fg, #dc2626);
-  outline-offset: 3px;
-}
-
-/* ---- Estado del viaje dentro de la hoja ----
-   Misma rejilla que .request-map-walk del pasajero: columna de icono fija +
-   texto flexible. Que ambas apps compartan la retícula es lo que hace que se
-   sientan del mismo producto, más que compartir colores. */
-.rapago-driver-page .rapago-driver-sheet-status {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  align-items: center;
-  gap: 11px;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--rp-border-c);
-  border-radius: var(--rp-radius-md, 16px);
-  background: var(--rp-field-bg);
-}
-
-.rapago-driver-page .rapago-driver-sheet-status__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  font-size: 20px;
-  background: var(--rp-icon-bg, rgba(214, 166, 64, 0.14));
-  color: var(--rp-icon-fg);
-}
-
-/* El color nunca comunica solo: siempre acompaña al texto del estado, que es
-   quien lleva el significado. Tres tonos para tres fases distintas. */
-.rapago-driver-page .rapago-driver-sheet-status--enroute {
-  border-color: color-mix(in srgb, var(--rp-accent) 38%, transparent);
-}
-.rapago-driver-page
-  .rapago-driver-sheet-status--enroute
-  .rapago-driver-sheet-status__icon {
-  background: color-mix(in srgb, var(--rp-accent) 18%, transparent);
-  color: var(--rp-accent);
-}
-
-.rapago-driver-page .rapago-driver-sheet-status--waiting {
-  border-color: color-mix(in srgb, var(--rp-gold) 42%, transparent);
-}
-.rapago-driver-page
-  .rapago-driver-sheet-status--waiting
-  .rapago-driver-sheet-status__icon {
-  background: color-mix(in srgb, var(--rp-gold) 20%, transparent);
-  color: var(--rp-gold);
-}
-
-.rapago-driver-page .rapago-driver-sheet-status--riding {
-  border-color: color-mix(in srgb, var(--rp-lagoon, #1f9d63) 40%, transparent);
-}
-.rapago-driver-page
-  .rapago-driver-sheet-status--riding
-  .rapago-driver-sheet-status__icon {
-  background: color-mix(in srgb, var(--rp-lagoon, #1f9d63) 20%, transparent);
-  color: var(--rp-lagoon, #1f9d63);
-}
-
-.rapago-driver-page .rapago-driver-sheet-status__text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.25;
-}
-
-.rapago-driver-page .rapago-driver-sheet-status__text strong {
-  font-size: 0.88rem;
-  font-weight: 900;
-  color: var(--rp-text);
-}
-
-.rapago-driver-page .rapago-driver-sheet-status__text small {
-  font-size: 0.76rem;
-  font-weight: 750;
-  color: var(--rp-muted);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  background: var(--rp-page-bg, #0f1115);
 }
 
 /* ---- Avisos dentro de la hoja ----
-   Misma retícula que el bloque de estado y que .request-map-walk: la columna
-   de iconos alineada hace que la hoja se lea como una lista y no como cajas
-   sueltas apiladas. */
+   Misma retícula que el bloque de estado: la columna de iconos alineada hace
+   que la hoja se lea como una lista y no como cajas sueltas apiladas. */
 .rapago-driver-page .rapago-driver-sheet-note {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr);
@@ -2935,43 +3864,6 @@
   opacity: 1;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .rapago-driver-page .rapago-driver-sos:active {
-    transform: none;
-  }
-}
-
-/* ---- ETA de la hoja ----
-   El tiempo manda (número grande); la distancia lo acompaña con su icono, en
-   una píldora que la separa visualmente del ETA sin necesitar otro renglón. */
-.rapago-driver-page .rapago-driver-nav-eta__meta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  max-width: 100%;
-  margin-top: 7px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--rp-field-bg);
-  border: 1px solid var(--rp-border-c);
-  color: var(--rp-muted);
-  font-size: 0.82rem;
-  font-weight: 850;
-}
-
-.rapago-driver-page .rapago-driver-nav-eta__meta ion-icon {
-  flex: 0 0 auto;
-  font-size: 14px;
-  color: var(--rp-icon-fg);
-}
-
-.rapago-driver-page .rapago-driver-nav-eta__meta span {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
 /* ---- Iconos dentro de los botones de la hoja ----
    Tamaño contenido y margen propio: los `slot="start"` de Ionic traen un
    margen pensado para botones de barra, demasiado ancho para píldoras de
@@ -2988,27 +3880,6 @@
 @media (max-width: 340px) {
   .rapago-driver-page .rapago-driver-sheet-actions ion-button ion-icon {
     display: none;
-  }
-}
-
-/* ---- ETA: pieza principal de la hoja ----
-   Con los dos botones de 58px que lo flanqueaban eliminados, el ETA ocupa toda
-   la franja y puede crecer. Es el dato que se mira de reojo, a un brazo de
-   distancia y en movimiento: merece ser lo más grande del contenedor. */
-.rapago-driver-page .rapago-driver-nav-eta__value {
-  font-size: 2.4rem;
-  line-height: 1;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  color: var(--rp-text);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Pantallas bajas: el ETA cede antes que los targets táctiles, que nunca
-   bajan de 44px. */
-@media (max-height: 680px) {
-  .rapago-driver-page .rapago-driver-nav-eta__value {
-    font-size: 2rem;
   }
 }
 
@@ -3043,177 +3914,6 @@
   }
 }
 
-/* ---- Acción principal, esquina superior derecha de la hoja ----
-   Misma idea que .rp-request-map-head-confirm del pasajero (degradado de
-   marca en formato píldora): aquí flota junto al asa de arrastre en vez de
-   compartir fila con "Cancelar" al fondo de la hoja, así queda a la vista
-   sin importar cuánto se pliegue el panel. --rp-btn-primary ya trae el
-   degradado de marca completo (--rp-gold-soft/-dark del pasajero no existen
-   en este árbol, ver .request-map-page). position:absolute la saca del flujo
-   de la franja del asa, que captura el gesto de arrastre en todo su ancho:
-   así el botón nunca compite por ese gesto. */
-/* ---- Dock de acciones de la hoja ----
-   Patrón "button dock" de Base, el sistema de diseño de Uber: la acción
-   principal ocupa el ancho completo al pie del bloque, en vez de ser una
-   píldora estrecha en una esquina. El objetivo pasa de ~172px de ancho a la
-   franja entera, que es lo que permite acertarle sin apartar la vista.
-
-   La rejilla es de 4px, también de Base: 56 de alto en el primario, 44 en el
-   secundario, 8 de separación. */
-.rapago-driver-page .rapago-driver-nav-sheet__dock {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__confirm {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  /* 56px: cómodamente por encima del mínimo táctil (44 iOS / 48 Android) y
-     múltiplo de 4. Con el ancho completo ya no hace falta recortar el texto:
-     "Finalizar viaje" entra entero. */
-  min-height: 56px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: 16px;
-  background: var(--rp-btn-primary);
-  color: var(--rp-btn-primary-fg);
-  font-size: 1rem;
-  font-weight: 900;
-  letter-spacing: 0.01em;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: var(--rp-shadow-accent);
-  touch-action: manipulation;
-  transition:
-    transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 160ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__confirm ion-icon {
-  flex: 0 0 auto;
-  font-size: 1.15rem;
-}
-
-/* El propio texto se recorta con ellipsis: el aria-label en el JSX conserva
-   la etiqueta completa para lectores de pantalla. */
-.rapago-driver-page .rapago-driver-nav-sheet__confirm span {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__confirm:hover {
-  filter: brightness(1.03);
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__confirm:active {
-  transform: translateY(1px) scale(0.97);
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__confirm:focus-visible {
-  outline: 2px solid var(--rp-gold);
-  outline-offset: 2px;
-}
-
-/* Color por etapa del viaje. El icono ya cambiaba, pero el color no: de reojo
-   —única forma de mirar esto conduciendo— las tres acciones eran idénticas.
-   "Llegué al punto" se queda con el dorado de marca por ser el paso por
-   defecto y no necesita modificador. */
-.rapago-driver-page .rapago-driver-nav-sheet__confirm--go {
-  background: var(--rp-action-go-bg);
-  color: var(--rp-action-go-fg);
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__confirm--finish {
-  background: var(--rp-action-finish-bg);
-  color: var(--rp-action-finish-fg);
-}
-
-/* Pantallas muy angostas: el ancho ya es del 100%, así que no hay nada que
-   estrechar. Solo cede algo de alto y letra, y nunca por debajo de 48px —el
-   mínimo de Android, y múltiplo de 4. */
-@media (max-width: 360px) {
-  .rapago-driver-page .rapago-driver-nav-sheet__confirm {
-    min-height: 48px;
-    padding: 0 16px;
-    font-size: 0.92rem;
-    gap: 8px;
-  }
-
-  .rapago-driver-page .rapago-driver-nav-sheet__confirm ion-icon {
-    font-size: 1.05rem;
-  }
-}
-
-/* Cancelar: texto, no píldora sólida.
-
-   Antes era un espejo exacto de la acción principal —misma forma, mismo alto,
-   misma prominencia—, lo que ponía una acción destructiva al mismo peso visual
-   que confirmar. Base (el sistema de Uber) fija un solo primario sólido por
-   vista, y aquí había dos compitiendo por la atención del conductor.
-
-   Baja a texto pero conserva 44px de alto táctil y el ancho completo del dock:
-   deja de gritar sin volverse difícil de acertar. El subrayado es lo que lo
-   mantiene legible como algo pulsable ahora que no tiene fondo. */
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  min-height: 44px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--rp-danger-fg, #dc2626);
-  font-size: 0.88rem;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  line-height: 1;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-thickness: 1.5px;
-  touch-action: manipulation;
-  transition:
-    background 120ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-link ion-icon {
-  flex: 0 0 auto;
-  font-size: 1rem;
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-link span {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-link:hover {
-  background: var(--rp-err-bg, rgba(184, 79, 46, 0.12));
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-link:active {
-  transform: translateY(1px);
-  background: var(--rp-err-bg, rgba(184, 79, 46, 0.12));
-}
-
-.rapago-driver-page .rapago-driver-nav-sheet__cancel-link:focus-visible {
-  outline: 2px solid var(--rp-danger-fg, #dc2626);
-  outline-offset: 2px;
-}
 
 /* ==========================================================================
    Tarjetas de "Mis Viajes"

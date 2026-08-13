@@ -7596,135 +7596,143 @@ export default function RequestRidePage(): JSX.Element {
     [history],
   );
 
-  const [klapPayment, setKlapPayment] =
-    useState<PendingKlapPaymentRecord | null>(null);
+  /* ── Bottom sheet arrastrable ──────────────────────────────────────────
+     El asa controla la posición vertical de TODA la hoja, que es un overlay
+     absoluto sobre el mapa. La magnitud es `sheetShift` en px (cuánto está
+     bajada respecto a su tope superior) y se pinta como `translateY`, de modo
+     que el dedo la arrastra 1:1 sin tocar el layout del mapa ni del resto.
 
-  const restorePendingKlapPayment = useCallback((): void => {
-    if (!session?.accessToken) return;
-    const pending = readPendingKlapPayment();
-    if (pending) setKlapPayment(pending);
-  }, [session?.accessToken]);
+     Esto es estado de presentación: no toca coordenadas, tarifas ni el
+     comportamiento interno del mapa. */
+  const requestShellRef = useRef<HTMLDivElement | null>(null);
+  const requestSheetHeadRef = useRef<HTMLDivElement | null>(null);
+  /* null hasta la primera medida: evita pintar un px equivocado antes de
+     conocer el alto real. El CSS usa un translateY de respaldo mientras tanto. */
+  const [sheetShift, setSheetShift] = useState<number | null>(null);
+  const [sheetMaxShift, setSheetMaxShift] = useState(0);
+  const [requestSheetDragging, setRequestSheetDragging] = useState(false);
+  const sheetDragRef = useRef<{
+    startY: number;
+    /* Posición al empezar el gesto y última posición aplicada: al soltar se
+       decide con el valor real del arrastre, no con el de React (un render por
+       detrás). */
+    startShift: number;
+    shift: number;
+  } | null>(null);
 
+  /* Mide el recorrido REAL: alto del shell menos el alto de la cabecera (asa +
+     AHORA/RESERVAR), que es lo único que queda visible con la hoja abajo del
+     todo. El ResizeObserver lo mantiene al día al girar el aparato o al
+     encogerse la barra del navegador; sin números mágicos de alto. */
   useEffect(() => {
-    restorePendingKlapPayment();
-    window.addEventListener(
-      "rapago:resume-klap-payment",
-      restorePendingKlapPayment,
-    );
+    const shell = requestShellRef.current;
+    if (!shell || typeof ResizeObserver === "undefined") return;
 
-    return () => {
-      window.removeEventListener(
-        "rapago:resume-klap-payment",
-        restorePendingKlapPayment,
+    const measure = (): void => {
+      const shellHeight = shell.getBoundingClientRect().height;
+      if (shellHeight <= 0) return;
+
+      const headHeight =
+        requestSheetHeadRef.current?.getBoundingClientRect().height ??
+        REQUEST_SHEET_HANDLE_FALLBACK;
+      const max = Math.max(0, shellHeight - headHeight);
+
+      setSheetMaxShift(max);
+      setSheetShift((prev) =>
+        prev == null
+          ? Math.round(max * REQUEST_SHEET_REST_FRACTION)
+          : Math.min(prev, max),
       );
     };
-  }, [restorePendingKlapPayment]);
 
-  const handleKlapApproved = useCallback(
-    (pending: PendingKlapPaymentRecord): void => {
-      const approvedAt = new Date().toISOString();
+    const observer = new ResizeObserver(measure);
+    observer.observe(shell);
+    measure();
 
-      if (pending.scheduledRideMirror) {
-        upsertLocalAdminScheduledRide({
-          ...pending.scheduledRideMirror,
-          serverRideId: pending.rideRequestId,
-          originalRideId: pending.rideRequestId,
-          paymentStatus: "approved",
-          paymentApproved: true,
-          paymentApprovedAt: approvedAt,
-          paymentProvider: "klap",
-        });
-      }
+    return () => observer.disconnect();
+  }, []);
 
-      clearPendingKlapPayment();
-      setKlapPayment(null);
-      window.dispatchEvent(
-        new CustomEvent("rapago:passenger-rides-updated", {
-          detail: {
-            rideId: pending.rideRequestId,
-            source: "klap-payment-approved",
-          },
-        }),
-      );
-      goToTripsAfterRequest(pending.rideRequestId);
-    },
-    [goToTripsAfterRequest],
-  );
+  function handleRequestGripPointerDown(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    if (sheetMaxShift <= 0) return;
 
-  const handleKlapRejected = useCallback(
-    (_pending: PendingKlapPaymentRecord, message: string): void => {
-      // El modal permanece abierto para que el pasajero vea el motivo y pueda
-      // probar otra tarjeta. Solo limpiamos la orden terminal del almacenamiento.
-      clearPendingKlapPayment();
-      setSubmitError(message);
-    },
-    [],
-  );
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startShift =
+      sheetShift ?? Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION);
+    sheetDragRef.current = {
+      startY: event.clientY,
+      startShift,
+      shift: startShift,
+    };
+    setRequestSheetDragging(true);
+  }
 
-  const handleRetryKlapPayment = useCallback(
-    async (
-      pending: PendingKlapPaymentRecord,
-    ): Promise<PendingKlapPaymentRecord> => {
-      if (!session?.accessToken) {
-        throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
-      }
+  function handleRequestGripPointerMove(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
 
-      // Conserva el registro anterior hasta que el backend entregue una orden
-      // nueva o recupere de forma segura la existente. Así no perdemos la
-      // referencia local si Klap está temporalmente inaccesible.
-      resetKlapCheckoutForNextOrder();
+    const deltaPx = event.clientY - drag.startY;
 
-      const order = await createKlapHostedOrder(
-        session.accessToken,
-        pending.rideRequestId,
-      );
+    /* clientY crece hacia abajo: bajar el dedo baja la hoja (shift crece) y
+       subirlo la sube, siempre 1:1. Fuera de los límites cede elásticamente. */
+    const raw = drag.startShift + deltaPx;
+    const next = rubberBandShare(raw, 0, sheetMaxShift);
 
-      const nextPayment: PendingKlapPaymentRecord = {
-        ...pending,
-        paymentId: order.paymentId,
-        orderId: order.publicCheckoutData.orderId,
-        redirectUrl: order.publicCheckoutData.redirectUrl,
-        provider: "klap",
-        createdAt: new Date().toISOString(),
-        checkoutStartedAt: null,
-      };
+    drag.shift = next;
+    setSheetShift(next);
+  }
 
-      savePendingKlapPayment(nextPayment);
-      setSubmitError(null);
-      setKlapPayment(nextPayment);
-      return nextPayment;
-    },
-    [session?.accessToken],
-  );
+  function handleRequestGripPointerUp(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
 
-  const handleCloseKlapCheckout = useCallback(
-    (pending: PendingKlapPaymentRecord): void => {
-      setKlapPayment(null);
-      goToTripsAfterRequest(pending.rideRequestId);
-    },
-    [goToTripsAfterRequest],
-  );
+    sheetDragRef.current = null;
+    setRequestSheetDragging(false);
 
-  const handleCancelKlapRequest = useCallback(
-    async (pending: PendingKlapPaymentRecord): Promise<void> => {
-      if (!session?.accessToken) {
-        throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
-      }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
 
-      await cancelPendingKlapRide(session.accessToken, pending);
-      setKlapPayment(null);
-      tripsRedirectStartedRef.current = false;
-      window.dispatchEvent(
-        new CustomEvent("rapago:passenger-rides-updated", {
-          detail: {
-            rideId: pending.rideRequestId,
-            source: "klap-request-cancelled-before-payment",
-          },
-        }),
-      );
-    },
-    [session?.accessToken],
-  );
+    /* La hoja se queda EXACTAMENTE donde se soltó, solo acotada a los límites:
+       movimiento libre, sin posiciones fijas ni encaje. Lo único que se
+       deshace es el estiramiento elástico si el gesto terminó fuera de banda. */
+    setSheetShift(Math.min(sheetMaxShift, Math.max(0, drag.shift)));
+  }
+
+  /* Equivalente accesible del arrastre: las flechas suben y bajan la hoja en
+     pasos fijos de px, dentro del mismo recorrido acotado. */
+  function handleRequestGripKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ): void {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+    event.preventDefault();
+    const delta =
+      event.key === "ArrowUp"
+        ? -REQUEST_SHEET_KEY_STEP
+        : REQUEST_SHEET_KEY_STEP;
+
+    setSheetShift((current) => {
+      const base =
+        current ?? Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION);
+      return Math.min(sheetMaxShift, Math.max(0, base + delta));
+    });
+  }
+
+  /* Los controles interactivos de la cabecera (AHORA / RESERVAR) detienen la
+     propagación del puntero para que pulsarlos no inicie un arrastre. Es el
+     mismo recurso que usa el botón de confirmar dentro de la cabecera del
+     selector de recogida. */
+  function stopSheetDragPropagation(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    event.stopPropagation();
+  }
 
   useEffect(() => {
     preSearchLocationService.read();
@@ -7780,6 +7788,7 @@ export default function RequestRidePage(): JSX.Element {
   const [flightNumber, setFlightNumber] = useState("");
   const [airportWelcomeOption, setAirportWelcomeOption] =
     useState<AirportWelcomeOption>("none");
+  const [flowerLeiQuantity, setFlowerLeiQuantity] = useState(1);
   const [locating, setLocating] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
