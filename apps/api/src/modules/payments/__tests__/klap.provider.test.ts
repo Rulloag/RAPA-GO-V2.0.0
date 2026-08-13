@@ -156,6 +156,138 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
     });
   });
 
+  it("envía user.email y notify_payment_user cuando hay passengerEmail, sin depender del correo del comercio", async () => {
+    delete process.env["KLAP_MERCHANT_NOTIFICATION_EMAIL"];
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(
+      params({ passengerEmail: "pasajero@example.com" }),
+    );
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(body["user"]).toEqual({ email: "pasajero@example.com" });
+    expect(customs).toEqual(
+      expect.arrayContaining([
+        { key: "notify_payment_user", value: "true" },
+      ]),
+    );
+    expect(customs.find((c) => c.key === "notify_payment_merchant")).toBeUndefined();
+    expect(
+      customs.find((c) => c.key === "notify_payment_email_merchant"),
+    ).toBeUndefined();
+  });
+
+  it("agrega notify_payment_merchant y notify_payment_email_merchant cuando KLAP_MERCHANT_NOTIFICATION_EMAIL está configurado", async () => {
+    process.env["KLAP_MERCHANT_NOTIFICATION_EMAIL"] = "pagos@rapago.cl";
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(params());
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(customs).toEqual(
+      expect.arrayContaining([
+        { key: "notify_payment_merchant", value: "true" },
+        { key: "notify_payment_email_merchant", value: "pagos@rapago.cl" },
+      ]),
+    );
+  });
+
+  it("crea la orden igual, sin notify_payment_merchant ni fallar, cuando KLAP_MERCHANT_NOTIFICATION_EMAIL no está configurado", async () => {
+    delete process.env["KLAP_MERCHANT_NOTIFICATION_EMAIL"];
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    const result = await new KlapProvider().createHostedOrder(params());
+
+    expect(result.providerOrderId).toBe("test-order-123");
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(customs.find((c) => c.key === "notify_payment_merchant")).toBeUndefined();
+    expect(
+      customs.find((c) => c.key === "notify_payment_email_merchant"),
+    ).toBeUndefined();
+  });
+
+  it("crea la orden igual cuando KLAP_MERCHANT_NOTIFICATION_EMAIL está configurado solo con espacios en blanco", async () => {
+    process.env["KLAP_MERCHANT_NOTIFICATION_EMAIL"] = "   ";
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    const result = await new KlapProvider().createHostedOrder(params());
+
+    expect(result.providerOrderId).toBe("test-order-123");
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(customs.find((c) => c.key === "notify_payment_merchant")).toBeUndefined();
+  });
+
+  it("nunca envía user.email vacío ni notify_payment_user aunque passengerEmail venga en blanco", async () => {
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(
+      params({ passengerEmail: "   " }),
+    );
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(body["user"]).toBeUndefined();
+    expect(customs.find((c) => c.key === "notify_payment_user")).toBeUndefined();
+  });
+
+  it("preserva los customs existentes (expiration, indicator, transaction_type) al agregar los de notificación", async () => {
+    process.env["KLAP_MERCHANT_NOTIFICATION_EMAIL"] = "pagos@rapago.cl";
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(
+      params({ passengerEmail: "pasajero@example.com" }),
+    );
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(customs).toEqual(
+      expect.arrayContaining([
+        { key: "tarjetas_expiration_minutes", value: "30" },
+        { key: "tarjetas_payment_indicator", value: "typed" },
+        { key: "transaction_type", value: "authorization" },
+        { key: "notify_payment_user", value: "true" },
+        { key: "notify_payment_merchant", value: "true" },
+        { key: "notify_payment_email_merchant", value: "pagos@rapago.cl" },
+      ]),
+    );
+  });
+
   it("no envía Idempotency-Key por defecto porque no aparece en el Swagger entregado", async () => {
     delete process.env["KLAP_SEND_IDEMPOTENCY_HEADER"];
     mockJson(201, {

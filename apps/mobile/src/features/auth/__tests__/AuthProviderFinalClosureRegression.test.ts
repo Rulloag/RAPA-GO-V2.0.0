@@ -22,9 +22,16 @@ describe("final auth/deletion/legal closure", () => {
     expect(publicDeletionSource).not.toContain("Prefiero no indicar el motivo");
   });
 
-  it("provides a legal reacceptance gate for active versions", () => {
-    expect(legalGateSource).toContain("Documentos actualizados");
+  it("provides a dismissible legal reacceptance notice without silently accepting", () => {
+    expect(legalGateSource).toContain("Documentos y políticas actualizados");
     expect(legalGateSource).toContain("getMissingRequired");
     expect(legalGateSource).toContain("Aceptar documentos y continuar");
+    expect(legalGateSource).toContain("Cerrar aviso de documentos actualizados");
+    expect(legalGateSource).toContain("Cerrar la ventana no registra");
+    expect(legalGateSource).toContain(
+      "Tus documentos y políticas se actualizaron correctamente",
+    );
+    expect(legalGateSource).toContain("setCompleted(true)");
+    expect(legalGateSource).not.toContain("backdropDismiss={true}");
   });
 });

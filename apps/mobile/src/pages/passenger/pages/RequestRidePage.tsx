@@ -68,6 +68,11 @@ import {
   createKlapHostedOrder,
   markPendingKlapPaymentStarted,
   openKlapHostedCheckout,
+  readPendingKlapPayment,
+  clearPendingKlapPayment,
+  resetKlapCheckoutForNextOrder,
+  savePendingKlapPayment,
+  cancelPendingKlapRide,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
@@ -7596,21 +7601,8 @@ export default function RequestRidePage(): JSX.Element {
     [history],
   );
 
-  /* ── Bottom sheet arrastrable ──────────────────────────────────────────
-     El asa controla la posición vertical de TODA la hoja, que es un overlay
-     absoluto sobre el mapa. La magnitud es `sheetShift` en px (cuánto está
-     bajada respecto a su tope superior) y se pinta como `translateY`, de modo
-     que el dedo la arrastra 1:1 sin tocar el layout del mapa ni del resto.
+  const [flowerLeiQuantity, setFlowerLeiQuantity] = useState(1);
 
-     Esto es estado de presentación: no toca coordenadas, tarifas ni el
-     comportamiento interno del mapa. */
-  const requestShellRef = useRef<HTMLDivElement | null>(null);
-  const requestSheetHeadRef = useRef<HTMLDivElement | null>(null);
-  /* null hasta la primera medida: evita pintar un px equivocado antes de
-     conocer el alto real. El CSS usa un translateY de respaldo mientras tanto. */
-  const [sheetShift, setSheetShift] = useState<number | null>(null);
-  const [sheetMaxShift, setSheetMaxShift] = useState(0);
-  const [requestSheetDragging, setRequestSheetDragging] = useState(false);
   const sheetDragRef = useRef<{
     startY: number;
     /* Posición al empezar el gesto y última posición aplicada: al soltar se
@@ -7620,37 +7612,15 @@ export default function RequestRidePage(): JSX.Element {
     shift: number;
   } | null>(null);
 
-  /* Mide el recorrido REAL: alto del shell menos el alto de la cabecera (asa +
-     AHORA/RESERVAR), que es lo único que queda visible con la hoja abajo del
-     todo. El ResizeObserver lo mantiene al día al girar el aparato o al
-     encogerse la barra del navegador; sin números mágicos de alto. */
-  useEffect(() => {
-    const shell = requestShellRef.current;
-    if (!shell || typeof ResizeObserver === "undefined") return;
+  const requestShellRef = useRef<HTMLDivElement | null>(null);
 
-    const measure = (): void => {
-      const shellHeight = shell.getBoundingClientRect().height;
-      if (shellHeight <= 0) return;
+  const requestSheetHeadRef = useRef<HTMLDivElement | null>(null);
 
-      const headHeight =
-        requestSheetHeadRef.current?.getBoundingClientRect().height ??
-        REQUEST_SHEET_HANDLE_FALLBACK;
-      const max = Math.max(0, shellHeight - headHeight);
+  const [sheetShift, setSheetShift] = useState<number | null>(null);
 
-      setSheetMaxShift(max);
-      setSheetShift((prev) =>
-        prev == null
-          ? Math.round(max * REQUEST_SHEET_REST_FRACTION)
-          : Math.min(prev, max),
-      );
-    };
+  const [sheetMaxShift, setSheetMaxShift] = useState(0);
 
-    const observer = new ResizeObserver(measure);
-    observer.observe(shell);
-    measure();
-
-    return () => observer.disconnect();
-  }, []);
+  const [requestSheetDragging, setRequestSheetDragging] = useState(false);
 
   function handleRequestGripPointerDown(
     event: ReactPointerEvent<HTMLElement>,
@@ -7704,8 +7674,6 @@ export default function RequestRidePage(): JSX.Element {
     setSheetShift(Math.min(sheetMaxShift, Math.max(0, drag.shift)));
   }
 
-  /* Equivalente accesible del arrastre: las flechas suben y bajan la hoja en
-     pasos fijos de px, dentro del mismo recorrido acotado. */
   function handleRequestGripKeyDown(
     event: ReactKeyboardEvent<HTMLButtonElement>,
   ): void {
@@ -7724,15 +7692,141 @@ export default function RequestRidePage(): JSX.Element {
     });
   }
 
-  /* Los controles interactivos de la cabecera (AHORA / RESERVAR) detienen la
-     propagación del puntero para que pulsarlos no inicie un arrastre. Es el
-     mismo recurso que usa el botón de confirmar dentro de la cabecera del
-     selector de recogida. */
   function stopSheetDragPropagation(
     event: ReactPointerEvent<HTMLElement>,
   ): void {
     event.stopPropagation();
   }
+
+  const [klapPayment, setKlapPayment] =
+    useState<PendingKlapPaymentRecord | null>(null);
+
+  const restorePendingKlapPayment = useCallback((): void => {
+    if (!session?.accessToken) return;
+    const pending = readPendingKlapPayment();
+    if (pending) setKlapPayment(pending);
+  }, [session?.accessToken]);
+
+  useEffect(() => {
+    restorePendingKlapPayment();
+    window.addEventListener(
+      "rapago:resume-klap-payment",
+      restorePendingKlapPayment,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "rapago:resume-klap-payment",
+        restorePendingKlapPayment,
+      );
+    };
+  }, [restorePendingKlapPayment]);
+
+  const handleKlapApproved = useCallback(
+    (pending: PendingKlapPaymentRecord): void => {
+      const approvedAt = new Date().toISOString();
+
+      if (pending.scheduledRideMirror) {
+        upsertLocalAdminScheduledRide({
+          ...pending.scheduledRideMirror,
+          serverRideId: pending.rideRequestId,
+          originalRideId: pending.rideRequestId,
+          paymentStatus: "approved",
+          paymentApproved: true,
+          paymentApprovedAt: approvedAt,
+          paymentProvider: "klap",
+        });
+      }
+
+      clearPendingKlapPayment();
+      setKlapPayment(null);
+      window.dispatchEvent(
+        new CustomEvent("rapago:passenger-rides-updated", {
+          detail: {
+            rideId: pending.rideRequestId,
+            source: "klap-payment-approved",
+          },
+        }),
+      );
+      goToTripsAfterRequest(pending.rideRequestId);
+    },
+    [goToTripsAfterRequest],
+  );
+
+  const handleKlapRejected = useCallback(
+    (_pending: PendingKlapPaymentRecord, message: string): void => {
+      // El modal permanece abierto para que el pasajero vea el motivo y pueda
+      // probar otra tarjeta. Solo limpiamos la orden terminal del almacenamiento.
+      clearPendingKlapPayment();
+      setSubmitError(message);
+    },
+    [],
+  );
+
+  const handleRetryKlapPayment = useCallback(
+    async (
+      pending: PendingKlapPaymentRecord,
+    ): Promise<PendingKlapPaymentRecord> => {
+      if (!session?.accessToken) {
+        throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+      }
+
+      // Conserva el registro anterior hasta que el backend entregue una orden
+      // nueva o recupere de forma segura la existente. Así no perdemos la
+      // referencia local si Klap está temporalmente inaccesible.
+      resetKlapCheckoutForNextOrder();
+
+      const order = await createKlapHostedOrder(
+        session.accessToken,
+        pending.rideRequestId,
+      );
+
+      const nextPayment: PendingKlapPaymentRecord = {
+        ...pending,
+        paymentId: order.paymentId,
+        orderId: order.publicCheckoutData.orderId,
+        redirectUrl: order.publicCheckoutData.redirectUrl,
+        provider: "klap",
+        createdAt: new Date().toISOString(),
+        checkoutStartedAt: null,
+      };
+
+      savePendingKlapPayment(nextPayment);
+      setSubmitError(null);
+      setKlapPayment(nextPayment);
+      return nextPayment;
+    },
+    [session?.accessToken],
+  );
+
+  const handleCloseKlapCheckout = useCallback(
+    (pending: PendingKlapPaymentRecord): void => {
+      setKlapPayment(null);
+      goToTripsAfterRequest(pending.rideRequestId);
+    },
+    [goToTripsAfterRequest],
+  );
+
+  const handleCancelKlapRequest = useCallback(
+    async (pending: PendingKlapPaymentRecord): Promise<void> => {
+      if (!session?.accessToken) {
+        throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+      }
+
+      await cancelPendingKlapRide(session.accessToken, pending);
+      setKlapPayment(null);
+      tripsRedirectStartedRef.current = false;
+      window.dispatchEvent(
+        new CustomEvent("rapago:passenger-rides-updated", {
+          detail: {
+            rideId: pending.rideRequestId,
+            source: "klap-request-cancelled-before-payment",
+          },
+        }),
+      );
+    },
+    [session?.accessToken],
+  );
 
   useEffect(() => {
     preSearchLocationService.read();
@@ -7788,7 +7882,6 @@ export default function RequestRidePage(): JSX.Element {
   const [flightNumber, setFlightNumber] = useState("");
   const [airportWelcomeOption, setAirportWelcomeOption] =
     useState<AirportWelcomeOption>("none");
-  const [flowerLeiQuantity, setFlowerLeiQuantity] = useState(1);
   const [locating, setLocating] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -11051,20 +11144,107 @@ export default function RequestRidePage(): JSX.Element {
                               ? "0 10px 22px rgba(0,0,0,.30)"
                               : "0 10px 22px rgba(210,164,58,.14)",
                           }}>
-                          <>
-                            <IonIcon
-                              icon={flowerOutline}
-                              style={{
-                                verticalAlign: "middle",
-                                marginRight: 4,
-                                fontSize: "1rem",
-                              }}
-                            />{" "}
-                            <strong>Collar de flores agregado.</strong> Sumamos{" "}
-                            {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} al
-                            total para preparar tu bienvenida Rapa Nui al
-                            llegar.
-                          </>
+                          <div
+                    style={{
+                      background: isDark
+                        ? "linear-gradient(135deg,rgba(214,166,64,.16),rgba(214,166,64,.10))"
+                        : "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
+                      border: isDark
+                        ? "1px solid rgba(214,166,64,.42)"
+                        : "1px solid rgba(210,164,58,.42)",
+                      color: isDark ? "#f1c864" : "#4F350D",
+                      borderRadius: "14px",
+                      padding: "12px",
+                      fontSize: "0.74rem",
+                      lineHeight: 1.35,
+                      fontWeight: 900,
+                      marginBottom: "12px",
+                      boxShadow: isDark
+                        ? "0 10px 22px rgba(0,0,0,.30)"
+                        : "0 10px 22px rgba(210,164,58,.14)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <IonIcon icon={flowerOutline} style={{ fontSize: "1rem" }} />
+                      <strong>¿Para cuántas personas?</strong>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "grid",
+                        gridTemplateColumns: "44px minmax(72px,1fr) 44px",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Quitar un collar de flores"
+                        disabled={normalizedFlowerLeiQuantity <= 1}
+                        onClick={() =>
+                          setFlowerLeiQuantity((current) =>
+                            Math.max(1, Math.round(Number(current) || 1) - 1),
+                          )
+                        }
+                        style={{
+                          height: 40,
+                          borderRadius: 12,
+                          border: "1px solid rgba(210,164,58,.55)",
+                          background: isDark ? "rgba(255,255,255,.08)" : "#fff",
+                          color: isDark ? "#F8D879" : "#4F350D",
+                          fontWeight: 950,
+                          opacity: normalizedFlowerLeiQuantity <= 1 ? 0.45 : 1,
+                        }}
+                      >
+                        <IonIcon icon={removeOutline} />
+                      </button>
+                      <div
+                        aria-live="polite"
+                        style={{
+                          minHeight: 40,
+                          display: "grid",
+                          placeItems: "center",
+                          borderRadius: 12,
+                          background: isDark ? "rgba(0,0,0,.22)" : "rgba(255,255,255,.72)",
+                          border: "1px solid rgba(210,164,58,.35)",
+                          fontSize: "1rem",
+                          fontWeight: 950,
+                        }}
+                      >
+                        {normalizedFlowerLeiQuantity}
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Agregar un collar de flores"
+                        disabled={normalizedFlowerLeiQuantity >= AIRPORT_FLOWER_LEI_MAX_QUANTITY}
+                        onClick={() =>
+                          setFlowerLeiQuantity((current) =>
+                            Math.min(
+                              AIRPORT_FLOWER_LEI_MAX_QUANTITY,
+                              Math.max(1, Math.round(Number(current) || 1) + 1),
+                            ),
+                          )
+                        }
+                        style={{
+                          height: 40,
+                          borderRadius: 12,
+                          border: "1px solid rgba(210,164,58,.55)",
+                          background: "linear-gradient(135deg,#D2A43A,#F8D879)",
+                          color: "#111",
+                          fontWeight: 950,
+                          opacity: normalizedFlowerLeiQuantity >= AIRPORT_FLOWER_LEI_MAX_QUANTITY ? 0.5 : 1,
+                        }}
+                      >
+                        <IonIcon icon={addOutline} />
+                      </button>
+                    </div>
+                    <div style={{ marginTop: 9 }}>
+                      {normalizedFlowerLeiQuantity} {normalizedFlowerLeiQuantity === 1 ? "collar" : "collares"} · {formatCLP(airportWelcomeSurchargeClp)} en total
+                    </div>
+                    <div style={{ marginTop: 3, opacity: 0.78, fontSize: ".66rem" }}>
+                      {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} por persona.
+                    </div>
+                  </div>
                         </div>
                       )}
                     </>

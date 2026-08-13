@@ -25,22 +25,27 @@ describe("Google existing-account linking regressions", () => {
     );
   });
 
-  it("does not open the password-link flow when the existing account has no password", () => {
+  it("links a verified existing account without local password and lets the app create the backup password afterwards", () => {
     const credentialsCheck = googleServiceSource.indexOf(
       "findByUserId(emailOwner.id)",
     );
-    const linkingPrompt = googleServiceSource.indexOf(
-      'code: "AUTH_GOOGLE_ACCOUNT_LINKING_REQUIRED"',
+    const passwordlessLink = googleServiceSource.indexOf(
+      "linkPasswordlessVerifiedEmailAccount",
     );
 
     expect(credentialsCheck).toBeGreaterThan(-1);
-    expect(linkingPrompt).toBeGreaterThan(credentialsCheck);
+    expect(passwordlessLink).toBeGreaterThan(credentialsCheck);
+    expect(googleServiceSource).toContain("if (!user.isVerified)");
     expect(googleServiceSource).toContain(
-      'code: "AUTH_GOOGLE_LINK_PASSWORD_UNAVAILABLE"',
+      "this.identitiesRepository.attachToExistingUser",
     );
     expect(googleServiceSource).toContain(
-      "crea una contraseÃ±a de respaldo en Perfil",
+      'method: "verified_email_without_local_password"',
     );
+    expect(googleServiceSource).toContain(
+      "hasPassword: Boolean(credentials)",
+    );
+    expect(googleServiceSource).not.toContain("contraseÃ");
   });
 
   it("keeps Google sub as the stable identity and prevents attaching another Google account to the same user", () => {

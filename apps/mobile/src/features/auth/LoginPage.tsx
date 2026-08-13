@@ -25,6 +25,7 @@ import { AppleRoleSelectionModal } from "./AppleRoleSelectionModal.js";
 import { AppleSignInButton } from "./AppleSignInButton.js";
 import { GoogleAccountSetupModal } from "./GoogleAccountSetupModal.js";
 import { GoogleExistingAccountLinkModal } from "./GoogleExistingAccountLinkModal.js";
+import { GoogleBackupPasswordModal } from "./GoogleBackupPasswordModal.js";
 import { GoogleSignInButton } from "./GoogleSignInButton.js";
 import { useGoogleSignIn, type GoogleSignInOutcome } from "./useGoogleSignIn.js";
 import { useAppleSignIn, type AppleSignInOutcome } from "./useAppleSignIn.js";
@@ -587,7 +588,19 @@ export function LoginPage(): JSX.Element {
   function handleGoogleOutcome(outcome: GoogleSignInOutcome): void {
     if (outcome.kind === "success") {
       setGoogleSetupError("");
+      setGoogleLinkError("");
+      setGooglePasswordError("");
       history.replace(ROLE_HOME[outcome.role] ?? ROUTES.PASSENGER.HOME);
+      return;
+    }
+
+    if (outcome.kind === "password_required") {
+      // Google ya inició/vinculó la sesión. El hook mantiene el access token
+      // únicamente en memoria para crear una contraseña de respaldo opcional.
+      setServerError("");
+      setGoogleSetupError("");
+      setGoogleLinkError("");
+      setGooglePasswordError("");
       return;
     }
 
@@ -598,6 +611,7 @@ export function LoginPage(): JSX.Element {
       setServerError("");
       setGoogleSetupError(outcome.message ?? "");
       setGoogleLinkError("");
+      setGooglePasswordError("");
       return;
     }
 
@@ -607,6 +621,7 @@ export function LoginPage(): JSX.Element {
       setServerError("");
       setGoogleSetupError("");
       setGoogleLinkError("");
+      setGooglePasswordError("");
       return;
     }
 
@@ -639,6 +654,7 @@ export function LoginPage(): JSX.Element {
     setServerError("");
     setGoogleSetupError("");
     setGoogleLinkError("");
+    setGooglePasswordError("");
     handleGoogleOutcome(await google.signInNative());
   }
 
@@ -652,6 +668,7 @@ export function LoginPage(): JSX.Element {
     setServerError("");
     setGoogleSetupError("");
     setGoogleLinkError("");
+    setGooglePasswordError("");
 
     try {
       handleGoogleOutcome(await google.handleWebCredential(idToken));
@@ -694,6 +711,40 @@ export function LoginPage(): JSX.Element {
     }
   }
 
+  async function completeGoogleBackupPassword(
+    newPassword: string,
+    confirmPassword: string,
+  ): Promise<void> {
+    setServerError("");
+    setGooglePasswordError("");
+
+    const outcome = await google.completePassword(
+      newPassword,
+      confirmPassword,
+    );
+
+    if (outcome.kind === "success") {
+      history.replace(ROLE_HOME[outcome.role] ?? ROUTES.PASSENGER.HOME);
+      return;
+    }
+
+    if ("message" in outcome) {
+      setGooglePasswordError(outcome.message);
+      return;
+    }
+
+    setGooglePasswordError(
+      "No se pudo crear la contraseña de respaldo.",
+    );
+  }
+
+  function skipGoogleBackupPassword(): void {
+    const role = google.passwordRole ?? "passenger";
+    setGooglePasswordError("");
+    google.skipPassword();
+    history.replace(ROLE_HOME[role] ?? ROUTES.PASSENGER.HOME);
+  }
+
   async function completeGoogleSetup(input: {
     passengerFareType: "resident" | "chilean" | "foreigner";
     acceptedDocumentIds: string[];
@@ -713,7 +764,10 @@ export function LoginPage(): JSX.Element {
     try {
       const outcome = await google.completeSetup({ ...input, phone: cleanPhone });
 
-      if (outcome.kind === "success") {
+      if (
+        outcome.kind === "success" ||
+        outcome.kind === "password_required"
+      ) {
       const passengerConditionByFare: Record<
         "resident" | "chilean" | "foreigner",
         PassengerCondition
@@ -864,6 +918,7 @@ export function LoginPage(): JSX.Element {
   const [appleSetupError, setAppleSetupError] = useState("");
   const [googleSetupError, setGoogleSetupError] = useState("");
   const [googleLinkError, setGoogleLinkError] = useState("");
+  const [googlePasswordError, setGooglePasswordError] = useState("");
   const facebookLoginEnabled = false;
 
   const [facebookSetupRequest] =
@@ -1738,6 +1793,17 @@ export function LoginPage(): JSX.Element {
         onConfirm={(input) => {
           void completeGoogleSetup(input);
         }}
+      />
+
+      <GoogleBackupPasswordModal
+        isOpen={google.passwordOpen}
+        loading={google.loading}
+        displayEmail={google.passwordDisplayEmail}
+        error={googlePasswordError}
+        onConfirm={(newPassword, confirmPassword) => {
+          void completeGoogleBackupPassword(newPassword, confirmPassword);
+        }}
+        onSkip={skipGoogleBackupPassword}
       />
 
       <GoogleExistingAccountLinkModal

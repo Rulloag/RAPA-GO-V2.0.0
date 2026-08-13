@@ -6,6 +6,7 @@ import authTypesSource from "../auth.types.ts?raw";
 import hookSource from "../useGoogleSignIn.ts?raw";
 import loginSource from "../LoginPage.tsx?raw";
 import linkModalSource from "../GoogleExistingAccountLinkModal.tsx?raw";
+import backupPasswordModalSource from "../GoogleBackupPasswordModal.tsx?raw";
 import tripsSource from "../../../pages/passenger/pages/TripsPage.tsx?raw";
 
 describe("Google existing-account linking and cancelled cleanup", () => {
@@ -20,6 +21,18 @@ describe("Google existing-account linking and cancelled cleanup", () => {
       "Encontramos una cuenta RAPA GO existente con este correo.",
     );
     expect(linkModalSource).toContain("Vincular Google y entrar");
+  });
+
+
+  it("prompts for a RAPA GO backup password after Google authenticates a passwordless account", () => {
+    expect(hookSource).toContain('{ kind: "password_required", role }');
+    expect(hookSource).toContain("response.session.user.hasPassword === false");
+    expect(hookSource).toContain("authService.createPassword");
+    expect(hookSource).toContain("await refreshSession()");
+    expect(loginSource).toContain("<GoogleBackupPasswordModal");
+    expect(backupPasswordModalSource).toContain("Google ya está conectado");
+    expect(backupPasswordModalSource).toContain("Guardar contraseña y entrar");
+    expect(backupPasswordModalSource).toContain("Perfil → Seguridad");
   });
 
   it("does not create a second client-side profile while linking", () => {

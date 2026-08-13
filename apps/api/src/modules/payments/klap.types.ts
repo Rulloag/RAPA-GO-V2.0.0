@@ -47,6 +47,12 @@ export interface KlapConfig {
   captureDiscoveryMaxAmountClp: number;
   /** Estados finales que Klap confirmó oficialmente como captura exitosa. */
   captureSuccessStatuses: readonly string[];
+  /**
+   * Correo del comercio para el custom notify_payment_email_merchant.
+   * Opcional: si no está configurado, simplemente no se envían los customs
+   * de notificación al comercio (no bloquea la creación de la orden).
+   */
+  merchantNotificationEmail: string;
 }
 
 export interface KlapAmount {
@@ -76,6 +82,10 @@ export interface KlapWebhooks {
   webhook_reject: string;
 }
 
+export interface KlapUser {
+  email: string;
+}
+
 export interface KlapOrderRequest {
   reference_id: string;
   generate_token: "none";
@@ -85,6 +95,12 @@ export interface KlapOrderRequest {
   customs: KlapCustom[];
   urls: KlapUrls;
   webhooks: KlapWebhooks;
+  /**
+   * Comprobante de pago al pasajero/comercio (confirmado por Klap para
+   * POST /payment-gateway/v1/orders): depende de user.email + los customs
+   * notify_payment_user / notify_payment_merchant / notify_payment_email_merchant.
+   */
+  user?: KlapUser;
 }
 
 export type KlapCreateOrderRawResponse = unknown;

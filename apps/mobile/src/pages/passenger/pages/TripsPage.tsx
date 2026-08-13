@@ -192,6 +192,23 @@ function upsertPaidMirrorIntoStorage(
   }
 }
 
+// "authorized" es el estado final de payments.status para pagos Klap con
+// captura diferida (KLAP_DEFERRED_CAPTURE_ENABLED): el backend ya confirmó
+// el webhook y activó el ride, igual que con "success" — solo cambia si el
+// monto está capturado o solo retenido, no si el pago quedó confirmado. Sin
+// reconocer este estado aquí, el aviso "Confirmando tu pago Klap" queda
+// huérfano en pantalla aunque el viaje ya esté en búsqueda de conductor.
+const KLAP_PAYMENT_CONFIRMED_STATUSES = new Set(["success", "authorized"]);
+const KLAP_PAYMENT_REJECTED_STATUSES = new Set(["rejected", "failed", "refunded"]);
+
+export function isKlapPaymentConfirmedStatus(status: string): boolean {
+  return KLAP_PAYMENT_CONFIRMED_STATUSES.has(status);
+}
+
+export function isKlapPaymentRejectedStatus(status: string): boolean {
+  return KLAP_PAYMENT_REJECTED_STATUSES.has(status);
+}
+
 function activatePaidCardPaymentMirrors(pending: PendingCardPaymentRecord): void {
   const approvedAt = new Date().toISOString();
   const provider =
@@ -9911,7 +9928,7 @@ export default function TripsPage(): JSX.Element {
               .trim()
               .toLowerCase();
 
-            if (status === "success") {
+            if (isKlapPaymentConfirmedStatus(status)) {
               activatePaidCardPaymentMirrors(pending);
               clearPendingCardPayment();
               cleanPaymentReturnQuery();
@@ -9925,7 +9942,7 @@ export default function TripsPage(): JSX.Element {
               return;
             }
 
-            if (["rejected", "failed", "refunded"].includes(status)) {
+            if (isKlapPaymentRejectedStatus(status)) {
               clearPendingCardPayment();
               cleanPaymentReturnQuery();
               setCanResumeKlapPayment(false);

@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import type { UserRole } from "@rapa-go/shared";
 import { legalService, type LegalDocumentData } from "../legal/legal.service.js";
 import { useAuth } from "./useAuth.js";
+import { authService } from "./auth.service.js";
 import { GoogleNativeAuth } from "./googleNative.js";
 import { readDisplayEmailFromGoogleToken } from "./googleIdentityServices.js";
 import type {
@@ -21,6 +22,7 @@ const REQUIRED_LEGAL_TYPES = new Set([
 
 export type GoogleSignInOutcome =
   | { kind: "success"; role: UserRole }
+  | { kind: "password_required"; role: UserRole }
   | { kind: "setup_required"; message?: string }
   | { kind: "linking_required"; message: string }
   | { kind: "link_unavailable"; message: string }
@@ -42,6 +44,14 @@ export interface UseGoogleSignInResult {
   setupDisplayEmail: string;
   linkOpen: boolean;
   linkDisplayEmail: string;
+  passwordOpen: boolean;
+  passwordDisplayEmail: string;
+  passwordRole: UserRole | null;
+  completePassword: (
+    newPassword: string,
+    confirmPassword: string,
+  ) => Promise<GoogleSignInOutcome>;
+  skipPassword: () => void;
   completeLink: (password: string) => Promise<GoogleSignInOutcome>;
   completeSetup: (input: {
     passengerFareType: GooglePassengerFareType;
@@ -120,14 +130,18 @@ function mapGoogleError(code: string, message: string): GoogleSignInOutcome {
 }
 
 export function useGoogleSignIn(): UseGoogleSignInResult {
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, refreshSession } = useAuth();
   const [loading, setLoading] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [documents, setDocuments] = useState<LegalDocumentData[]>([]);
   const [setupDisplayEmail, setSetupDisplayEmail] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkDisplayEmail, setLinkDisplayEmail] = useState("");
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordDisplayEmail, setPasswordDisplayEmail] = useState("");
+  const [passwordRole, setPasswordRole] = useState<UserRole | null>(null);
   const pendingTokenRef = useRef<string | null>(null);
+  const pendingPasswordAccessTokenRef = useRef<string | null>(null);
   const isNative = Capacitor.isNativePlatform();
   const platform = Capacitor.getPlatform();
   const isAvailable =
@@ -142,6 +156,24 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
     setLinkOpen(false);
     setLinkDisplayEmail("");
   }, []);
+
+  const clearPasswordPrompt = useCallback(() => {
+    pendingPasswordAccessTokenRef.current = null;
+    setPasswordOpen(false);
+    setPasswordDisplayEmail("");
+    setPasswordRole(null);
+  }, []);
+
+  const openPasswordPrompt = useCallback(
+    (accessToken: string, email: string, role: UserRole) => {
+      clearPending();
+      pendingPasswordAccessTokenRef.current = accessToken;
+      setPasswordDisplayEmail(email);
+      setPasswordRole(role);
+      setPasswordOpen(true);
+    },
+    [clearPending],
+  );
 
   const prepareSetup = useCallback(async (idToken: string): Promise<boolean> => {
     try {
@@ -173,8 +205,20 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
       const response = await signInWithGoogle({ idToken, ...extras });
 
       if ("session" in response) {
+        const role = response.session.user.role;
+
+        if (response.session.user.hasPassword === false) {
+          openPasswordPrompt(
+            response.session.accessToken,
+            response.session.user.email,
+            role,
+          );
+          return { kind: "password_required", role };
+        }
+
         clearPending();
-        return { kind: "success", role: response.session.user.role };
+        clearPasswordPrompt();
+        return { kind: "success", role };
       }
 
       const outcome = mapGoogleError(
@@ -212,7 +256,13 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
       clearPending();
       return outcome;
     },
-    [clearPending, prepareSetup, signInWithGoogle],
+    [
+      clearPasswordPrompt,
+      clearPending,
+      openPasswordPrompt,
+      prepareSetup,
+      signInWithGoogle,
+    ],
   );
 
   const handleWebCredential = useCallback(
@@ -291,10 +341,22 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
         });
 
         if ("session" in response) {
+          const role = response.session.user.role;
+
+          if (response.session.user.hasPassword === false) {
+            openPasswordPrompt(
+              response.session.accessToken,
+              response.session.user.email,
+              role,
+            );
+            return { kind: "password_required", role };
+          }
+
           clearPending();
+          clearPasswordPrompt();
           return {
             kind: "success",
-            role: response.session.user.role,
+            role,
           };
         }
 
@@ -323,8 +385,67 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
         setLoading(false);
       }
     },
-    [clearPending, signInWithGoogle],
+    [clearPasswordPrompt, clearPending, openPasswordPrompt, signInWithGoogle],
   );
+
+  const completePassword = useCallback(
+    async (
+      newPassword: string,
+      confirmPassword: string,
+    ): Promise<GoogleSignInOutcome> => {
+      const accessToken = pendingPasswordAccessTokenRef.current;
+      const role = passwordRole;
+
+      if (!accessToken || !role) {
+        clearPasswordPrompt();
+        return {
+          kind: "internal_error",
+          message:
+            "La sesión de Google ya no está disponible. Vuelve a iniciar sesión.",
+        };
+      }
+
+      if (newPassword.length < 8 || newPassword.length > 128) {
+        return {
+          kind: "invalid_credential",
+          message: "La contraseña debe tener entre 8 y 128 caracteres.",
+        };
+      }
+
+      if (newPassword !== confirmPassword) {
+        return {
+          kind: "invalid_credential",
+          message: "Las contraseñas no coinciden.",
+        };
+      }
+
+      setLoading(true);
+      try {
+        await authService.createPassword(accessToken, {
+          newPassword,
+          confirmPassword,
+        });
+        await refreshSession();
+        clearPasswordPrompt();
+        return { kind: "success", role };
+      } catch (error) {
+        return {
+          kind: "internal_error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "No se pudo crear la contraseña de respaldo.",
+        };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [clearPasswordPrompt, passwordRole, refreshSession],
+  );
+
+  const skipPassword = useCallback(() => {
+    clearPasswordPrompt();
+  }, [clearPasswordPrompt]);
 
   const completeSetup = useCallback(
     async (input: {
@@ -381,6 +502,11 @@ export function useGoogleSignIn(): UseGoogleSignInResult {
     setupDisplayEmail,
     linkOpen,
     linkDisplayEmail,
+    passwordOpen,
+    passwordDisplayEmail,
+    passwordRole,
+    completePassword,
+    skipPassword,
     completeLink,
     completeSetup,
     cancelSetup: clearPending,
