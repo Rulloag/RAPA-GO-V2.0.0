@@ -64,14 +64,10 @@ import {
   type CreateRideInput,
 } from "../../../features/rides/rides.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
-import { KlapCheckoutModal } from "../../../features/payments/KlapCheckoutModal.js";
 import {
-  cancelPendingKlapRide,
-  clearPendingKlapPayment,
   createKlapHostedOrder,
-  readPendingKlapPayment,
-  resetKlapCheckoutForNextOrder,
-  savePendingKlapPayment,
+  markPendingKlapPaymentStarted,
+  openKlapHostedCheckout,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
@@ -1206,6 +1202,7 @@ function createLocalPassengerRide(input: {
   passengerFareLabel?: string | null;
   airportWelcomeOption?: AirportWelcomeOption | null;
   flowerLeiRequested?: boolean | null;
+  flowerLeiQuantity?: number | null;
   airportWelcomeSurchargeClp?: number | null;
   optionalServicesTotalClp?: number | null;
   baseFareBeforeExtrasClp?: number | null;
@@ -1280,6 +1277,8 @@ function createLocalPassengerRide(input: {
           ? "Solo recogida"
           : null),
     flowerLeiRequested: input.flowerLeiRequested ?? false,
+    flowerLeiQuantity:
+      input.flowerLeiQuantity ?? (input.flowerLeiRequested ? 1 : 0),
     flowerLeiSurchargeClp: input.airportWelcomeSurchargeClp ?? 0,
     airportWelcomeSurchargeClp: input.airportWelcomeSurchargeClp ?? 0,
     optionalServicesTotalClp:
@@ -1378,6 +1377,7 @@ function createLocalAdminScheduledRide(input: {
   passengerFareLabel?: string | null;
   airportWelcomeOption?: AirportWelcomeOption | null;
   flowerLeiRequested?: boolean | null;
+  flowerLeiQuantity?: number | null;
   airportWelcomeSurchargeClp?: number | null;
   optionalServicesTotalClp?: number | null;
   baseFareBeforeExtrasClp?: number | null;
@@ -1449,6 +1449,7 @@ function saveLocalPassengerRide(input: {
   passengerFareLabel?: string | null;
   airportWelcomeOption?: AirportWelcomeOption | null;
   flowerLeiRequested?: boolean | null;
+  flowerLeiQuantity?: number | null;
   airportWelcomeSurchargeClp?: number | null;
   optionalServicesTotalClp?: number | null;
   baseFareBeforeExtrasClp?: number | null;
@@ -1570,6 +1571,7 @@ type PaymentMethod = "cash" | "card" | null;
 type AirportWelcomeOption = "none" | "flower_lei";
 
 const AIRPORT_FLOWER_LEI_SURCHARGE_CLP = 4000;
+const AIRPORT_FLOWER_LEI_MAX_QUANTITY = 20;
 const AIRPORT_FLOWER_LEI_LABEL = "Collar de flores Rapa Nui";
 
 declare global {
@@ -1880,11 +1882,14 @@ const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace
       address: "Hospital Hanga Roa, Rapa Nui, Chile",
       lat: -27.1502,
       lng: -109.4216,
-      // prettier-ignore — RequestRideUberFlow.test.ts afirma sobre el texto
-      // crudo de este archivo ('aliases: ["hospital", "hosp", "urgencia"'),
-      // así que esta lista debe quedarse en una sola línea.
-      // prettier-ignore
-      aliases: ["hospital", "hosp", "urgencia", "urgencias", "salud", "hanga roa hospital"],
+      aliases: [
+        "hospital",
+        "hosp",
+        "urgencia",
+        "urgencias",
+        "salud",
+        "hanga roa hospital",
+      ],
       placeTypes: ["hospital", "health", "point_of_interest", "establishment"],
     },
     {
@@ -3051,12 +3056,13 @@ const ROUND_TRIP_DESTINATION_FIXED_POINTS: Record<
 
 const RAPA_NUI_AIRPORT_DESTINATION: PickerResult = {
   text: "Aeropuerto Internacional Mataveri",
-  address: "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
-  // Punto de recogida del pasajero en la zona pública/terminal del aeropuerto.
-  // No usamos el centroide oficial del aeródromo porque Google lo muestra corrido
-  // hacia la pista/camino interior, lejos del punto real de espera del pasajero.
-  lat: -27.16395,
-  lng: -109.42465,
+  address:
+    "Aeropuerto Internacional Mataveri (IPC), Hanga Roa, Rapa Nui, Chile",
+  // Referencia fija del Aeropuerto Internacional Mataveri (IPC/SCIP).
+  // Se usa una sola coordenada canónica para Reserva para evitar que el origen
+  // quede desplazado por un punto antiguo guardado localmente.
+  lat: -27.16472,
+  lng: -109.42167,
   placeId: "rapago-fixed-mataveri-airport-terminal",
   originalLat: null,
   originalLng: null,
@@ -7590,153 +7596,6 @@ export default function RequestRidePage(): JSX.Element {
     [history],
   );
 
-  /* ── Hoja arrastrable ──────────────────────────────────────────────────
-     Mismo gesto que ya usa el selector de destino (MapPointPicker): se
-     arrastra el asa para repartir el alto entre el mapa y la hoja, de modo
-     que el pasajero pueda agrandar el mapa para ubicarse o subir la hoja
-     para rellenar el formulario. Se reutilizan las constantes y el
-     rubber-band que ya existen en este archivo en vez de duplicarlos.
-
-     Esto es estado de presentación: no toca coordenadas, tarifas ni el
-     comportamiento interno del mapa. */
-  /* ── Bottom sheet arrastrable ──────────────────────────────────────────
-     El asa controla la posición vertical de TODA la hoja, que es un overlay
-     absoluto sobre el mapa. La magnitud es `sheetShift` en px (cuánto está
-     bajada respecto a su tope superior) y se pinta como `translateY`, de modo
-     que el dedo la arrastra 1:1 sin tocar el layout del mapa ni del resto.
-
-     Esto es estado de presentación: no toca coordenadas, tarifas ni el
-     comportamiento interno del mapa. */
-  const requestShellRef = useRef<HTMLDivElement | null>(null);
-  const requestSheetHeadRef = useRef<HTMLDivElement | null>(null);
-  /* null hasta la primera medida: evita pintar un px equivocado antes de
-     conocer el alto real. El CSS usa un translateY de respaldo mientras tanto. */
-  const [sheetShift, setSheetShift] = useState<number | null>(null);
-  const [sheetMaxShift, setSheetMaxShift] = useState(0);
-  const [requestSheetDragging, setRequestSheetDragging] = useState(false);
-  const sheetDragRef = useRef<{
-    startY: number;
-    /* Posición al empezar el gesto y última posición aplicada: al soltar se
-       decide con el valor real del arrastre, no con el de React (un render por
-       detrás). */
-    startShift: number;
-    shift: number;
-  } | null>(null);
-
-  /* Mide el recorrido REAL: alto del shell menos el alto de la cabecera (asa +
-     AHORA/RESERVAR), que es lo único que queda visible con la hoja abajo del
-     todo. El ResizeObserver lo mantiene al día al girar el aparato o al
-     encogerse la barra del navegador; sin números mágicos de alto. */
-  useEffect(() => {
-    const shell = requestShellRef.current;
-    if (!shell || typeof ResizeObserver === "undefined") return;
-
-    const measure = (): void => {
-      const shellHeight = shell.getBoundingClientRect().height;
-      if (shellHeight <= 0) return;
-
-      const headHeight =
-        requestSheetHeadRef.current?.getBoundingClientRect().height ??
-        REQUEST_SHEET_HANDLE_FALLBACK;
-      const max = Math.max(0, shellHeight - headHeight);
-
-      setSheetMaxShift(max);
-      setSheetShift((prev) =>
-        prev == null
-          ? Math.round(max * REQUEST_SHEET_REST_FRACTION)
-          : Math.min(prev, max),
-      );
-    };
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(shell);
-    measure();
-
-    return () => observer.disconnect();
-  }, []);
-
-  function handleRequestGripPointerDown(
-    event: ReactPointerEvent<HTMLElement>,
-  ): void {
-    if (sheetMaxShift <= 0) return;
-
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const startShift =
-      sheetShift ?? Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION);
-    sheetDragRef.current = {
-      startY: event.clientY,
-      startShift,
-      shift: startShift,
-    };
-    setRequestSheetDragging(true);
-  }
-
-  function handleRequestGripPointerMove(
-    event: ReactPointerEvent<HTMLElement>,
-  ): void {
-    const drag = sheetDragRef.current;
-    if (!drag) return;
-
-    const deltaPx = event.clientY - drag.startY;
-
-    /* clientY crece hacia abajo: bajar el dedo baja la hoja (shift crece) y
-       subirlo la sube, siempre 1:1. Fuera de los límites cede elásticamente. */
-    const raw = drag.startShift + deltaPx;
-    const next = rubberBandShare(raw, 0, sheetMaxShift);
-
-    drag.shift = next;
-    setSheetShift(next);
-  }
-
-  function handleRequestGripPointerUp(
-    event: ReactPointerEvent<HTMLElement>,
-  ): void {
-    const drag = sheetDragRef.current;
-    if (!drag) return;
-
-    sheetDragRef.current = null;
-    setRequestSheetDragging(false);
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-
-    /* La hoja se queda EXACTAMENTE donde se soltó, solo acotada a los límites:
-       movimiento libre, sin posiciones fijas ni encaje. Lo único que se
-       deshace es el estiramiento elástico si el gesto terminó fuera de banda. */
-    setSheetShift(Math.min(sheetMaxShift, Math.max(0, drag.shift)));
-  }
-
-  /* Equivalente accesible del arrastre: las flechas suben y bajan la hoja en
-     pasos fijos de px, dentro del mismo recorrido acotado. */
-  function handleRequestGripKeyDown(
-    event: ReactKeyboardEvent<HTMLButtonElement>,
-  ): void {
-    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-
-    event.preventDefault();
-    const delta =
-      event.key === "ArrowUp"
-        ? -REQUEST_SHEET_KEY_STEP
-        : REQUEST_SHEET_KEY_STEP;
-
-    setSheetShift((current) => {
-      const base =
-        current ?? Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION);
-      return Math.min(sheetMaxShift, Math.max(0, base + delta));
-    });
-  }
-
-  /* Los controles interactivos de la cabecera (AHORA / RESERVAR) detienen la
-     propagación del puntero para que pulsarlos no inicie un arrastre. Es el
-     mismo recurso que usa el botón de confirmar dentro de la cabecera del
-     selector de recogida. */
-  function stopSheetDragPropagation(
-    event: ReactPointerEvent<HTMLElement>,
-  ): void {
-    event.stopPropagation();
-  }
-
   const [klapPayment, setKlapPayment] =
     useState<PendingKlapPaymentRecord | null>(null);
 
@@ -8423,6 +8282,7 @@ export default function RequestRidePage(): JSX.Element {
     setPaymentMethod("card");
     setShowPaymentBox(false);
     setAirportWelcomeOption("none");
+    setFlowerLeiQuantity(1);
     setFlightNumber("");
     setSelectedRoundTripPromotionId(promotion.id);
     setTripFareMode("round_trip");
@@ -8496,6 +8356,7 @@ export default function RequestRidePage(): JSX.Element {
     setScheduledAt("");
     setReturnScheduledAt("");
     setAirportWelcomeOption("none");
+    setFlowerLeiQuantity(1);
     setPaymentMethod(null);
     setShowPaymentBox(false);
     setOriginPoint(null);
@@ -8516,6 +8377,7 @@ export default function RequestRidePage(): JSX.Element {
     setPaymentMethod("card");
     setShowPaymentBox(false);
     setAirportWelcomeOption("none");
+    setFlowerLeiQuantity(1);
     setFlightNumber("");
     applyRapaNuiAirportOrigin();
     setDestinationPoint(null);
@@ -8717,9 +8579,13 @@ export default function RequestRidePage(): JSX.Element {
     };
   }, [session?.user]);
 
+  const normalizedFlowerLeiQuantity = Math.min(
+    AIRPORT_FLOWER_LEI_MAX_QUANTITY,
+    Math.max(1, Math.round(Number(flowerLeiQuantity) || 1)),
+  );
   const airportWelcomeSurchargeClp =
     isAirportScheduledRide && airportWelcomeOption === "flower_lei"
-      ? AIRPORT_FLOWER_LEI_SURCHARGE_CLP
+      ? AIRPORT_FLOWER_LEI_SURCHARGE_CLP * normalizedFlowerLeiQuantity
       : 0;
   const hasAirportFlowerLei = airportWelcomeSurchargeClp > 0;
   const localPendingPassengerCharges =
@@ -9357,7 +9223,8 @@ export default function RequestRidePage(): JSX.Element {
           0,
           Math.round(
             (selectedFareAmountBeforeWallet ?? 0) -
-              pendingPassengerChargeTotalClp,
+              pendingPassengerChargeTotalClp -
+              airportWelcomeSurchargeClp,
           ),
         );
         (
@@ -9458,6 +9325,9 @@ export default function RequestRidePage(): JSX.Element {
             ? AIRPORT_FLOWER_LEI_LABEL
             : "Solo recogida",
           flowerLeiRequested: hasAirportFlowerLei,
+          flowerLeiQuantity: hasAirportFlowerLei
+            ? normalizedFlowerLeiQuantity
+            : null,
           flowerLeiSurchargeClp: airportWelcomeSurchargeClp,
           airportWelcomeSurchargeClp,
           optionalServicesTotalClp: airportWelcomeSurchargeClp,
@@ -9621,8 +9491,20 @@ export default function RequestRidePage(): JSX.Element {
             : null,
         };
 
-        savePendingKlapPayment(pendingKlapPayment);
-        setKlapPayment(pendingKlapPayment);
+        const redirectUrl = String(pendingKlapPayment.redirectUrl ?? "").trim();
+        if (!redirectUrl) {
+          throw new Error(
+            "Klap no entregó el enlace seguro de pago para esta orden.",
+          );
+        }
+
+        // Flujo directo: el botón de pago abre inmediatamente el Checkout
+        // oficial alojado por Klap. No mostramos un modal intermedio de RAPA GO.
+        const startedPayment =
+          markPendingKlapPaymentStarted(pendingKlapPayment);
+        openKlapHostedCheckout(
+          String(startedPayment.redirectUrl ?? redirectUrl),
+        );
         return;
       }
 
@@ -9643,6 +9525,7 @@ export default function RequestRidePage(): JSX.Element {
       setReturnScheduledAt("");
       setFlightNumber("");
       setAirportWelcomeOption("none");
+      setFlowerLeiQuantity(1);
       setOriginSuggestions([]);
       setDestSuggestions([]);
       setRideMode("now");
@@ -9953,6 +9836,9 @@ export default function RequestRidePage(): JSX.Element {
               ? AIRPORT_FLOWER_LEI_LABEL
               : "Solo recogida",
             flowerLeiRequested: hasAirportFlowerLei,
+            flowerLeiQuantity: hasAirportFlowerLei
+              ? normalizedFlowerLeiQuantity
+              : null,
             airportWelcomeSurchargeClp,
             optionalServicesTotalClp: airportWelcomeSurchargeClp,
             baseFareBeforeExtrasClp: selectedBaseFareAmount,
@@ -10054,6 +9940,7 @@ export default function RequestRidePage(): JSX.Element {
         setReturnScheduledAt("");
         setFlightNumber("");
         setAirportWelcomeOption("none");
+        setFlowerLeiQuantity(1);
         setOriginSuggestions([]);
         setDestSuggestions([]);
         setRideMode("now");
@@ -11288,23 +11175,71 @@ export default function RequestRidePage(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="rq-fare__chips">
-                    <span className="rq-chip rq-chip--gold">
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 7,
+                      marginTop: 14,
+                    }}>
+                    <span
+                      style={{
+                        borderRadius: 999,
+                        padding: "6px 9px",
+                        background: "rgba(248,216,121,.16)",
+                        border: "1px solid rgba(248,216,121,.24)",
+                        color: "#F8D879",
+                        fontSize: ".66rem",
+                        fontWeight: 950,
+                      }}>
                       {selectedRoundTripPromotion
                         ? "Tarifa confirmada"
                         : "Precio claro"}
                     </span>
-                    <span className="rq-chip">
+                    <span
+                      style={{
+                        borderRadius: 999,
+                        padding: "6px 9px",
+                        background: "rgba(255,255,255,.08)",
+                        border: "1px solid rgba(255,255,255,.10)",
+                        color: "#F6F2EC",
+                        fontSize: ".66rem",
+                        fontWeight: 900,
+                      }}>
                       {fareQuote
                         ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min`
                         : "Calculando ruta"}
                     </span>
-                    <span className="rq-chip">
+                    <span
+                      style={{
+                        borderRadius: 999,
+                        padding: "6px 9px",
+                        background: "rgba(255,255,255,.08)",
+                        border: "1px solid rgba(255,255,255,.10)",
+                        color: "#F6F2EC",
+                        fontSize: ".66rem",
+                        fontWeight: 900,
+                      }}>
                       {vehicleCategoryTitle(vehicleCategory)}
                     </span>
                     {hasAirportFlowerLei && (
-                      <span className="rq-chip rq-chip--gold">
-                        <IonIcon icon={flowerOutline} aria-hidden="true" />
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 9px",
+                          background: "rgba(248,216,121,.16)",
+                          border: "1px solid rgba(248,216,121,.28)",
+                          color: "#F8D879",
+                          fontSize: ".66rem",
+                          fontWeight: 950,
+                        }}>
+                        <IonIcon
+                          icon={flowerOutline}
+                          style={{
+                            verticalAlign: "middle",
+                            fontSize: "0.8rem",
+                          }}
+                        />{" "}
                         Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
                       </span>
                     )}
@@ -12060,16 +11995,6 @@ export default function RequestRidePage(): JSX.Element {
             }}
           />
         )}
-
-        <KlapCheckoutModal
-          payment={klapPayment}
-          accessToken={session?.accessToken}
-          onApproved={handleKlapApproved}
-          onRejected={handleKlapRejected}
-          onRetryRequest={handleRetryKlapPayment}
-          onClose={handleCloseKlapCheckout}
-          onCancelRequest={handleCancelKlapRequest}
-        />
       </IonContent>
     </IonPage>
   );

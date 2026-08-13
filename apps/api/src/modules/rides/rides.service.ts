@@ -52,6 +52,8 @@ const driverComplianceService = new DriverComplianceService();
 const driverStatusRepo = new DriverStatusRepository();
 
 const SCHEDULE_ACTIVATION_MINUTES = 30;
+const AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP = 4000;
+const AIRPORT_FLOWER_LEI_MAX_QUANTITY = 20;
 
 function queueReceiptWithoutBlocking(
   task: Promise<unknown>,
@@ -319,6 +321,60 @@ function appendScheduleMetaToNotes(
     `Solicitado por rol: ${meta.requestedByRole}`,
     `Estado de agenda admin: ${meta.adminScheduleStatus}`,
   ].filter(Boolean);
+
+  return [base, lines.join("\n")].filter(Boolean).join("\n\n");
+}
+
+type AirportFlowerLeiPricing = {
+  quantity: number;
+  surchargeClp: number;
+};
+
+function getAirportFlowerLeiPricing(
+  input: CreateRideRequestInput,
+  scheduleMeta: ScheduleMeta | null,
+): AirportFlowerLeiPricing {
+  const isMataveriAirportOrigin = /mataveri|aeropuerto\s+rapa\s+nui/i.test(
+    String(input.originText ?? ""),
+  );
+
+  if (
+    !scheduleMeta?.isScheduled ||
+    scheduleMeta.tripFareMode !== "one_way" ||
+    !isMataveriAirportOrigin ||
+    input.airportWelcomeOption !== "flower_lei"
+  ) {
+    return { quantity: 0, surchargeClp: 0 };
+  }
+
+  const quantity = Math.min(
+    AIRPORT_FLOWER_LEI_MAX_QUANTITY,
+    Math.max(1, Math.round(Number(input.flowerLeiQuantity) || 1)),
+  );
+
+  return {
+    quantity,
+    surchargeClp: quantity * AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP,
+  };
+}
+
+function appendAirportWelcomeMetaToNotes(
+  notes: string | null | undefined,
+  input: CreateRideRequestInput,
+  scheduleMeta: ScheduleMeta | null,
+): string | null {
+  const base = notes?.trim() || null;
+  const pricing = getAirportFlowerLeiPricing(input, scheduleMeta);
+  if (pricing.quantity <= 0) return base;
+
+  const lines = [
+    `RAPAGO_FLOWER_LEI_QUANTITY: ${pricing.quantity}`,
+    `RAPAGO_FLOWER_LEI_UNIT_PRICE_CLP: ${AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP}`,
+    `RAPAGO_FLOWER_LEI_SURCHARGE_CLP: ${pricing.surchargeClp}`,
+    `Recibimiento aeropuerto confirmado por backend: ${pricing.quantity} ${
+      pricing.quantity === 1 ? "collar" : "collares"
+    } de flores.`,
+  ];
 
   return [base, lines.join("\n")].filter(Boolean).join("\n\n");
 }
@@ -1027,12 +1083,21 @@ export class RidesService {
     }
 
     const notesForStorage = appendPaymentMetaToNotes(
-      appendScheduleMetaToNotes(
-        input.notes ?? null,
+      appendAirportWelcomeMetaToNotes(
+        appendScheduleMetaToNotes(
+          input.notes ?? null,
+          scheduleMeta,
+        ),
+        input,
         scheduleMeta,
       ),
       input.paymentMethod,
       input.paymentProvider,
+    );
+
+    const airportFlowerLeiPricing = getAirportFlowerLeiPricing(
+      input,
+      scheduleMeta,
     );
 
     const fareFromClient = Number(input.estimatedFareClp);
@@ -1101,7 +1166,11 @@ export class RidesService {
       // No bloquea crear el viaje.
     }
 
-    finalFare = roundFareUpTo500(finalFare);
+    // El valor del collar nunca viene del cliente: el backend agrega el
+    // recargo unitario oficial según la cantidad validada de la reserva.
+    finalFare = roundFareUpTo500(
+      finalFare + airportFlowerLeiPricing.surchargeClp,
+    );
 
     const created = await ridesRepo.createWithApprovedPolicyCharges(
       auth.userId,

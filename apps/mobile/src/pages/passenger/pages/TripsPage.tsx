@@ -27,6 +27,7 @@ import { rideLocationService } from "../../../features/location/rideLocation.ser
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import {
   cancelPendingKlapRide,
+  openKlapHostedCheckout,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
 import { cashRefundsService } from "../../../features/cashRefunds/cashRefunds.service.js";
@@ -71,6 +72,7 @@ type PendingCardPaymentRecord = {
   rideRequestId: string;
   paymentId?: string | null;
   orderId?: string | null;
+  redirectUrl?: string | null;
   amountClp?: number | null;
   provider?: string | null;
   createdAt?: string | null;
@@ -10929,9 +10931,12 @@ export default function TripsPage(): JSX.Element {
                   color="warning"
                   style={{ "--border-radius": "999px", marginTop: 8, fontWeight: 950 } as CSSProperties}
                   onClick={() => {
-                    window.dispatchEvent(
-                      new CustomEvent("rapago:resume-klap-payment"),
-                    );
+                    const pendingPayment = readPendingCardPayment();
+                    const redirectUrl = String(pendingPayment?.redirectUrl ?? "").trim();
+                    if (redirectUrl) {
+                      openKlapHostedCheckout(redirectUrl);
+                      return;
+                    }
                     history.push(ROUTES.PASSENGER.REQUEST_RIDE);
                   }}
                 >

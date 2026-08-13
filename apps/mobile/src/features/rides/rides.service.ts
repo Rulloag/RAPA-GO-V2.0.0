@@ -249,6 +249,8 @@ export interface CreateRideInput {
   scheduledReturnAt?: string | null;
   scheduledActivationAt?: string | null;
   scheduledReturnActivationAt?: string | null;
+  airportWelcomeOption?: "none" | "flower_lei";
+  flowerLeiQuantity?: number | null;
 }
 
 export const ridesService = {
