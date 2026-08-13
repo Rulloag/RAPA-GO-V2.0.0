@@ -30,7 +30,7 @@ export const env = {
   get supabaseJwtSecret() { return requireEnv("SUPABASE_JWT_SECRET"); },
 
   // Platform
-  platformCommissionPercent: Number(optionalEnv("PLATFORM_COMMISSION_PERCENT", "15")),
+  platformCommissionPercent: Number(optionalEnv("PLATFORM_COMMISSION_PERCENT", "23")),
 
   // WhatsApp Business Cloud API (Meta)
   // Credentials are only required when whatsapp.enabled = true.

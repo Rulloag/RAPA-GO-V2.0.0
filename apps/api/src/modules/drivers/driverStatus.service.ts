@@ -146,7 +146,7 @@ export class DriverStatusService {
 
     // Rides with null estimatedFareClp are excluded (no fare to sum).
     const grossFareClp = rides.reduce((sum, r) => sum + (r.estimatedFareClp ?? 0), 0);
-    const appCommissionClp = Math.round(grossFareClp * 0.20);
+    const appCommissionClp = Math.round(grossFareClp * 0.23);
     const netEarningsClp   = grossFareClp - appCommissionClp;
 
     const dateStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, "0")}-${String(today.getUTCDate()).padStart(2, "0")}`;
@@ -156,7 +156,7 @@ export class DriverStatusService {
       earnings: {
         date:                 dateStr,
         grossFareClp,
-        appCommissionPercent: 20,
+        appCommissionPercent: 23,
         appCommissionClp,
         netEarningsClp,
         completedRides:       rides.length,

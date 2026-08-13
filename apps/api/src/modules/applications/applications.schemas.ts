@@ -27,7 +27,11 @@ export const driverContractAcceptanceSchema = z.object({
   acceptedContract: z.literal(true),
   acceptedDocumentsTruth: z.literal(true),
   acceptedIndependentNature: z.literal(true),
+  // Nombre legado del payload: desde la versión definitiva representa la
+  // aceptación de Privacidad; el permiso de geolocalización se solicita
+  // contextualmente por el sistema operativo.
   acceptedPrivacyGeolocation: z.literal(true),
+  acceptedSensitiveData: z.boolean().optional(),
   acceptedRestWindow: z.literal(true),
   acceptedPersonalService: z.literal(true),
   restWindowStart: hourMinuteSchema,
