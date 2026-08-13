@@ -15,8 +15,8 @@ describe("Reserva Mataveri + collares", () => {
     expect(requestRideSource).toContain(
       "AIRPORT_FLOWER_LEI_SURCHARGE_CLP * normalizedFlowerLeiQuantity",
     );
-    expect(requestRideSource).toContain(
-      "flowerLeiQuantity: hasAirportFlowerLei ? normalizedFlowerLeiQuantity : null",
+    expect(requestRideSource).toMatch(
+      /flowerLeiQuantity:\s*hasAirportFlowerLei\s*\?\s*normalizedFlowerLeiQuantity\s*:\s*null/,
     );
   });
 

@@ -68,6 +68,11 @@ import {
   createKlapHostedOrder,
   markPendingKlapPaymentStarted,
   openKlapHostedCheckout,
+  readPendingKlapPayment,
+  clearPendingKlapPayment,
+  resetKlapCheckoutForNextOrder,
+  savePendingKlapPayment,
+  cancelPendingKlapRide,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
@@ -7596,6 +7601,103 @@ export default function RequestRidePage(): JSX.Element {
     [history],
   );
 
+  const [flowerLeiQuantity, setFlowerLeiQuantity] = useState(1);
+
+  const sheetDragRef = useRef<{
+    startY: number;
+    /* Posición al empezar el gesto y última posición aplicada: al soltar se
+       decide con el valor real del arrastre, no con el de React (un render por
+       detrás). */
+    startShift: number;
+    shift: number;
+  } | null>(null);
+
+  const requestShellRef = useRef<HTMLDivElement | null>(null);
+
+  const requestSheetHeadRef = useRef<HTMLDivElement | null>(null);
+
+  const [sheetShift, setSheetShift] = useState<number | null>(null);
+
+  const [sheetMaxShift, setSheetMaxShift] = useState(0);
+
+  const [requestSheetDragging, setRequestSheetDragging] = useState(false);
+
+  function handleRequestGripPointerDown(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    if (sheetMaxShift <= 0) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startShift =
+      sheetShift ?? Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION);
+    sheetDragRef.current = {
+      startY: event.clientY,
+      startShift,
+      shift: startShift,
+    };
+    setRequestSheetDragging(true);
+  }
+
+  function handleRequestGripPointerMove(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
+
+    const deltaPx = event.clientY - drag.startY;
+
+    /* clientY crece hacia abajo: bajar el dedo baja la hoja (shift crece) y
+       subirlo la sube, siempre 1:1. Fuera de los límites cede elásticamente. */
+    const raw = drag.startShift + deltaPx;
+    const next = rubberBandShare(raw, 0, sheetMaxShift);
+
+    drag.shift = next;
+    setSheetShift(next);
+  }
+
+  function handleRequestGripPointerUp(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
+
+    sheetDragRef.current = null;
+    setRequestSheetDragging(false);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    /* La hoja se queda EXACTAMENTE donde se soltó, solo acotada a los límites:
+       movimiento libre, sin posiciones fijas ni encaje. Lo único que se
+       deshace es el estiramiento elástico si el gesto terminó fuera de banda. */
+    setSheetShift(Math.min(sheetMaxShift, Math.max(0, drag.shift)));
+  }
+
+  function handleRequestGripKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ): void {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+    event.preventDefault();
+    const delta =
+      event.key === "ArrowUp"
+        ? -REQUEST_SHEET_KEY_STEP
+        : REQUEST_SHEET_KEY_STEP;
+
+    setSheetShift((current) => {
+      const base =
+        current ?? Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION);
+      return Math.min(sheetMaxShift, Math.max(0, base + delta));
+    });
+  }
+
+  function stopSheetDragPropagation(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    event.stopPropagation();
+  }
+
   const [klapPayment, setKlapPayment] =
     useState<PendingKlapPaymentRecord | null>(null);
 
@@ -11042,20 +11144,107 @@ export default function RequestRidePage(): JSX.Element {
                               ? "0 10px 22px rgba(0,0,0,.30)"
                               : "0 10px 22px rgba(210,164,58,.14)",
                           }}>
-                          <>
-                            <IonIcon
-                              icon={flowerOutline}
-                              style={{
-                                verticalAlign: "middle",
-                                marginRight: 4,
-                                fontSize: "1rem",
-                              }}
-                            />{" "}
-                            <strong>Collar de flores agregado.</strong> Sumamos{" "}
-                            {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} al
-                            total para preparar tu bienvenida Rapa Nui al
-                            llegar.
-                          </>
+                          <div
+                    style={{
+                      background: isDark
+                        ? "linear-gradient(135deg,rgba(214,166,64,.16),rgba(214,166,64,.10))"
+                        : "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
+                      border: isDark
+                        ? "1px solid rgba(214,166,64,.42)"
+                        : "1px solid rgba(210,164,58,.42)",
+                      color: isDark ? "#f1c864" : "#4F350D",
+                      borderRadius: "14px",
+                      padding: "12px",
+                      fontSize: "0.74rem",
+                      lineHeight: 1.35,
+                      fontWeight: 900,
+                      marginBottom: "12px",
+                      boxShadow: isDark
+                        ? "0 10px 22px rgba(0,0,0,.30)"
+                        : "0 10px 22px rgba(210,164,58,.14)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <IonIcon icon={flowerOutline} style={{ fontSize: "1rem" }} />
+                      <strong>¿Para cuántas personas?</strong>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "grid",
+                        gridTemplateColumns: "44px minmax(72px,1fr) 44px",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Quitar un collar de flores"
+                        disabled={normalizedFlowerLeiQuantity <= 1}
+                        onClick={() =>
+                          setFlowerLeiQuantity((current) =>
+                            Math.max(1, Math.round(Number(current) || 1) - 1),
+                          )
+                        }
+                        style={{
+                          height: 40,
+                          borderRadius: 12,
+                          border: "1px solid rgba(210,164,58,.55)",
+                          background: isDark ? "rgba(255,255,255,.08)" : "#fff",
+                          color: isDark ? "#F8D879" : "#4F350D",
+                          fontWeight: 950,
+                          opacity: normalizedFlowerLeiQuantity <= 1 ? 0.45 : 1,
+                        }}
+                      >
+                        <IonIcon icon={removeOutline} />
+                      </button>
+                      <div
+                        aria-live="polite"
+                        style={{
+                          minHeight: 40,
+                          display: "grid",
+                          placeItems: "center",
+                          borderRadius: 12,
+                          background: isDark ? "rgba(0,0,0,.22)" : "rgba(255,255,255,.72)",
+                          border: "1px solid rgba(210,164,58,.35)",
+                          fontSize: "1rem",
+                          fontWeight: 950,
+                        }}
+                      >
+                        {normalizedFlowerLeiQuantity}
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Agregar un collar de flores"
+                        disabled={normalizedFlowerLeiQuantity >= AIRPORT_FLOWER_LEI_MAX_QUANTITY}
+                        onClick={() =>
+                          setFlowerLeiQuantity((current) =>
+                            Math.min(
+                              AIRPORT_FLOWER_LEI_MAX_QUANTITY,
+                              Math.max(1, Math.round(Number(current) || 1) + 1),
+                            ),
+                          )
+                        }
+                        style={{
+                          height: 40,
+                          borderRadius: 12,
+                          border: "1px solid rgba(210,164,58,.55)",
+                          background: "linear-gradient(135deg,#D2A43A,#F8D879)",
+                          color: "#111",
+                          fontWeight: 950,
+                          opacity: normalizedFlowerLeiQuantity >= AIRPORT_FLOWER_LEI_MAX_QUANTITY ? 0.5 : 1,
+                        }}
+                      >
+                        <IonIcon icon={addOutline} />
+                      </button>
+                    </div>
+                    <div style={{ marginTop: 9 }}>
+                      {normalizedFlowerLeiQuantity} {normalizedFlowerLeiQuantity === 1 ? "collar" : "collares"} · {formatCLP(airportWelcomeSurchargeClp)} en total
+                    </div>
+                    <div style={{ marginTop: 3, opacity: 0.78, fontSize: ".66rem" }}>
+                      {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} por persona.
+                    </div>
+                  </div>
                         </div>
                       )}
                     </>
