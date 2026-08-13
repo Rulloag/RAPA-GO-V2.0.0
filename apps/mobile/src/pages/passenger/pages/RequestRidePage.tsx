@@ -13,13 +13,13 @@ import {
   IonNote,
   IonPage,
   IonSpinner,
-  IonText,
   IonTextarea,
 } from "@ionic/react";
 import {
   addOutline,
   airplaneOutline,
   arrowForwardOutline,
+  flashOutline,
   briefcaseOutline,
   busOutline,
   calendarOutline,
@@ -54,7 +54,10 @@ import {
 } from "react";
 import { useHistory } from "react-router-dom";
 import { ROUTES } from "../../../navigation/routes.js";
-import { MapFallback, loadRapaGoGoogleMaps } from "../../../components/MapFallback.js";
+import {
+  MapFallback,
+  loadRapaGoGoogleMaps,
+} from "../../../components/MapFallback.js";
 import { useAuth } from "../../../features/auth/index.js";
 import {
   ridesService,
@@ -78,7 +81,6 @@ import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js"
 import "../../../theme/request-ride.css";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 
-
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
 const LOCAL_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides";
 const LOCAL_ADMIN_SCHEDULED_RIDE_MIRROR_KEYS = [
@@ -91,10 +93,13 @@ const LOCAL_ADMIN_SCHEDULED_RIDE_MIRROR_KEYS = [
 const LOCAL_PASSENGER_RIDE_LIMIT = 40;
 const LOCAL_ADMIN_SCHEDULED_RIDE_LIMIT = 80;
 const RAPAGO_REQUEUED_RIDES_KEY = "rapago_requeued_available_rides_v1";
-const RAPAGO_REQUEUED_PASSENGER_FORCE_KEY = "rapago_requeued_passenger_visible_rides_v1";
+const RAPAGO_REQUEUED_PASSENGER_FORCE_KEY =
+  "rapago_requeued_passenger_visible_rides_v1";
 const RAPAGO_REQUEUED_RIDES_EVENT = "rapago:ride-requeued-after-driver-cancel";
-const RAPAGO_PASSENGER_PENDING_CHARGES_KEY = "rapago_passenger_pending_charges_v1";
-const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT = "rapago:passenger-pending-charge-updated";
+const RAPAGO_PASSENGER_PENDING_CHARGES_KEY =
+  "rapago_passenger_pending_charges_v1";
+const RAPAGO_PASSENGER_PENDING_CHARGE_EVENT =
+  "rapago:passenger-pending-charge-updated";
 
 type LocalPassengerRideData = Record<string, unknown>;
 
@@ -121,11 +126,15 @@ type PassengerPendingChargeForRequest = {
 };
 
 function normalizePendingChargeEmail(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function normalizePendingChargeUserId(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function getPendingChargeSessionEmail(user: unknown): string {
@@ -270,10 +279,7 @@ function pendingChargeBelongsToCurrentUser(
   }
 
   const ownerEmail = normalizePendingChargeEmail(
-    item.passengerEmail ??
-      item.ownerKey ??
-      item.userEmail ??
-      item.email,
+    item.passengerEmail ?? item.ownerKey ?? item.userEmail ?? item.email,
   );
 
   return Boolean(sessionEmail && ownerEmail && sessionEmail === ownerEmail);
@@ -286,9 +292,8 @@ function readPassengerPendingChargesForRequest(
     const raw = localStorage.getItem(RAPAGO_PASSENGER_PENDING_CHARGES_KEY);
     const decoded = raw ? (JSON.parse(raw) as unknown) : [];
     const parsed: Array<Record<string, unknown>> = Array.isArray(decoded)
-      ? decoded.filter(
-          (item): item is Record<string, unknown> =>
-            Boolean(item && typeof item === "object"),
+      ? decoded.filter((item): item is Record<string, unknown> =>
+          Boolean(item && typeof item === "object"),
         )
       : decoded && typeof decoded === "object"
         ? Object.values(decoded as Record<string, unknown>).filter(
@@ -310,10 +315,7 @@ function readPassengerPendingChargesForRequest(
             typeof item.passengerEmail === "string"
               ? item.passengerEmail
               : null,
-          ownerKey:
-            typeof item.ownerKey === "string"
-              ? item.ownerKey
-              : null,
+          ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
           ownerUserId:
             typeof item.ownerUserId === "string"
               ? item.ownerUserId
@@ -350,24 +352,16 @@ function readPassengerPendingChargesForRequest(
             typeof item.description === "string"
               ? item.description
               : getPassengerPendingChargeDefaultDescription(type),
-          createdAt:
-            typeof item.createdAt === "string"
-              ? item.createdAt
-              : null,
+          createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
           appliedRideId:
-            typeof item.appliedRideId === "string"
-              ? item.appliedRideId
-              : null,
-          appliedAt:
-            typeof item.appliedAt === "string"
-              ? item.appliedAt
-              : null,
+            typeof item.appliedRideId === "string" ? item.appliedRideId : null,
+          appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
         };
       })
       .filter((charge) => {
-        const rawCharge = parsed.find(
-          (item) => String(item.id ?? "") === String(charge.id),
-        ) ?? (charge as unknown as Record<string, unknown>);
+        const rawCharge =
+          parsed.find((item) => String(item.id ?? "") === String(charge.id)) ??
+          (charge as unknown as Record<string, unknown>);
 
         const belongsToUser = pendingChargeBelongsToCurrentUser(
           rawCharge,
@@ -407,7 +401,6 @@ function readPassengerPendingChargesForRequest(
   }
 }
 
-
 type BackendRidePolicyChargeForRequest = {
   id: string;
   sourceRideId: string;
@@ -442,9 +435,10 @@ async function fetchMyApprovedPolicyChargesForRequest(
     },
   );
 
-  const payload = (await response
-    .json()
-    .catch(() => ({}))) as Record<string, unknown>;
+  const payload = (await response.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
 
   if (!response.ok) {
     const message =
@@ -461,9 +455,8 @@ async function fetchMyApprovedPolicyChargesForRequest(
       : [];
 
   return data
-    .filter(
-      (item): item is BackendRidePolicyChargeForRequest =>
-        Boolean(item && typeof item === "object"),
+    .filter((item): item is BackendRidePolicyChargeForRequest =>
+      Boolean(item && typeof item === "object"),
     )
     .map((item) => ({
       id: String(item.id),
@@ -487,20 +480,12 @@ async function fetchMyApprovedPolicyChargesForRequest(
         Math.round(Number(item.applicableFareClp ?? 0)),
       ),
       feePercent: Number(item.feePercent ?? 0),
-      feeCapClp: Math.max(
-        0,
-        Math.round(Number(item.feeCapClp ?? 0)),
-      ),
-      type:
-        item.type === "no_show"
-          ? "no_show"
-          : "late_cancellation",
+      feeCapClp: Math.max(0, Math.round(Number(item.feeCapClp ?? 0))),
+      type: item.type === "no_show" ? "no_show" : "late_cancellation",
       status: "pending_next_ride",
       adminReviewStatus: "charge_pending_next_ride",
       title:
-        item.type === "no_show"
-          ? "No Show aprobado"
-          : "Cancelación aprobada",
+        item.type === "no_show" ? "No Show aprobado" : "Cancelación aprobada",
       description:
         item.adminDecisionReason ??
         (item.type === "no_show"
@@ -512,9 +497,7 @@ async function fetchMyApprovedPolicyChargesForRequest(
     }))
     .filter(
       (charge) =>
-        charge.amountClp > 0 &&
-        !charge.appliedRideId &&
-        !charge.appliedAt,
+        charge.amountClp > 0 && !charge.appliedRideId && !charge.appliedAt,
     );
 }
 
@@ -586,9 +569,7 @@ function markPassengerPendingChargesAppliedToRide(
     const next = parsed.map((item) => {
       const type = normalizePassengerPendingChargeType(item.type);
       const status = String(item.status ?? "").toLowerCase();
-      const adminStatus = String(
-        item.adminReviewStatus ?? "",
-      ).toLowerCase();
+      const adminStatus = String(item.adminReviewStatus ?? "").toLowerCase();
 
       const approvedAmountClp =
         calculateApprovedPassengerChargeForRequest(item);
@@ -597,10 +578,8 @@ function markPassengerPendingChargesAppliedToRide(
         pendingChargeBelongsToCurrentUser(item, user) &&
         isPassengerPendingChargeSupportedType(type) &&
         approvedAmountClp > 0 &&
-        (
-          status === "pending_next_ride" ||
-          adminStatus === "charge_pending_next_ride"
-        ) &&
+        (status === "pending_next_ride" ||
+          adminStatus === "charge_pending_next_ride") &&
         !item.appliedRideId &&
         !item.appliedAt;
 
@@ -617,8 +596,7 @@ function markPassengerPendingChargesAppliedToRide(
             ? Number(item.feePercent)
             : 30,
         feeCapClp:
-          Number.isFinite(Number(item.feeCapClp)) &&
-          Number(item.feeCapClp) > 0
+          Number.isFinite(Number(item.feeCapClp)) && Number(item.feeCapClp) > 0
             ? Math.round(Number(item.feeCapClp))
             : isPassengerPendingChargeNoShow(type)
               ? 5000
@@ -644,10 +622,9 @@ function markPassengerPendingChargesAppliedToRide(
     );
 
     window.dispatchEvent(
-      new CustomEvent(
-        "rapago:admin-passenger-pending-charge-updated",
-        { detail: { charges: next } },
-      ),
+      new CustomEvent("rapago:admin-passenger-pending-charge-updated", {
+        detail: { charges: next },
+      }),
     );
 
     window.dispatchEvent(
@@ -685,55 +662,97 @@ type PassengerWalletBenefitForRequest = {
 };
 
 function normalizeWalletBenefitEmailForRequest(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function getWalletBenefitSessionEmailForRequest(user: unknown): string {
   if (!user || typeof user !== "object") return "";
-  return normalizeWalletBenefitEmailForRequest((user as Record<string, unknown>).email);
+  return normalizeWalletBenefitEmailForRequest(
+    (user as Record<string, unknown>).email,
+  );
 }
 
-function isPassengerWalletBenefitAvailableForRequest(benefit: PassengerWalletBenefitForRequest): boolean {
+function isPassengerWalletBenefitAvailableForRequest(
+  benefit: PassengerWalletBenefitForRequest,
+): boolean {
   const status = String(benefit.status ?? "").toLowerCase();
   const adminStatus = String(benefit.adminReviewStatus ?? "").toLowerCase();
 
-  return (status === "available" || status === "approved" || adminStatus === "admin_approved") && benefit.amountClp > 0;
+  return (
+    (status === "available" ||
+      status === "approved" ||
+      adminStatus === "admin_approved") &&
+    benefit.amountClp > 0
+  );
 }
 
-function readPassengerWalletBenefitsForRequest(user: unknown): PassengerWalletBenefitForRequest[] {
+function readPassengerWalletBenefitsForRequest(
+  user: unknown,
+): PassengerWalletBenefitForRequest[] {
   try {
     const sessionEmail = getWalletBenefitSessionEmailForRequest(user);
     const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
     if (!Array.isArray(parsed)) return [];
 
     return parsed
-      .map((item, index): PassengerWalletBenefitForRequest => ({
-        id: String(item.id ?? `wallet-benefit-${index}`),
-        rideId: typeof item.rideId === "string" ? item.rideId : null,
-        passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
-        ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
-        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
-        status: String(item.status ?? "pending_admin"),
-        source: typeof item.source === "string" ? item.source : null,
-        title: typeof item.title === "string" ? item.title : null,
-        description: typeof item.description === "string" ? item.description : null,
-        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
-        approvedAt: typeof item.approvedAt === "string" ? item.approvedAt : null,
-        approvedBy: typeof item.approvedBy === "string" ? item.approvedBy : null,
-        adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
-        fareClp: Number.isFinite(Number(item.fareClp)) ? Math.round(Number(item.fareClp)) : null,
-        paidClp: Number.isFinite(Number(item.paidClp)) ? Math.round(Number(item.paidClp)) : null,
-        appliedRideId: typeof item.appliedRideId === "string" ? item.appliedRideId : null,
-        appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
-        usedAmountClp: Number.isFinite(Number(item.usedAmountClp)) ? Math.round(Number(item.usedAmountClp)) : null,
-      }))
+      .map(
+        (item, index): PassengerWalletBenefitForRequest => ({
+          id: String(item.id ?? `wallet-benefit-${index}`),
+          rideId: typeof item.rideId === "string" ? item.rideId : null,
+          passengerEmail:
+            typeof item.passengerEmail === "string"
+              ? item.passengerEmail
+              : null,
+          ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
+          amountClp: Math.max(
+            0,
+            Math.round(Number(item.amountClp ?? item.amount ?? 0)),
+          ),
+          status: String(item.status ?? "pending_admin"),
+          source: typeof item.source === "string" ? item.source : null,
+          title: typeof item.title === "string" ? item.title : null,
+          description:
+            typeof item.description === "string" ? item.description : null,
+          createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+          approvedAt:
+            typeof item.approvedAt === "string" ? item.approvedAt : null,
+          approvedBy:
+            typeof item.approvedBy === "string" ? item.approvedBy : null,
+          adminReviewStatus:
+            typeof item.adminReviewStatus === "string"
+              ? item.adminReviewStatus
+              : null,
+          fareClp: Number.isFinite(Number(item.fareClp))
+            ? Math.round(Number(item.fareClp))
+            : null,
+          paidClp: Number.isFinite(Number(item.paidClp))
+            ? Math.round(Number(item.paidClp))
+            : null,
+          appliedRideId:
+            typeof item.appliedRideId === "string" ? item.appliedRideId : null,
+          appliedAt: typeof item.appliedAt === "string" ? item.appliedAt : null,
+          usedAmountClp: Number.isFinite(Number(item.usedAmountClp))
+            ? Math.round(Number(item.usedAmountClp))
+            : null,
+        }),
+      )
       .filter((benefit) => {
         if (!isPassengerWalletBenefitAvailableForRequest(benefit)) return false;
-        const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
+        const owner = normalizeWalletBenefitEmailForRequest(
+          benefit.passengerEmail || benefit.ownerKey,
+        );
         return Boolean(sessionEmail && owner && owner === sessionEmail);
       })
-      .sort((a, b) => new Date(String(a.createdAt ?? 0)).getTime() - new Date(String(b.createdAt ?? 0)).getTime());
+      .sort(
+        (a, b) =>
+          new Date(String(a.createdAt ?? 0)).getTime() -
+          new Date(String(b.createdAt ?? 0)).getTime(),
+      );
   } catch {
     return [];
   }
@@ -765,7 +784,9 @@ function markPassengerWalletBenefitsUsedForRide(input: {
   try {
     const sessionEmail = getWalletBenefitSessionEmailForRequest(input.user);
     const raw = localStorage.getItem(RAPAGO_WALLET_BENEFITS_KEY_REQUEST);
-    const parsed = raw ? (JSON.parse(raw) as Array<Record<string, unknown>>) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<Record<string, unknown>>)
+      : [];
     if (!Array.isArray(parsed)) return;
 
     let remaining = amountToUse;
@@ -776,20 +797,38 @@ function markPassengerWalletBenefitsUsedForRide(input: {
     const next = parsed.map((item, index) => {
       const benefit: PassengerWalletBenefitForRequest = {
         id: String(item.id ?? `wallet-benefit-${index}`),
-        passengerEmail: typeof item.passengerEmail === "string" ? item.passengerEmail : null,
+        passengerEmail:
+          typeof item.passengerEmail === "string" ? item.passengerEmail : null,
         ownerKey: typeof item.ownerKey === "string" ? item.ownerKey : null,
-        amountClp: Math.max(0, Math.round(Number(item.amountClp ?? item.amount ?? 0))),
+        amountClp: Math.max(
+          0,
+          Math.round(Number(item.amountClp ?? item.amount ?? 0)),
+        ),
         status: String(item.status ?? "pending_admin"),
-        adminReviewStatus: typeof item.adminReviewStatus === "string" ? item.adminReviewStatus : null,
+        adminReviewStatus:
+          typeof item.adminReviewStatus === "string"
+            ? item.adminReviewStatus
+            : null,
       };
-      const owner = normalizeWalletBenefitEmailForRequest(benefit.passengerEmail || benefit.ownerKey);
-      const belongsToUser = Boolean(sessionEmail && owner && owner === sessionEmail);
+      const owner = normalizeWalletBenefitEmailForRequest(
+        benefit.passengerEmail || benefit.ownerKey,
+      );
+      const belongsToUser = Boolean(
+        sessionEmail && owner && owner === sessionEmail,
+      );
 
-      if (!belongsToUser || remaining <= 0 || !isPassengerWalletBenefitAvailableForRequest(benefit)) {
+      if (
+        !belongsToUser ||
+        remaining <= 0 ||
+        !isPassengerWalletBenefitAvailableForRequest(benefit)
+      ) {
         return item;
       }
 
-      const benefitAmount = Math.max(0, Math.round(Number(benefit.amountClp ?? 0)));
+      const benefitAmount = Math.max(
+        0,
+        Math.round(Number(benefit.amountClp ?? 0)),
+      );
       const usedAmount = Math.min(benefitAmount, remaining);
       remaining -= usedAmount;
 
@@ -863,7 +902,9 @@ function readLocalPassengerRides(): LocalPassengerRideData[] {
   }
 }
 
-function compactRideForLocalStorage(ride: LocalPassengerRideData): LocalPassengerRideData {
+function compactRideForLocalStorage(
+  ride: LocalPassengerRideData,
+): LocalPassengerRideData {
   const copy: LocalPassengerRideData = { ...ride };
 
   // Las fotos grandes no deben repetirse dentro de cada viaje.
@@ -887,7 +928,11 @@ function compactRideForLocalStorage(ride: LocalPassengerRideData): LocalPassenge
   ]) {
     const value = copy[key];
 
-    if (typeof value === "string" && value.startsWith("data:") && value.length > 1500) {
+    if (
+      typeof value === "string" &&
+      value.startsWith("data:") &&
+      value.length > 1500
+    ) {
       delete copy[key];
     }
   }
@@ -945,7 +990,10 @@ function normalizeRideStatus(status: unknown): string {
     .trim();
 }
 
-function readRideDateMs(ride: LocalPassengerRideData, keys: string[]): number | null {
+function readRideDateMs(
+  ride: LocalPassengerRideData,
+  keys: string[],
+): number | null {
   for (const key of keys) {
     const value = ride[key];
     if (!value) continue;
@@ -993,7 +1041,10 @@ function getNestedString(source: unknown, path: string[]): string | null {
   return typeof current === "string" && current.trim() ? current.trim() : null;
 }
 
-function rideBelongsToSessionPassenger(ride: LocalPassengerRideData, user?: unknown): boolean {
+function rideBelongsToSessionPassenger(
+  ride: LocalPassengerRideData,
+  user?: unknown,
+): boolean {
   const currentEmail = getSessionEmail(user)?.toLowerCase();
   if (!currentEmail) return true;
 
@@ -1013,7 +1064,10 @@ function readRequeuedPassengerRidesForRequest(): LocalPassengerRideData[] {
   try {
     const all: LocalPassengerRideData[] = [];
 
-    for (const key of [RAPAGO_REQUEUED_RIDES_KEY, RAPAGO_REQUEUED_PASSENGER_FORCE_KEY]) {
+    for (const key of [
+      RAPAGO_REQUEUED_RIDES_KEY,
+      RAPAGO_REQUEUED_PASSENGER_FORCE_KEY,
+    ]) {
       const raw = localStorage.getItem(key);
       const parsed = raw ? (JSON.parse(raw) as LocalPassengerRideData[]) : [];
       if (Array.isArray(parsed)) all.push(...parsed);
@@ -1027,23 +1081,39 @@ function readRequeuedPassengerRidesForRequest(): LocalPassengerRideData[] {
       cancellationReason: null,
       driverName: null,
       driverPhone: null,
-      requeuedAt: ride.requeuedAt ?? ride.cancelledAt ?? ride.updatedAt ?? ride.requestedAt ?? ride.createdAt ?? null,
+      requeuedAt:
+        ride.requeuedAt ??
+        ride.cancelledAt ??
+        ride.updatedAt ??
+        ride.requestedAt ??
+        ride.createdAt ??
+        null,
       requeuedReason: "driver_cancelled",
       forceActiveAfterDriverCancel: true,
-      passengerNotice: "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
+      passengerNotice:
+        "Tu conductor canceló el viaje, estamos buscando uno nuevo.",
     }));
   } catch {
     return [];
   }
 }
 
-function isRequestDriverCancelledRequeuedRide(ride: LocalPassengerRideData): boolean {
+function isRequestDriverCancelledRequeuedRide(
+  ride: LocalPassengerRideData,
+): boolean {
   const status = normalizeRideStatus(ride.status);
-  const cancelledBy = normalizeRideStatus(ride.cancelledByRole ?? ride.cancelledBy);
-  const reason = normalizeRideStatus(ride.requeuedReason ?? ride.requeueReason ?? ride.cancellationReason);
-  const notice = normalizeRideStatus(ride.passengerNotice ?? ride.passengerNotification ?? ride.notes);
+  const cancelledBy = normalizeRideStatus(
+    ride.cancelledByRole ?? ride.cancelledBy,
+  );
+  const reason = normalizeRideStatus(
+    ride.requeuedReason ?? ride.requeueReason ?? ride.cancellationReason,
+  );
+  const notice = normalizeRideStatus(
+    ride.passengerNotice ?? ride.passengerNotification ?? ride.notes,
+  );
 
-  if (cancelledBy.includes("passenger") || cancelledBy.includes("pasajero")) return false;
+  if (cancelledBy.includes("passenger") || cancelledBy.includes("pasajero"))
+    return false;
 
   return (
     ride.forceActiveAfterDriverCancel === true ||
@@ -1051,12 +1121,11 @@ function isRequestDriverCancelledRequeuedRide(ride: LocalPassengerRideData): boo
     reason.includes("conductor_cancel") ||
     notice.includes("tu conductor cancel") ||
     notice.includes("estamos buscando uno nuevo") ||
-    (status === "cancelled" && (
-      cancelledBy.includes("driver") ||
-      cancelledBy.includes("conductor") ||
-      reason.includes("driver") ||
-      reason.includes("conductor")
-    ))
+    (status === "cancelled" &&
+      (cancelledBy.includes("driver") ||
+        cancelledBy.includes("conductor") ||
+        reason.includes("driver") ||
+        reason.includes("conductor")))
   );
 }
 
@@ -1103,14 +1172,21 @@ function isPassengerRideActiveForNewRequest(
     ? REQUEUED_RIDE_ACTIVE_WINDOW_MS
     : IMMEDIATE_RIDE_ACTIVE_WINDOW_MS;
 
-  return activityMs >= nowMs - activeWindow && activityMs <= nowMs + 5 * 60 * 1000;
+  return (
+    activityMs >= nowMs - activeWindow && activityMs <= nowMs + 5 * 60 * 1000
+  );
 }
 
 function hasPassengerActiveRideForRequest(user?: unknown): boolean {
-  const rides = [...readLocalPassengerRides(), ...readRequeuedPassengerRidesForRequest()];
+  const rides = [
+    ...readLocalPassengerRides(),
+    ...readRequeuedPassengerRidesForRequest(),
+  ];
   const nowMs = Date.now();
 
-  return rides.some((ride) => isPassengerRideActiveForNewRequest(ride, user, nowMs));
+  return rides.some((ride) =>
+    isPassengerRideActiveForNewRequest(ride, user, nowMs),
+  );
 }
 
 function createLocalPassengerRide(input: {
@@ -1156,8 +1232,16 @@ function createLocalPassengerRide(input: {
     passengerFareType: input.passengerFareType ?? null,
     farePassengerType: input.passengerFareType ?? null,
     passengerType: input.passengerFareType ?? null,
-    passengerFareLabel: input.passengerFareLabel ?? (input.passengerFareType ? passengerFareTypeLabel(input.passengerFareType) : null),
-    nationality: input.passengerFareLabel ?? (input.passengerFareType ? passengerFareTypeLabel(input.passengerFareType) : null),
+    passengerFareLabel:
+      input.passengerFareLabel ??
+      (input.passengerFareType
+        ? passengerFareTypeLabel(input.passengerFareType)
+        : null),
+    nationality:
+      input.passengerFareLabel ??
+      (input.passengerFareType
+        ? passengerFareTypeLabel(input.passengerFareType)
+        : null),
     isResident: input.passengerFareType === "resident",
     status: isScheduled ? "scheduled" : "requested",
     requestedAt: now,
@@ -1240,10 +1324,17 @@ function saveLocalAdminScheduledRides(rides: LocalPassengerRideData[]): void {
     }
 
     if (compacted[0]) {
-      localStorage.setItem("rapago_last_scheduled_ride_for_admin", JSON.stringify(compacted[0]));
+      localStorage.setItem(
+        "rapago_last_scheduled_ride_for_admin",
+        JSON.stringify(compacted[0]),
+      );
     }
 
-    window.dispatchEvent(new CustomEvent("rapago:admin-scheduled-rides-updated", { detail: { rides: compacted } }));
+    window.dispatchEvent(
+      new CustomEvent("rapago:admin-scheduled-rides-updated", {
+        detail: { rides: compacted },
+      }),
+    );
   } catch {
     // No bloquea la pantalla si el navegador no permite guardar localmente.
   }
@@ -1253,7 +1344,9 @@ function upsertLocalAdminScheduledRide(ride: LocalPassengerRideData): void {
   if (ride.isScheduled !== true) return;
   const current = readLocalAdminScheduledRides();
   const key = getLocalAdminScheduledRideKey(ride);
-  const withoutDuplicate = current.filter((item) => getLocalAdminScheduledRideKey(item) !== key);
+  const withoutDuplicate = current.filter(
+    (item) => getLocalAdminScheduledRideKey(item) !== key,
+  );
   saveLocalAdminScheduledRides([ride, ...withoutDuplicate]);
 }
 
@@ -1318,8 +1411,12 @@ function createLocalAdminScheduledRide(input: {
     adminRequiresReview: true,
     airportPickupBooking: !isRoundTripPromotion,
     roundTripPromotionBooking: isRoundTripPromotion,
-    bookingPurpose: isRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
-    serviceType: isRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+    bookingPurpose: isRoundTripPromotion
+      ? "round_trip_promotion"
+      : "airport_pickup",
+    serviceType: isRoundTripPromotion
+      ? "round_trip_promotion"
+      : "airport_pickup",
     localOnly: true,
   };
 }
@@ -1391,7 +1488,8 @@ function extractRideRequestIdFromResponse(response: unknown): string | null {
 
   for (const value of directCandidates) {
     if (typeof value === "string" && value.trim()) return value.trim();
-    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "number" && Number.isFinite(value))
+      return String(value);
   }
 
   return null;
@@ -1407,11 +1505,7 @@ type Coords = {
   placeId?: string | null;
 };
 
-type PickupRecommendationKind =
-  | "reference"
-  | "main_road"
-  | "road"
-  | "exact";
+type PickupRecommendationKind = "reference" | "main_road" | "road" | "exact";
 
 type ConfirmedPoint = Coords & {
   text: string;
@@ -1477,7 +1571,6 @@ type AirportWelcomeOption = "none" | "flower_lei";
 
 const AIRPORT_FLOWER_LEI_SURCHARGE_CLP = 4000;
 const AIRPORT_FLOWER_LEI_LABEL = "Collar de flores Rapa Nui";
-
 
 declare global {
   interface Window {
@@ -1778,138 +1871,174 @@ type RapaNuiLocalAutocompletePlace = {
 
 const RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX = "rapago-local:";
 
-const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace[] = [
-  {
-    id: "hospital-hanga-roa",
-    name: "Hospital de Hanga Roa",
-    subtitle: "Salud y urgencias",
-    address: "Hospital Hanga Roa, Rapa Nui, Chile",
-    lat: -27.1502,
-    lng: -109.4216,
-    aliases: ["hospital", "hosp", "urgencia", "urgencias", "salud", "hanga roa hospital"],
-    placeTypes: ["hospital", "health", "point_of_interest", "establishment"],
-  },
-  {
-    id: "aeropuerto-mataveri",
-    name: "Aeropuerto Internacional Mataveri",
-    subtitle: "Terminal de pasajeros",
-    address: "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.16395,
-    lng: -109.42465,
-    aliases: ["aero", "aeropuerto", "airport", "mataveri", "terminal"],
-    placeTypes: ["airport", "point_of_interest", "establishment"],
-  },
-  {
-    id: "ahu-tahai",
-    name: "Ahu Tahai",
-    subtitle: "Cultura y atardecer",
-    address: "Ahu Tahai, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.1398,
-    lng: -109.4298,
-    aliases: ["tah", "tahai", "ahu tahai", "atardecer"],
-    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-  },
-  {
-    id: "playa-pea",
-    name: "Playa Pea",
-    subtitle: "Playa y zona céntrica",
-    address: "Playa Pea, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.1482,
-    lng: -109.4336,
-    aliases: ["pea", "playa pea", "playa", "centro"],
-    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-  },
-  {
-    id: "playa-poko-poko",
-    name: "Playa Poko Poko",
-    subtitle: "Costa y paseo familiar",
-    address: "Playa Poko Poko, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.149,
-    lng: -109.4319,
-    aliases: ["poko", "poko poko", "playa poko", "playa poko poko"],
-    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-  },
-  {
-    id: "mercado-artesanal",
-    name: "Mercado Artesanal Rapa Nui",
-    subtitle: "Artesanía local",
-    address: "Mercado Artesanal, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.1508,
-    lng: -109.4289,
-    aliases: ["mercado", "artesania", "artesanía", "mercado artesanal", "souvenir"],
-    placeTypes: ["market", "store", "point_of_interest", "establishment"],
-  },
-  {
-    id: "feria-hare-umanga",
-    name: "Feria Artesanal Hare Umanga",
-    subtitle: "Feria y recuerdos",
-    address: "Feria Artesanal Hare Umanga, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.1503,
-    lng: -109.4277,
-    aliases: ["feria", "hare", "hare umanga", "feria artesanal"],
-    placeTypes: ["market", "store", "point_of_interest", "establishment"],
-  },
-  {
-    id: "caleta-hanga-roa",
-    name: "Caleta Hanga Roa",
-    subtitle: "Puerto y restaurantes",
-    address: "Caleta Hanga Roa, Rapa Nui, Chile",
-    lat: -27.1478,
-    lng: -109.4356,
-    aliases: ["caleta", "puerto", "caleta hanga roa", "restaurantes"],
-    placeTypes: ["point_of_interest", "establishment"],
-  },
-  {
-    id: "comisaria-rapa-nui",
-    name: "Comisaría Rapa Nui",
-    subtitle: "Carabineros y seguridad",
-    address: "Comisaría Rapa Nui, Hanga Roa, Chile",
-    lat: -27.1497,
-    lng: -109.4268,
-    aliases: ["comisaria", "comisaría", "carabineros", "policia", "policía", "seguridad"],
-    placeTypes: ["police", "point_of_interest", "establishment"],
-  },
-  {
-    id: "iglesia-santa-cruz",
-    name: "Iglesia de la Santa Cruz Rapa Nui",
-    subtitle: "Iglesia principal",
-    address: "Iglesia de la Santa Cruz, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.1506,
-    lng: -109.4271,
-    aliases: ["iglesia", "santa cruz", "iglesia santa cruz", "misa"],
-    placeTypes: ["church", "place_of_worship", "point_of_interest", "establishment"],
-  },
-  {
-    id: "jardin-taukiani",
-    name: "Jardín Botánico TauKiani",
-    subtitle: "Naturaleza y visita",
-    address: "Jardín Botánico TauKiani, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.1482,
-    lng: -109.4069,
-    aliases: ["jardin", "jardín", "botanico", "botánico", "taukiani", "jardin botanico"],
-    placeTypes: ["park", "tourist_attraction", "point_of_interest", "establishment"],
-  },
-  {
-    id: "anakena",
-    name: "Anakena",
-    subtitle: "Playa y experiencia",
-    address: "Playa Anakena, Rapa Nui, Chile",
-    lat: -27.0732,
-    lng: -109.3233,
-    aliases: ["anakena", "playa anakena"],
-    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-  },
-  {
-    id: "terevaka",
-    name: "Terevaka",
-    subtitle: "Cerro y excursión",
-    address: "Maunga Terevaka, Rapa Nui, Chile",
-    lat: -27.0917,
-    lng: -109.382,
-    aliases: ["terevaka", "tere vaka", "cerro", "maunga terevaka"],
-    placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-  },
-] as const;
+const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace[] =
+  [
+    {
+      id: "hospital-hanga-roa",
+      name: "Hospital de Hanga Roa",
+      subtitle: "Salud y urgencias",
+      address: "Hospital Hanga Roa, Rapa Nui, Chile",
+      lat: -27.1502,
+      lng: -109.4216,
+      // prettier-ignore — RequestRideUberFlow.test.ts afirma sobre el texto
+      // crudo de este archivo ('aliases: ["hospital", "hosp", "urgencia"'),
+      // así que esta lista debe quedarse en una sola línea.
+      // prettier-ignore
+      aliases: ["hospital", "hosp", "urgencia", "urgencias", "salud", "hanga roa hospital"],
+      placeTypes: ["hospital", "health", "point_of_interest", "establishment"],
+    },
+    {
+      id: "aeropuerto-mataveri",
+      name: "Aeropuerto Internacional Mataveri",
+      subtitle: "Terminal de pasajeros",
+      address:
+        "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
+      lat: -27.16395,
+      lng: -109.42465,
+      aliases: ["aero", "aeropuerto", "airport", "mataveri", "terminal"],
+      placeTypes: ["airport", "point_of_interest", "establishment"],
+    },
+    {
+      id: "ahu-tahai",
+      name: "Ahu Tahai",
+      subtitle: "Cultura y atardecer",
+      address: "Ahu Tahai, Hanga Roa, Rapa Nui, Chile",
+      lat: -27.1398,
+      lng: -109.4298,
+      aliases: ["tah", "tahai", "ahu tahai", "atardecer"],
+      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+    },
+    {
+      id: "playa-pea",
+      name: "Playa Pea",
+      subtitle: "Playa y zona céntrica",
+      address: "Playa Pea, Hanga Roa, Rapa Nui, Chile",
+      lat: -27.1482,
+      lng: -109.4336,
+      aliases: ["pea", "playa pea", "playa", "centro"],
+      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+    },
+    {
+      id: "playa-poko-poko",
+      name: "Playa Poko Poko",
+      subtitle: "Costa y paseo familiar",
+      address: "Playa Poko Poko, Hanga Roa, Rapa Nui, Chile",
+      lat: -27.149,
+      lng: -109.4319,
+      aliases: ["poko", "poko poko", "playa poko", "playa poko poko"],
+      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+    },
+    {
+      id: "mercado-artesanal",
+      name: "Mercado Artesanal Rapa Nui",
+      subtitle: "Artesanía local",
+      address: "Mercado Artesanal, Hanga Roa, Rapa Nui, Chile",
+      lat: -27.1508,
+      lng: -109.4289,
+      aliases: [
+        "mercado",
+        "artesania",
+        "artesanía",
+        "mercado artesanal",
+        "souvenir",
+      ],
+      placeTypes: ["market", "store", "point_of_interest", "establishment"],
+    },
+    {
+      id: "feria-hare-umanga",
+      name: "Feria Artesanal Hare Umanga",
+      subtitle: "Feria y recuerdos",
+      address: "Feria Artesanal Hare Umanga, Hanga Roa, Rapa Nui, Chile",
+      lat: -27.1503,
+      lng: -109.4277,
+      aliases: ["feria", "hare", "hare umanga", "feria artesanal"],
+      placeTypes: ["market", "store", "point_of_interest", "establishment"],
+    },
+    {
+      id: "caleta-hanga-roa",
+      name: "Caleta Hanga Roa",
+      subtitle: "Puerto y restaurantes",
+      address: "Caleta Hanga Roa, Rapa Nui, Chile",
+      lat: -27.1478,
+      lng: -109.4356,
+      aliases: ["caleta", "puerto", "caleta hanga roa", "restaurantes"],
+      placeTypes: ["point_of_interest", "establishment"],
+    },
+    {
+      id: "comisaria-rapa-nui",
+      name: "Comisaría Rapa Nui",
+      subtitle: "Carabineros y seguridad",
+      address: "Comisaría Rapa Nui, Hanga Roa, Chile",
+      lat: -27.1497,
+      lng: -109.4268,
+      aliases: [
+        "comisaria",
+        "comisaría",
+        "carabineros",
+        "policia",
+        "policía",
+        "seguridad",
+      ],
+      placeTypes: ["police", "point_of_interest", "establishment"],
+    },
+    {
+      id: "iglesia-santa-cruz",
+      name: "Iglesia de la Santa Cruz Rapa Nui",
+      subtitle: "Iglesia principal",
+      address: "Iglesia de la Santa Cruz, Hanga Roa, Rapa Nui, Chile",
+      lat: -27.1506,
+      lng: -109.4271,
+      aliases: ["iglesia", "santa cruz", "iglesia santa cruz", "misa"],
+      placeTypes: [
+        "church",
+        "place_of_worship",
+        "point_of_interest",
+        "establishment",
+      ],
+    },
+    {
+      id: "jardin-taukiani",
+      name: "Jardín Botánico TauKiani",
+      subtitle: "Naturaleza y visita",
+      address: "Jardín Botánico TauKiani, Hanga Roa, Rapa Nui, Chile",
+      lat: -27.1482,
+      lng: -109.4069,
+      aliases: [
+        "jardin",
+        "jardín",
+        "botanico",
+        "botánico",
+        "taukiani",
+        "jardin botanico",
+      ],
+      placeTypes: [
+        "park",
+        "tourist_attraction",
+        "point_of_interest",
+        "establishment",
+      ],
+    },
+    {
+      id: "anakena",
+      name: "Anakena",
+      subtitle: "Playa y experiencia",
+      address: "Playa Anakena, Rapa Nui, Chile",
+      lat: -27.0732,
+      lng: -109.3233,
+      aliases: ["anakena", "playa anakena"],
+      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+    },
+    {
+      id: "terevaka",
+      name: "Terevaka",
+      subtitle: "Cerro y excursión",
+      address: "Maunga Terevaka, Rapa Nui, Chile",
+      lat: -27.0917,
+      lng: -109.382,
+      aliases: ["terevaka", "tere vaka", "cerro", "maunga terevaka"],
+      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+    },
+  ] as const;
 
 function normalizeRapaNuiAutocompleteText(value: unknown): string {
   return String(value ?? "")
@@ -1927,8 +2056,7 @@ function getRapaNuiLocalAutocompletePlace(
 
   const id = placeId.slice(RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX.length);
   return (
-    RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.find((place) => place.id === id) ??
-    null
+    RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.find((place) => place.id === id) ?? null
   );
 }
 
@@ -1975,8 +2103,7 @@ function getRapaNuiLocalAutocompletePredictions(
     .filter((item) => item.score >= 0)
     .sort(
       (a, b) =>
-        b.score - a.score ||
-        a.place.name.localeCompare(b.place.name, "es"),
+        b.score - a.score || a.place.name.localeCompare(b.place.name, "es"),
     )
     .slice(0, 5)
     .map(({ place }) => ({
@@ -2026,7 +2153,6 @@ function localRapaNuiPlaceToPickerResult(
   };
 }
 
-
 function inputItemStyle(extra?: CSSProperties): CSSProperties {
   return {
     "--background": "var(--rp-field-bg)",
@@ -2044,17 +2170,6 @@ function inputItemStyle(extra?: CSSProperties): CSSProperties {
     overflow: "hidden",
     ...extra,
   } as CSSProperties;
-}
-
-function sectionLabelStyle(): CSSProperties {
-  return {
-    color: "var(--rp-label)",
-    fontSize: "var(--rp-fs-label)",
-    fontWeight: 800,
-    letterSpacing: "0.06em",
-    margin: "0 0 8px 2px",
-    textTransform: "uppercase",
-  };
 }
 
 function suggestionBoxStyle(): CSSProperties {
@@ -2094,11 +2209,15 @@ function getAddressComponentValue(
     types.some((type) => item.types.includes(type)),
   );
 
-  const value = normalizePlaceStreetText(component?.long_name ?? component?.short_name ?? "");
+  const value = normalizePlaceStreetText(
+    component?.long_name ?? component?.short_name ?? "",
+  );
   return value || null;
 }
 
-function getGeocodePlaceName(result: google.maps.GeocoderResult | null | undefined): string | null {
+function getGeocodePlaceName(
+  result: google.maps.GeocoderResult | null | undefined,
+): string | null {
   const value =
     getAddressComponentValue(result, ["premise"]) ??
     getAddressComponentValue(result, ["establishment"]) ??
@@ -2108,7 +2227,9 @@ function getGeocodePlaceName(result: google.maps.GeocoderResult | null | undefin
   return value || null;
 }
 
-function getGeocodeStreetName(result: google.maps.GeocoderResult | null | undefined): string | null {
+function getGeocodeStreetName(
+  result: google.maps.GeocoderResult | null | undefined,
+): string | null {
   return getAddressComponentValue(result, ["route"]);
 }
 
@@ -2135,9 +2256,16 @@ function isUsefulPlaceStreetValue(value: unknown): boolean {
   ].includes(key);
 }
 
-function buildPlaceStreetTitle(placeName: unknown, streetName: unknown): string | null {
-  const place = isUsefulPlaceStreetValue(placeName) ? normalizePlaceStreetText(placeName) : "";
-  const street = isUsefulPlaceStreetValue(streetName) ? normalizePlaceStreetText(streetName) : "";
+function buildPlaceStreetTitle(
+  placeName: unknown,
+  streetName: unknown,
+): string | null {
+  const place = isUsefulPlaceStreetValue(placeName)
+    ? normalizePlaceStreetText(placeName)
+    : "";
+  const street = isUsefulPlaceStreetValue(streetName)
+    ? normalizePlaceStreetText(streetName)
+    : "";
 
   const placeKey = normalizePlaceStreetCompare(place);
   const streetKey = normalizePlaceStreetCompare(street);
@@ -2248,11 +2376,20 @@ function dedupeGoogleReferences(
     });
 }
 
-function getReferenceTypePriorityBonus(reference: GoogleNearbyReference): number {
-  const type = normalizePlaceStreetCompare(reference.primaryType).replace(/ /g, "_");
+function getReferenceTypePriorityBonus(
+  reference: GoogleNearbyReference,
+): number {
+  const type = normalizePlaceStreetCompare(reference.primaryType).replace(
+    / /g,
+    "_",
+  );
 
   if (RAPA_NUI_HIGH_VALUE_REFERENCE_TYPES.has(type)) return 18;
-  if (["tour_agency", "tourist_information_center", "travel_agency"].includes(type)) {
+  if (
+    ["tour_agency", "tourist_information_center", "travel_agency"].includes(
+      type,
+    )
+  ) {
     return 10;
   }
   if (["hotel", "hostel", "guest_house", "lodging"].includes(type)) {
@@ -2272,14 +2409,20 @@ function getReferenceDiscoveryPriority(
   const name = normalizePlaceStreetCompare(reference.name);
 
   if (/barber|peluquer|hair salon|salon de belleza/.test(name)) return 100;
-  if (["barber_shop", "hair_care", "hair_salon", "beauty_salon"].includes(type)) {
+  if (
+    ["barber_shop", "hair_care", "hair_salon", "beauty_salon"].includes(type)
+  ) {
     return 100;
   }
   if (RAPA_NUI_HIGH_VALUE_REFERENCE_TYPES.has(type)) return 60;
   if (/caf[eé]|restaurant|tienda|market|farmacia|supermercado/.test(name)) {
     return 55;
   }
-  if (["tour_agency", "tourist_information_center", "travel_agency"].includes(type)) {
+  if (
+    ["tour_agency", "tourist_information_center", "travel_agency"].includes(
+      type,
+    )
+  ) {
     return 20;
   }
   if (["hotel", "hostel", "guest_house", "lodging"].includes(type)) {
@@ -2378,8 +2521,7 @@ async function getNearbyGoogleReferencesNew(
           };
         })
         .filter(
-          (reference): reference is GoogleNearbyReference =>
-            reference !== null,
+          (reference): reference is GoogleNearbyReference => reference !== null,
         );
 
     const baseRequest = {
@@ -2530,9 +2672,7 @@ async function getNearbyGoogleReferencesLegacy(
     const container = document.createElement("div");
     const service = new google.maps.places.PlacesService(container);
 
-    const runNearbySearch = (
-      type?: string,
-    ): Promise<GoogleNearbyReference[]> =>
+    const runNearbySearch = (type?: string): Promise<GoogleNearbyReference[]> =>
       new Promise((resolve) => {
         const request: google.maps.places.PlaceSearchRequest = {
           location: new google.maps.LatLng(point.lat, point.lng),
@@ -2760,7 +2900,6 @@ async function getBestVisiblePlaceNameForPoint(
   return googlePlace ?? geocodePlace;
 }
 
-
 function getShortAddress(result: google.maps.GeocoderResult | null): {
   title: string;
   subtitle: string;
@@ -2774,8 +2913,11 @@ function getShortAddress(result: google.maps.GeocoderResult | null): {
 
   const route = getGeocodeStreetName(result);
   const premise = getGeocodePlaceName(result);
-  const fallback = normalizePlaceStreetText(result.formatted_address.split(",")[0]);
-  const title = buildPlaceStreetTitle(premise, route) ?? fallback ?? "Punto seleccionado";
+  const fallback = normalizePlaceStreetText(
+    result.formatted_address.split(",")[0],
+  );
+  const title =
+    buildPlaceStreetTitle(premise, route) ?? fallback ?? "Punto seleccionado";
 
   return {
     title,
@@ -2787,7 +2929,10 @@ function toRad(value: number): number {
   return (value * Math.PI) / 180;
 }
 
-function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+function distanceMeters(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
   const earth = 6371000;
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
@@ -2796,14 +2941,10 @@ function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: 
 
   const x =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.sin(dLng / 2) *
-      Math.sin(dLng / 2) *
-      Math.cos(lat1) *
-      Math.cos(lat2);
+    Math.sin(dLng / 2) * Math.sin(dLng / 2) * Math.cos(lat1) * Math.cos(lat2);
 
   return earth * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
-
 
 type PassengerFareType = "resident" | "chilean" | "foreigner";
 type VehicleCategory = "standard" | "xl" | "luggage";
@@ -2885,7 +3026,13 @@ const ROUND_TRIP_DESTINATION_SEARCH: Record<string, string> = {
 // Puntos fijos usados solo para promociones ida y vuelta.
 // No dependemos de Google geocode porque a veces Anakena cae en Ahu Ature Huki
 // o en una etiqueta cercana y el pin queda corrido en el mapa.
-const ROUND_TRIP_DESTINATION_FIXED_POINTS: Record<string, Omit<PickerResult, "originalLat" | "originalLng" | "walkMeters" | "isAccessiblePickup">> = {
+const ROUND_TRIP_DESTINATION_FIXED_POINTS: Record<
+  string,
+  Omit<
+    PickerResult,
+    "originalLat" | "originalLng" | "walkMeters" | "isAccessiblePickup"
+  >
+> = {
   anakena: {
     text: "Anakena",
     address: "Playa Anakena, Rapa Nui, Chile",
@@ -2917,11 +3064,15 @@ const RAPA_NUI_AIRPORT_DESTINATION: PickerResult = {
   isAccessiblePickup: false,
 };
 
-function isRapaNuiAirportPoint(point: ConfirmedPoint | PickerResult | null | undefined): boolean {
+function isRapaNuiAirportPoint(
+  point: ConfirmedPoint | PickerResult | null | undefined,
+): boolean {
   if (!point) return false;
 
   const placeId = String(point.placeId ?? "").toLowerCase();
-  const text = normalizeAdminDestinationId(`${point.text ?? ""} ${point.address ?? ""}`);
+  const text = normalizeAdminDestinationId(
+    `${point.text ?? ""} ${point.address ?? ""}`,
+  );
 
   return (
     placeId === RAPA_NUI_AIRPORT_DESTINATION.placeId ||
@@ -2932,29 +3083,40 @@ function isRapaNuiAirportPoint(point: ConfirmedPoint | PickerResult | null | und
 }
 
 function normalizeAdminDestinationId(value: unknown): string {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "") || "destino";
+  return (
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "destino"
+  );
 }
 
 function getRoundTripDestinationKey(destination: FixedDestinationRule): string {
-  const normalized = normalizeAdminDestinationId(`${destination.id ?? ""} ${destination.title ?? ""}`);
+  const normalized = normalizeAdminDestinationId(
+    `${destination.id ?? ""} ${destination.title ?? ""}`,
+  );
 
   if (normalized.includes("anakena")) return "anakena";
-  if (normalized.includes("terevaka") || normalized.includes("tere_vaka")) return "terevaka";
+  if (normalized.includes("terevaka") || normalized.includes("tere_vaka"))
+    return "terevaka";
 
   return normalizeAdminDestinationId(destination.id || destination.title);
 }
 
-function getRoundTripDestinationSearch(destination: FixedDestinationRule): string {
+function getRoundTripDestinationSearch(
+  destination: FixedDestinationRule,
+): string {
   const id = getRoundTripDestinationKey(destination);
-  return ROUND_TRIP_DESTINATION_SEARCH[id] ?? `${destination.title} Rapa Nui Chile`;
+  return (
+    ROUND_TRIP_DESTINATION_SEARCH[id] ?? `${destination.title} Rapa Nui Chile`
+  );
 }
 
-function getRoundTripDestinationFixedPoint(destination: FixedDestinationRule): PickerResult | null {
+function getRoundTripDestinationFixedPoint(
+  destination: FixedDestinationRule,
+): PickerResult | null {
   const id = getRoundTripDestinationKey(destination);
   const fixed = ROUND_TRIP_DESTINATION_FIXED_POINTS[id];
 
@@ -2990,7 +3152,10 @@ function buildAdminRoundTripPromotions(
     )
     .map((destination) => {
       const destinationId = getRoundTripDestinationKey(destination);
-      const rawFare = Math.max(0, Number(destination.baseResidentClp || 0) * multiplier);
+      const rawFare = Math.max(
+        0,
+        Number(destination.baseResidentClp || 0) * multiplier,
+      );
       const fareClp = roundByAdminRule(rawFare, rules);
       const roundedChanged = Math.round(rawFare) !== fareClp;
 
@@ -3165,9 +3330,7 @@ function readStoredRegistrationProfile(): StoredRegistrationProfile {
       directPassengerFareType: parsed.directPassengerFareType ?? directFareType,
       directNationality: parsed.directNationality ?? directNationality,
       isResident:
-        parsed.isResident ??
-        localStorage.getItem("rapago_is_resident") ??
-        null,
+        parsed.isResident ?? localStorage.getItem("rapago_is_resident") ?? null,
     };
   } catch {
     return {};
@@ -3245,7 +3408,11 @@ function normalizePassengerFareType(value: unknown): PassengerFareType | null {
   }
 
   // Si solo dice "turista" y no especifica chileno, se cobra como extranjero.
-  if (raw.includes("turista") || raw.includes("tourist") || raw.includes("visitor")) {
+  if (
+    raw.includes("turista") ||
+    raw.includes("tourist") ||
+    raw.includes("visitor")
+  ) {
     return "foreigner";
   }
 
@@ -3276,7 +3443,9 @@ function readPassengerFareType(user?: unknown): PassengerFareType {
     normalizePassengerFareType(getUserStringField(user, "farePassengerType")) ??
     normalizePassengerFareType(getUserStringField(user, "passengerFareType")) ??
     normalizePassengerFareType(getUserStringField(user, "passengerType")) ??
-    normalizePassengerFareType(getUserStringField(user, "passengerCondition")) ??
+    normalizePassengerFareType(
+      getUserStringField(user, "passengerCondition"),
+    ) ??
     normalizePassengerFareType(getUserStringField(user, "condition")) ??
     normalizePassengerFareType(getUserStringField(user, "nationality"));
 
@@ -3302,11 +3471,21 @@ function readPassengerFareType(user?: unknown): PassengerFareType {
         normalizePassengerFareType(storedProfile.nationality) ??
         normalizePassengerFareType(storedProfile.passengerFareLabel) ??
         normalizePassengerFareType(storedProfile.isResident) ??
-        normalizePassengerFareType(localStorage.getItem("rapago_passenger_fare_type")) ??
-        normalizePassengerFareType(localStorage.getItem("rapago_passenger_condition")) ??
-        normalizePassengerFareType(localStorage.getItem("rapago_fare_passenger_type")) ??
-        normalizePassengerFareType(localStorage.getItem("rapago_profile_passenger_type")) ??
-        normalizePassengerFareType(localStorage.getItem("rapago_profile_nationality")) ??
+        normalizePassengerFareType(
+          localStorage.getItem("rapago_passenger_fare_type"),
+        ) ??
+        normalizePassengerFareType(
+          localStorage.getItem("rapago_passenger_condition"),
+        ) ??
+        normalizePassengerFareType(
+          localStorage.getItem("rapago_fare_passenger_type"),
+        ) ??
+        normalizePassengerFareType(
+          localStorage.getItem("rapago_profile_passenger_type"),
+        ) ??
+        normalizePassengerFareType(
+          localStorage.getItem("rapago_profile_nationality"),
+        ) ??
         normalizePassengerFareType(localStorage.getItem("rapago_nationality"));
 
       if (stored) return stored;
@@ -3375,7 +3554,15 @@ function parseStoredNumber(value: unknown, fallback: number): number {
 function readLegacyCardsFallback(): Partial<RapaGoFareRules> {
   try {
     const raw = localStorage.getItem(ADMIN_FARE_CARDS_STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Array<{ id?: string; minimumClp?: number | null; kmClp?: number | null; fixedClp?: number | null; active?: boolean }>) : [];
+    const parsed = raw
+      ? (JSON.parse(raw) as Array<{
+          id?: string;
+          minimumClp?: number | null;
+          kmClp?: number | null;
+          fixedClp?: number | null;
+          active?: boolean;
+        }>)
+      : [];
 
     if (!Array.isArray(parsed) || parsed.length === 0) return {};
 
@@ -3390,13 +3577,8 @@ function readLegacyCardsFallback(): Partial<RapaGoFareRules> {
 
     return {
       baseMinimumClp:
-        generalMinimum != null
-          ? Number(generalMinimum)
-          : undefined,
-      baseKmClp:
-        generalKm != null
-          ? Number(generalKm)
-          : undefined,
+        generalMinimum != null ? Number(generalMinimum) : undefined,
+      baseKmClp: generalKm != null ? Number(generalKm) : undefined,
       fixedDestinations: [
         {
           id: "anakena",
@@ -3508,22 +3690,31 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
       ),
       ruralUrbanLimitKm: Math.max(
         fallback.includedKm,
-        parseStoredNumber(parsed.rural?.urbanLimitKm, fallback.ruralUrbanLimitKm),
+        parseStoredNumber(
+          parsed.rural?.urbanLimitKm,
+          fallback.ruralUrbanLimitKm,
+        ),
       ),
       ruralDiscountPercent: Math.max(
         0,
         Math.min(
           99,
-          parseStoredNumber(parsed.rural?.ruralDiscountPercent, fallback.ruralDiscountPercent),
+          parseStoredNumber(
+            parsed.rural?.ruralDiscountPercent,
+            fallback.ruralDiscountPercent,
+          ),
         ),
       ),
       ruralFactor: Math.max(
         0.01,
         parseStoredNumber(
           parsed.rural?.ruralFactor ??
-            (1 -
-              parseStoredNumber(parsed.rural?.ruralDiscountPercent, fallback.ruralDiscountPercent) /
-                100),
+            1 -
+              parseStoredNumber(
+                parsed.rural?.ruralDiscountPercent,
+                fallback.ruralDiscountPercent,
+              ) /
+                100,
           fallback.ruralFactor,
         ),
       ),
@@ -3567,13 +3758,15 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
               baseResidentClp: parseStoredNumber(item.baseResidentClp, 0),
               active: item.active !== false,
             }))
-          : legacy.fixedDestinations ?? fallback.fixedDestinations,
+          : (legacy.fixedDestinations ?? fallback.fixedDestinations),
       // Redondeo final obligatorio.
       // Se ignora cualquier configuración antigua "none" o "nearest" guardada en localStorage.
       roundingMode: "ceil",
       roundingUnitClp: Math.max(
         500,
-        Math.round(parseStoredNumber(parsed.rounding?.unitClp, fallback.roundingUnitClp)),
+        Math.round(
+          parseStoredNumber(parsed.rounding?.unitClp, fallback.roundingUnitClp),
+        ),
       ),
       usdRate: Math.max(
         1,
@@ -3615,7 +3808,9 @@ function getSafeUsdRate(value?: number | null): number {
   try {
     const engineRaw = localStorage.getItem(ADMIN_FARE_ENGINE_STORAGE_KEY);
     if (engineRaw) {
-      const parsed = JSON.parse(engineRaw) as { usdRate?: number | string | null };
+      const parsed = JSON.parse(engineRaw) as {
+        usdRate?: number | string | null;
+      };
       const fromEngine = Number(parsed.usdRate);
       if (Number.isFinite(fromEngine) && fromEngine > 0) return fromEngine;
     }
@@ -3664,7 +3859,10 @@ function detectFixedDestination(
 }
 
 function getRuralFactor(rules: RapaGoFareRules): number {
-  const discount = Math.max(0, Math.min(99, Number(rules.ruralDiscountPercent ?? 25)));
+  const discount = Math.max(
+    0,
+    Math.min(99, Number(rules.ruralDiscountPercent ?? 25)),
+  );
   const factorFromDiscount = 1 - discount / 100;
   const configuredFactor = Number(rules.ruralFactor ?? factorFromDiscount);
 
@@ -3709,7 +3907,8 @@ function calculateUrbanRuralRawFare(input: {
   // 3) multiplicador vehículo
   // 4) descuento rural del 25% sobre el KM ya ajustado
   const ruralKmFare = urbanKmFare * ruralFactor;
-  const adjustedMinimum = rules.baseMinimumClp * passengerMultiplier * vehicleMultiplier;
+  const adjustedMinimum =
+    rules.baseMinimumClp * passengerMultiplier * vehicleMultiplier;
   const urbanAdditionalKm = Math.max(0, urbanKm - rules.includedKm);
   const urbanFare = adjustedMinimum + urbanAdditionalKm * urbanKmFare;
 
@@ -3721,7 +3920,10 @@ function calculateUrbanRuralRawFare(input: {
     urbanKmFare,
     ruralKmFare,
     ruralFactor,
-    ruralDiscountPercent: Math.max(0, Math.min(99, Number(rules.ruralDiscountPercent ?? 25))),
+    ruralDiscountPercent: Math.max(
+      0,
+      Math.min(99, Number(rules.ruralDiscountPercent ?? 25)),
+    ),
     calculationType: ruralKm > 0 ? "urban_rural" : "urban",
   };
 }
@@ -3791,9 +3993,7 @@ function calculateRapaGoFare(
     ruralKmFare: ruralBreakdown.ruralKmFare,
     ruralDiscountPercent: ruralBreakdown.ruralDiscountPercent,
     ruralFactor: ruralBreakdown.ruralFactor,
-    calculationType: isFixedFare
-      ? "fixed"
-      : ruralBreakdown.calculationType,
+    calculationType: isFixedFare ? "fixed" : ruralBreakdown.calculationType,
     tripFareMode,
     tripMultiplier: tripFareMode === "round_trip" && !isFixedFare ? 2 : 1,
     oneWayFare: roundByAdminRule(ruralBreakdown.rawCash, rules),
@@ -3840,7 +4040,6 @@ function findNearestRoadResult(
   );
 }
 
-
 async function reverseGeocodeExact(point: Coords): Promise<PickerResult> {
   await loadRapaGoGoogleMaps();
 
@@ -3863,8 +4062,12 @@ async function reverseGeocodeExact(point: Coords): Promise<PickerResult> {
         const label = getShortAddress(first);
         const streetName = getGeocodeStreetName(first);
 
-        void getBestVisiblePlaceNameForPoint(point, getGeocodePlaceName(first)).then((placeName) => {
-          const title = buildPlaceStreetTitle(placeName, streetName) ?? label.title;
+        void getBestVisiblePlaceNameForPoint(
+          point,
+          getGeocodePlaceName(first),
+        ).then((placeName) => {
+          const title =
+            buildPlaceStreetTitle(placeName, streetName) ?? label.title;
 
           resolve({
             text: title,
@@ -3882,7 +4085,6 @@ async function reverseGeocodeExact(point: Coords): Promise<PickerResult> {
     );
   });
 }
-
 
 async function resolveMovedOriginPoint(point: {
   lat: number;
@@ -3941,16 +4143,18 @@ async function reverseGeocode(point: Coords): Promise<PickerResult> {
         const meters = Math.round(distanceMeters(point, pickupPoint));
         const adjustedToRoad = Boolean(roadResult && meters >= 8);
 
-        void getBestVisiblePlaceNameForPoint(point, getGeocodePlaceName(first)).then((placeName) => {
+        void getBestVisiblePlaceNameForPoint(
+          point,
+          getGeocodePlaceName(first),
+        ).then((placeName) => {
           const label = {
-            title: buildPlaceStreetTitle(placeName, roadName) ?? roadLabel.title,
+            title:
+              buildPlaceStreetTitle(placeName, roadName) ?? roadLabel.title,
             subtitle: roadLabel.subtitle,
           };
 
           resolve({
-            text: adjustedToRoad
-              ? `Recogida en ${label.title}`
-              : label.title,
+            text: adjustedToRoad ? `Recogida en ${label.title}` : label.title,
             address: adjustedToRoad
               ? `${label.subtitle} · Camina aprox. ${meters} m hasta la calle accesible`
               : label.subtitle,
@@ -4074,7 +4278,9 @@ async function geocodeText(text: string): Promise<PickerResult | null> {
 const RAPA_NUI_PLACE_SCOPE_CACHE = new Map<string, boolean>();
 const MAX_RAPA_NUI_PLACE_SCOPE_CACHE_ENTRIES = 240;
 
-async function isGooglePlaceInsideRapaNui(placeId: string): Promise<boolean | null> {
+async function isGooglePlaceInsideRapaNui(
+  placeId: string,
+): Promise<boolean | null> {
   const cached = RAPA_NUI_PLACE_SCOPE_CACHE.get(placeId);
   if (typeof cached === "boolean") return cached;
 
@@ -4112,7 +4318,9 @@ async function isGooglePlaceInsideRapaNui(placeId: string): Promise<boolean | nu
     RAPA_NUI_PLACE_SCOPE_CACHE.set(placeId, inside);
   }
 
-  if (RAPA_NUI_PLACE_SCOPE_CACHE.size > MAX_RAPA_NUI_PLACE_SCOPE_CACHE_ENTRIES) {
+  if (
+    RAPA_NUI_PLACE_SCOPE_CACHE.size > MAX_RAPA_NUI_PLACE_SCOPE_CACHE_ENTRIES
+  ) {
     const firstKey = RAPA_NUI_PLACE_SCOPE_CACHE.keys().next().value as
       | string
       | undefined;
@@ -4130,9 +4338,7 @@ async function filterGoogleSuggestionsToRapaNui(
     3,
     async (suggestion) => {
       try {
-        const placeScope = await isGooglePlaceInsideRapaNui(
-          suggestion.placeId,
-        );
+        const placeScope = await isGooglePlaceInsideRapaNui(suggestion.placeId);
 
         return {
           suggestion,
@@ -4161,7 +4367,9 @@ async function filterGoogleSuggestionsToRapaNui(
     .slice(0, 6);
 }
 
-async function getGooglePredictions(input: string): Promise<GoogleSuggestion[]> {
+async function getGooglePredictions(
+  input: string,
+): Promise<GoogleSuggestion[]> {
   const cleanInput = input.trim();
   const localSuggestions = getRapaNuiLocalAutocompletePredictions(cleanInput);
 
@@ -4224,7 +4432,9 @@ async function getGooglePredictions(input: string): Promise<GoogleSuggestion[]> 
   }
 }
 
-async function getPlaceDetailsExact(placeId: string): Promise<PickerResult | null> {
+async function getPlaceDetailsExact(
+  placeId: string,
+): Promise<PickerResult | null> {
   const localPlace = getRapaNuiLocalAutocompletePlace(placeId);
   if (localPlace) {
     return localRapaNuiPlaceToPickerResult(localPlace);
@@ -4400,7 +4610,9 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
           lng: placePoint.lng,
           placeId: place.place_id ?? placeId,
         }).then((snapped) => {
-          const placeName = normalizePlaceStreetText(place.name ?? place.formatted_address ?? "");
+          const placeName = normalizePlaceStreetText(
+            place.name ?? place.formatted_address ?? "",
+          );
           const snappedStreet = normalizePlaceStreetText(snapped.text);
           const combinedTitle =
             buildPlaceStreetTitle(placeName, snappedStreet) ??
@@ -4461,11 +4673,8 @@ function offsetPointByMeters(
   const lng2 =
     lng1 +
     Math.atan2(
-      Math.sin(bearing) *
-        Math.sin(angularDistance) *
-        Math.cos(lat1),
-      Math.cos(angularDistance) -
-        Math.sin(lat1) * Math.sin(lat2),
+      Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1),
+      Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2),
     );
 
   return {
@@ -4474,9 +4683,10 @@ function offsetPointByMeters(
   };
 }
 
-function buildPickupProbePoints(
-  point: { lat: number; lng: number },
-): Array<{ lat: number; lng: number }> {
+function buildPickupProbePoints(point: {
+  lat: number;
+  lng: number;
+}): Array<{ lat: number; lng: number }> {
   const probes: Array<{ lat: number; lng: number }> = [point];
 
   for (const bearing of [0, 45, 90, 135, 180, 225, 270, 315]) {
@@ -4530,10 +4740,7 @@ async function geocodeRoadProbe(
         location: point,
       },
       (results, status) => {
-        if (
-          status !== google.maps.GeocoderStatus.OK ||
-          !results?.length
-        ) {
+        if (status !== google.maps.GeocoderStatus.OK || !results?.length) {
           resolve(null);
           return;
         }
@@ -4620,9 +4827,7 @@ async function getWalkingMetricsWithRouteClass(
       "routes",
     )) as unknown as {
       Route?: {
-        computeRoutes?: (
-          request: Record<string, unknown>,
-        ) => Promise<{
+        computeRoutes?: (request: Record<string, unknown>) => Promise<{
           routes?: Array<{
             distanceMeters?: number | null;
             durationMillis?: number | null;
@@ -4706,10 +4911,7 @@ async function getGoogleWalkingMetrics(
     };
   }
 
-  const routeClass = await getWalkingMetricsWithRouteClass(
-    origin,
-    destination,
-  );
+  const routeClass = await getWalkingMetricsWithRouteClass(origin, destination);
 
   if (routeClass) return routeClass;
 
@@ -4766,8 +4968,7 @@ function buildAutomaticPickupText(
 ): string {
   if (!reference) return `Recogida en ${streetName}`;
 
-  const relation =
-    reference.distanceMeters <= 35 ? "frente a" : "cerca de";
+  const relation = reference.distanceMeters <= 35 ? "frente a" : "cerca de";
 
   return `Recogida en ${streetName}, ${relation} ${reference.name}`;
 }
@@ -4794,9 +4995,7 @@ async function geocodeAccessLocation(
   return new Promise((resolve) => {
     geocoder.geocode({ location: point }, (results, status) => {
       resolve(
-        status === google.maps.GeocoderStatus.OK && results
-          ? [...results]
-          : [],
+        status === google.maps.GeocoderStatus.OK && results ? [...results] : [],
       );
     });
   });
@@ -4815,8 +5014,7 @@ async function findReferenceDrivingAccessRoad(
 
     const roadOrigins = [...roadsNearUser]
       .sort(
-        (a, b) =>
-          distanceMeters(reference, a) - distanceMeters(reference, b),
+        (a, b) => distanceMeters(reference, a) - distanceMeters(reference, b),
       )
       .slice(0, 3)
       .map((road) => ({ lat: road.lat, lng: road.lng }));
@@ -4851,8 +5049,7 @@ async function findReferenceDrivingAccessRoad(
         );
 
         if (
-          referenceToRoadMeters >
-          RAPA_NUI_REFERENCE_MAX_DRIVING_ACCESS_METERS
+          referenceToRoadMeters > RAPA_NUI_REFERENCE_MAX_DRIVING_ACCESS_METERS
         ) {
           continue;
         }
@@ -4944,27 +5141,27 @@ async function findReferenceAccessRoad(
   const ringPoints = [0, 90, 180, 270].map((bearing) =>
     offsetPointByMeters(reference, 80, bearing),
   );
-  const ringRoads = await mapWithConcurrency(
-    ringPoints,
-    2,
-    async (probe) => geocodeRoadProbe(geocoder, probe),
+  const ringRoads = await mapWithConcurrency(ringPoints, 2, async (probe) =>
+    geocodeRoadProbe(geocoder, probe),
   );
 
-  return dedupeRoadPickupProbes(
-    ringRoads.filter((road): road is RoadPickupProbe => road !== null),
-    reference,
-  )
-    .map((road) => ({
-      road,
-      referenceToRoadMeters: Math.round(distanceMeters(reference, road)),
-    }))
-    .filter(
-      ({ referenceToRoadMeters }) =>
-        referenceToRoadMeters <=
-        RAPA_NUI_REFERENCE_MAX_DISTANCE_FROM_ROAD_METERS,
+  return (
+    dedupeRoadPickupProbes(
+      ringRoads.filter((road): road is RoadPickupProbe => road !== null),
+      reference,
     )
-    .sort((a, b) => a.referenceToRoadMeters - b.referenceToRoadMeters)[0] ??
-    null;
+      .map((road) => ({
+        road,
+        referenceToRoadMeters: Math.round(distanceMeters(reference, road)),
+      }))
+      .filter(
+        ({ referenceToRoadMeters }) =>
+          referenceToRoadMeters <=
+          RAPA_NUI_REFERENCE_MAX_DISTANCE_FROM_ROAD_METERS,
+      )
+      .sort((a, b) => a.referenceToRoadMeters - b.referenceToRoadMeters)[0] ??
+    null
+  );
 }
 
 async function buildNearbyReferencePickupCandidates(
@@ -4975,8 +5172,7 @@ async function buildNearbyReferencePickupCandidates(
 ): Promise<Array<PickerResult & { score: number }>> {
   const referencesInsideRadius = references.filter(
     (reference) =>
-      reference.distanceMeters <=
-      RAPA_NUI_NEARBY_REFERENCE_RADIUS_METERS,
+      reference.distanceMeters <= RAPA_NUI_NEARBY_REFERENCE_RADIUS_METERS,
   );
 
   // Conservamos los puntos más cercanos y, además, los comercios de alto
@@ -4986,8 +5182,7 @@ async function buildNearbyReferencePickupCandidates(
     .filter((reference) => getReferenceDiscoveryPriority(reference) > 0)
     .sort(
       (a, b) =>
-        getReferenceDiscoveryPriority(b) -
-          getReferenceDiscoveryPriority(a) ||
+        getReferenceDiscoveryPriority(b) - getReferenceDiscoveryPriority(a) ||
         a.distanceMeters - b.distanceMeters,
     )
     .slice(0, 16);
@@ -5004,9 +5199,7 @@ async function buildNearbyReferencePickupCandidates(
   const resolved = await mapWithConcurrency(
     nearbyReferences,
     3,
-    async (
-      reference,
-    ): Promise<(PickerResult & { score: number }) | null> => {
+    async (reference): Promise<(PickerResult & { score: number }) | null> => {
       const access = await findReferenceAccessRoad(
         reference,
         geocoder,
@@ -5070,8 +5263,7 @@ async function buildNearbyReferencePickupCandidates(
     .sort(
       (a, b) =>
         Number(a.walkMeters ?? Number.POSITIVE_INFINITY) -
-          Number(b.walkMeters ?? Number.POSITIVE_INFINITY) ||
-        a.score - b.score,
+          Number(b.walkMeters ?? Number.POSITIVE_INFINITY) || a.score - b.score,
     )
     .filter((candidate) => {
       const key = normalizePlaceStreetCompare(candidate.referenceName);
@@ -5090,16 +5282,12 @@ async function computeGooglePickupCandidates(
   const geocoder = new google.maps.Geocoder();
   const probes = buildPickupProbePoints(point);
 
-  const roadResults = await mapWithConcurrency(
-    probes,
-    4,
-    async (probe) => geocodeRoadProbe(geocoder, probe),
+  const roadResults = await mapWithConcurrency(probes, 4, async (probe) =>
+    geocodeRoadProbe(geocoder, probe),
   );
 
   const roads = dedupeRoadPickupProbes(
-    roadResults.filter(
-      (road): road is RoadPickupProbe => road !== null,
-    ),
+    roadResults.filter((road): road is RoadPickupProbe => road !== null),
     point,
   );
 
@@ -5115,24 +5303,20 @@ async function computeGooglePickupCandidates(
     ...(preferredReference ? [preferredReference] : []),
     ...automaticReferences,
   ]);
-  const referenceCandidates =
-    await buildNearbyReferencePickupCandidates(
-      point,
-      references,
-      geocoder,
-      roads,
-    );
+  const referenceCandidates = await buildNearbyReferencePickupCandidates(
+    point,
+    references,
+    geocoder,
+    roads,
+  );
 
   if (referenceCandidates.length > 0) {
     const preferredPlaceId = String(preferredReference?.placeId ?? "");
-    const preferredName = normalizePlaceStreetCompare(
-      preferredReference?.name,
-    );
+    const preferredName = normalizePlaceStreetCompare(preferredReference?.name);
     const walkOrderedCandidates = [...referenceCandidates].sort(
       (a, b) =>
         Number(a.walkMeters ?? Number.POSITIVE_INFINITY) -
-          Number(b.walkMeters ?? Number.POSITIVE_INFINITY) ||
-        a.score - b.score,
+          Number(b.walkMeters ?? Number.POSITIVE_INFINITY) || a.score - b.score,
     );
 
     const preferredCandidate = walkOrderedCandidates.find(
@@ -5172,26 +5356,23 @@ async function computeGooglePickupCandidates(
           candidate.candidateId !== recommendedCandidate?.candidateId,
       ),
     ]
-      .filter(
-        (candidate): candidate is PickerResult & { score: number } =>
-          Boolean(candidate),
+      .filter((candidate): candidate is PickerResult & { score: number } =>
+        Boolean(candidate),
       )
       .slice(0, 10);
 
-    return visibleCandidates.map(
-      ({ score: _score, ...candidate }, index) => ({
-        ...candidate,
-        isRecommended: index === 0,
-        recommendationReason:
-          index === 0
-            ? preferredReference
-              ? `${candidate.referenceName ?? "Este lugar"} fue elegido en Google Maps y tiene acceso vehicular cercano.`
-              : `${candidate.referenceName ?? "Sitio cercano"} es una referencia próxima, reconocible y accesible para vehículos. Caminata estimada: ${Math.round(
-                  Number(candidate.walkMeters ?? 0),
-                )} m.`
-            : "Otro local cercano detectado automáticamente por Google Maps.",
-      }),
-    );
+    return visibleCandidates.map(({ score: _score, ...candidate }, index) => ({
+      ...candidate,
+      isRecommended: index === 0,
+      recommendationReason:
+        index === 0
+          ? preferredReference
+            ? `${candidate.referenceName ?? "Este lugar"} fue elegido en Google Maps y tiene acceso vehicular cercano.`
+            : `${candidate.referenceName ?? "Sitio cercano"} es una referencia próxima, reconocible y accesible para vehículos. Caminata estimada: ${Math.round(
+                Number(candidate.walkMeters ?? 0),
+              )} m.`
+          : "Otro local cercano detectado automáticamente por Google Maps.",
+    }));
   }
 
   // No se detectó ningún local adecuado dentro del radio permitido.
@@ -5256,8 +5437,7 @@ async function computeGooglePickupCandidates(
         candidateId: `${normalizePlaceStreetCompare(
           road.streetName,
         )}:${road.lat.toFixed(5)}:${road.lng.toFixed(5)}`,
-        recommendationKind:
-          road.probeHits >= 2 ? "main_road" : "road",
+        recommendationKind: road.probeHits >= 2 ? "main_road" : "road",
         isRecommended: false,
         recommendationReason: null,
         roadProbeHits: road.probeHits,
@@ -5338,8 +5518,7 @@ async function getGooglePickupCandidates(
         candidateId: `fallback:${point.lat.toFixed(5)}:${point.lng.toFixed(5)}`,
         recommendationKind: "road",
         isRecommended: true,
-        recommendationReason:
-          "Se usa la vía accesible más cercana disponible.",
+        recommendationReason: "Se usa la vía accesible más cercana disponible.",
         roadProbeHits: 1,
       },
     ];
@@ -5357,7 +5536,6 @@ async function getGooglePickupCandidates(
 
   return pending;
 }
-
 
 function SuggestionList({
   suggestions,
@@ -5388,9 +5566,14 @@ function SuggestionList({
             padding: "12px 14px",
             textAlign: "left",
             cursor: "pointer",
-          }}
-        >
-          <div style={{ fontWeight: 800, fontSize: ".84rem", lineHeight: 1.25, color: "var(--rp-text)" }}>
+          }}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: ".84rem",
+              lineHeight: 1.25,
+              color: "var(--rp-text)",
+            }}>
             {suggestion.mainText}
           </div>
           <div
@@ -5400,8 +5583,7 @@ function SuggestionList({
               fontSize: ".72rem",
               fontWeight: 650,
               lineHeight: 1.25,
-            }}
-          >
+            }}>
             {suggestion.secondaryText}
           </div>
         </button>
@@ -5462,6 +5644,21 @@ const MAP_SHARE_DEFAULT = 50;
    el suelo real de CSS permite más que este valor y manda él; en los que
    necesitan más margen abajo, el mismo suelo se ocupa de frenar antes. El mapa
    cede sin pelear porque es `flex: 0 1`. */
+/* ── Bottom sheet arrastrable de "Solicitar viaje" ──────────────────────────
+   La hoja es un OVERLAY absoluto sobre el mapa (no reparte alto con él): el
+   mapa queda quieto detrás y la hoja se sube o baja con `transform:
+   translateY(px)`, siguiendo al dedo 1:1. El recorrido va de 0 (hoja arriba,
+   tapa casi todo el mapa) a `maxShift` (hoja abajo, solo asa + AHORA/RESERVAR).
+   `maxShift` se MIDE del DOM en vivo, así que no hay número mágico de alto. */
+/* Fracción del recorrido a la que abre la hoja: ni tapando el mapa ni pegada
+   abajo. Es solo la posición inicial; a partir de ahí manda el dedo. */
+const REQUEST_SHEET_REST_FRACTION = 0.5;
+/* Franja mínima visible con la hoja abajo del todo (asa + selector). Se usa
+   solo como respaldo mientras el navegador aún no ha medido la cabecera real. */
+const REQUEST_SHEET_HANDLE_FALLBACK = 116;
+/* Paso del teclado (px por flecha): equivalente accesible del arrastre. */
+const REQUEST_SHEET_KEY_STEP = 40;
+
 const MAP_SHARE_MIN = 22;
 const MAP_SHARE_MAX = 90;
 
@@ -5552,9 +5749,9 @@ function MapPointPicker({
   const [pickupCandidates, setPickupCandidates] = useState<PickerResult[]>([]);
   const [loadingAddress, setLoadingAddress] = useState(false);
   const [searchText, setSearchText] = useState("");
-  const [pickerSuggestions, setPickerSuggestions] = useState<GoogleSuggestion[]>(
-    [],
-  );
+  const [pickerSuggestions, setPickerSuggestions] = useState<
+    GoogleSuggestion[]
+  >([]);
   const [searchingPicker, setSearchingPicker] = useState(false);
   const [scopeMessage, setScopeMessage] = useState<string | null>(null);
   const [modalReady, setModalReady] = useState(false);
@@ -5648,9 +5845,7 @@ function MapPointPicker({
       const floorPx = parseFloat(window.getComputedStyle(sheet).minHeight);
       if (!Number.isFinite(floorPx) || floorPx <= 0) return;
 
-      setMaxShare(
-        Math.min(95, Math.max(50, 100 - (floorPx / height) * 100)),
-      );
+      setMaxShare(Math.min(95, Math.max(50, 100 - (floorPx / height) * 100)));
     };
 
     const observer = new ResizeObserver(measure);
@@ -5793,7 +5988,9 @@ function MapPointPicker({
     toggleSheet();
   }
 
-  function handleGripKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>): void {
+  function handleGripKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ): void {
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
 
     event.preventDefault();
@@ -6208,11 +6405,7 @@ function MapPointPicker({
   ): Promise<void> {
     const previous = lastResolvedCenterRef.current;
 
-    if (
-      !force &&
-      previous &&
-      distanceMeters(previous, point) < 18
-    ) {
+    if (!force && previous && distanceMeters(previous, point) < 18) {
       return Promise.resolve();
     }
 
@@ -6257,11 +6450,7 @@ function MapPointPicker({
       .then(async () => {
         await new Promise((resolve) => window.setTimeout(resolve, 200));
 
-        if (
-          cancelled ||
-          !mapElementRef.current ||
-          !window.google?.maps
-        ) {
+        if (cancelled || !mapElementRef.current || !window.google?.maps) {
           return;
         }
 
@@ -6412,9 +6601,7 @@ function MapPointPicker({
     return () => window.clearTimeout(timeout);
   }, [isOpen, searchText]);
 
-  async function pickSuggestion(
-    suggestion: GoogleSuggestion,
-  ): Promise<void> {
+  async function pickSuggestion(suggestion: GoogleSuggestion): Promise<void> {
     setLoadingAddress(true);
 
     try {
@@ -6442,8 +6629,10 @@ function MapPointPicker({
       };
 
       if (mode === "origin") {
-        const preferredReference =
-          createPreferredReferenceFromExactPlace(exact, exactPoint);
+        const preferredReference = createPreferredReferenceFromExactPlace(
+          exact,
+          exactPoint,
+        );
 
         await resolveOriginPoint(exactPoint, preferredReference);
       } else {
@@ -6588,10 +6777,7 @@ function MapPointPicker({
     (candidate) => candidate.recommendationKind !== "reference",
   );
 
-  function renderPickupCandidate(
-    candidate: PickerResult,
-    index: number,
-  ) {
+  function renderPickupCandidate(candidate: PickerResult, index: number) {
     const active = candidate.candidateId === selected?.candidateId;
     const walkMeters = Math.round(Number(candidate.walkMeters ?? 0));
     const walkMinutes = Math.max(
@@ -6601,19 +6787,14 @@ function MapPointPicker({
 
     return (
       <button
-        key={
-          candidate.candidateId ?? `${candidate.lat}:${candidate.lng}`
-        }
+        key={candidate.candidateId ?? `${candidate.lat}:${candidate.lng}`}
         type="button"
         className={`request-map-candidate ${
           active ? "request-map-candidate--active" : ""
         } ${
-          candidate.isRecommended
-            ? "request-map-candidate--recommended"
-            : ""
+          candidate.isRecommended ? "request-map-candidate--recommended" : ""
         }`}
-        onClick={() => selectPickupCandidate(candidate)}
-      >
+        onClick={() => selectPickupCandidate(candidate)}>
         <span className="request-map-candidate__number">{index + 1}</span>
 
         <span className="request-map-candidate__content">
@@ -6640,20 +6821,16 @@ function MapPointPicker({
           <span className="request-map-candidate__description">
             {candidate.referenceName
               ? `El punto verde quedará en ${candidate.referenceName}. El conductor llegará al acceso del local${
-                  candidate.streetName
-                    ? ` por ${candidate.streetName}`
-                    : ""
+                  candidate.streetName ? ` por ${candidate.streetName}` : ""
                 }.`
               : `No encontramos locales cercanos. El vehículo te recogerá en ${
-                  candidate.streetName ??
-                  "la calle accesible más próxima"
+                  candidate.streetName ?? "la calle accesible más próxima"
                 }.`}
           </span>
         </span>
 
         <span className="request-map-candidate__walk">
-          {walkMeters} m
-          <small>{walkMinutes} min</small>
+          {walkMeters} m<small>{walkMinutes} min</small>
         </span>
       </button>
     );
@@ -6677,13 +6854,11 @@ function MapPointPicker({
         sheetAdjustedByUserRef.current = false;
         lastOpenShareRef.current = null;
         onCancel();
-      }}
-    >
+      }}>
       <IonPage
         className="rapago-section-page rapago-request-page request-map-page"
         data-rapago-theme={pickerTheme}
-        style={{ colorScheme: pickerTheme === "dark" ? "dark" : "light" }}
-      >
+        style={{ colorScheme: pickerTheme === "dark" ? "dark" : "light" }}>
         <RapagoSectionHeader
           title={
             title ||
@@ -6696,8 +6871,7 @@ function MapPointPicker({
         <IonContent
           scrollY={false}
           className="request-map-content"
-          style={{ "--background": "transparent" } as CSSProperties}
-        >
+          style={{ "--background": "transparent" } as CSSProperties}>
           <div
             ref={shellRef}
             className={[
@@ -6709,16 +6883,14 @@ function MapPointPicker({
               .filter(Boolean)
               .join(" ")}
             style={{ "--rp-map-share": `${mapShare}%` } as CSSProperties}
-            aria-label={title}
-          >
+            aria-label={title}>
             <div
               className="rp-request-map-canvas"
               onPointerDown={() => {
                 if (mapShare < maxShare - 4) {
                   closeSheetForSearch();
                 }
-              }}
-            >
+              }}>
               <div
                 ref={mapElementRef}
                 className="request-map-canvas"
@@ -6735,8 +6907,7 @@ function MapPointPicker({
                 style={{
                   top: 14,
                   zIndex: 20,
-                }}
-              >
+                }}>
                 <IonItem lines="none" className="rp-request-search-field">
                   <IonIcon
                     icon={searchOutline}
@@ -6766,8 +6937,7 @@ function MapPointPicker({
                 {scopeMessage && (
                   <span
                     className="request-map-visually-hidden"
-                    aria-live="polite"
-                  >
+                    aria-live="polite">
                     {scopeMessage}
                   </span>
                 )}
@@ -6779,8 +6949,7 @@ function MapPointPicker({
                         key={suggestion.placeId}
                         type="button"
                         className="request-map-suggestion"
-                        onClick={() => void pickSuggestion(suggestion)}
-                      >
+                        onClick={() => void pickSuggestion(suggestion)}>
                         <strong>{suggestion.mainText}</strong>
                         <span>{suggestion.secondaryText}</span>
                       </button>
@@ -6808,8 +6977,7 @@ function MapPointPicker({
                         boxShadow: "0 5px 14px rgba(0,0,0,.35)",
                         whiteSpace: "nowrap",
                         pointerEvents: "none",
-                      }}
-                    >
+                      }}>
                       Inicio de viaje en{" "}
                       {selected.text.replace("Recogida en ", "")}
                     </div>
@@ -6824,8 +6992,7 @@ function MapPointPicker({
                   onClick={() => {
                     const map = mapRef.current;
                     if (map) map.setZoom((map.getZoom() ?? 17) + 1);
-                  }}
-                >
+                  }}>
                   <IonIcon icon={addOutline} />
                 </button>
 
@@ -6836,8 +7003,7 @@ function MapPointPicker({
                   onClick={() => {
                     const map = mapRef.current;
                     if (map) map.setZoom((map.getZoom() ?? 17) - 1);
-                  }}
-                >
+                  }}>
                   <IonIcon icon={removeOutline} />
                 </button>
 
@@ -6845,8 +7011,7 @@ function MapPointPicker({
                   type="button"
                   className="rp-map-control"
                   aria-label="Usar mi ubicación actual"
-                  onClick={useCurrentLocation}
-                >
+                  onClick={useCurrentLocation}>
                   <IonIcon icon={locateOutline} />
                 </button>
               </div>
@@ -6872,8 +7037,7 @@ function MapPointPicker({
                 onPointerMove={handleGripPointerMove}
                 onPointerUp={handleGripPointerUp}
                 onPointerCancel={handleGripPointerUp}
-                onClick={handleGripClick}
-              >
+                onClick={handleGripClick}>
                 <button
                   type="button"
                   className="rp-request-map-grip"
@@ -6883,8 +7047,7 @@ function MapPointPicker({
                       ? "Mostrar los detalles del punto. También puedes arrastrar esta barra."
                       : "Plegar el panel y ver el mapa completo. También puedes arrastrar esta barra."
                   }
-                  onKeyDown={handleGripKeyDown}
-                >
+                  onKeyDown={handleGripKeyDown}>
                   <span className="rp-request-map-grip__bar" aria-hidden />
                 </button>
 
@@ -6917,8 +7080,7 @@ function MapPointPicker({
                     onClick={(event) => {
                       event.stopPropagation();
                       if (selected && !mapError) onConfirm(selected);
-                    }}
-                  >
+                    }}>
                     <IonIcon icon={checkmarkCircleOutline} aria-hidden />
                     <span>Confirmar</span>
                   </button>
@@ -6929,8 +7091,7 @@ function MapPointPicker({
                 {mode === "destination" && (
                   <section
                     className="request-map-frequent"
-                    aria-label="Destinos frecuentes de Rapa Nui"
-                  >
+                    aria-label="Destinos frecuentes de Rapa Nui">
                     <div className="request-map-frequent__heading">
                       <div>
                         <strong>Destinos frecuentes</strong>
@@ -6951,16 +7112,13 @@ function MapPointPicker({
                             key={destination.name}
                             type="button"
                             className={`request-map-frequent__item ${
-                              active
-                                ? "request-map-frequent__item--active"
-                                : ""
+                              active ? "request-map-frequent__item--active" : ""
                             }`}
                             onClick={() =>
                               void pickFrequentDestination(destination)
                             }
                             disabled={loadingAddress}
-                            aria-pressed={active}
-                          >
+                            aria-pressed={active}>
                             <IonIcon icon={locationOutline} />
 
                             <span>
@@ -6977,8 +7135,7 @@ function MapPointPicker({
                 {mode === "origin" && hasNearbyReferenceCandidates && (
                   <section
                     className="request-map-nearby-places"
-                    aria-label="Puntos de recogida cercanos"
-                  >
+                    aria-label="Puntos de recogida cercanos">
                     <div className="request-map-candidates">
                       {nearbyReferenceCandidates.map((candidate, index) =>
                         renderPickupCandidate(candidate, index),
@@ -7008,8 +7165,7 @@ function MapPointPicker({
                       alignItems: "center",
                       gap: 12,
                       borderColor: "var(--rp-danger-bd)",
-                    }}
-                  >
+                    }}>
                     <IonIcon
                       icon={alertCircleOutline}
                       style={{
@@ -7025,8 +7181,7 @@ function MapPointPicker({
                           fontWeight: 850,
                           fontSize: ".9rem",
                           marginBottom: 4,
-                        }}
-                      >
+                        }}>
                         No se pudo cargar el mapa
                       </div>
                       <div
@@ -7034,8 +7189,7 @@ function MapPointPicker({
                           color: "var(--rp-muted)",
                           fontSize: ".82rem",
                           lineHeight: 1.35,
-                        }}
-                      >
+                        }}>
                         {mapError}
                       </div>
                     </div>
@@ -7056,10 +7210,10 @@ function MapPointPicker({
                       <strong>
                         {loadingAddress
                           ? "Actualizando el punto..."
-                          : selected?.text ??
+                          : (selected?.text ??
                             (mode === "origin"
                               ? "Punto de recogida"
-                              : "Destino")}
+                              : "Destino"))}
                       </strong>
 
                       <span>
@@ -7112,8 +7266,8 @@ function MapPointPicker({
 
                 {mode === "origin" && !mapError && (
                   <p className="request-map-walking-warning">
-                    La ruta a pie es una estimación de Google Maps. Revisa que el
-                    camino sea seguro antes de confirmar.
+                    La ruta a pie es una estimación de Google Maps. Revisa que
+                    el camino sea seguro antes de confirmar.
                   </p>
                 )}
               </div>
@@ -7124,7 +7278,6 @@ function MapPointPicker({
     </IonModal>
   );
 }
-
 
 const RAPAGO_PASSENGER_NOTE_MAX_LENGTH = 180;
 const RAPAGO_PASSENGER_NOTE_START = "RAPAGO_PASSENGER_NOTE_START";
@@ -7142,22 +7295,48 @@ function sanitizePassengerRideNote(value: unknown): string {
 
 function appendPassengerRideNote(notes: string[], passengerNote: string): void {
   if (!passengerNote) return;
-  notes.push(`${RAPAGO_PASSENGER_NOTE_START} ${passengerNote} ${RAPAGO_PASSENGER_NOTE_END}.`);
+  notes.push(
+    `${RAPAGO_PASSENGER_NOTE_START} ${passengerNote} ${RAPAGO_PASSENGER_NOTE_END}.`,
+  );
 }
 
 function limitRideNotes(value: string): string {
-  return value
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 500);
+  return value.replace(/\s+/g, " ").trim().slice(0, 500);
 }
 
 // MODO PRUEBA:
- // Permite agendar reservas más cerca para testear rápido.
- // Producción: reservas mínimo 30 minutos y gestión/asignación admin 30 minutos antes.
+// Permite agendar reservas más cerca para testear rápido.
+// Producción: reservas mínimo 30 minutos y gestión/asignación admin 30 minutos antes.
 const SCHEDULE_MIN_MINUTES = 30;
 const SCHEDULE_MAX_DAYS = 30;
 const SCHEDULE_ACTIVATION_MINUTES = 30;
+
+export function computeAutoSheetShift({
+  currentShift,
+  sheetMaxShift,
+  markerY,
+  sheetTop = currentShift,
+  safetyMargin = 22,
+}: {
+  currentShift: number;
+  sheetMaxShift: number;
+  markerY: number;
+  sheetTop?: number;
+  safetyMargin?: number;
+}): number {
+  const maxShift = Math.max(0, sheetMaxShift);
+  const current = Math.max(0, Math.min(maxShift, currentShift));
+  const top = Math.max(0, Math.min(maxShift, sheetTop));
+
+  /* El punto está visible cuando queda por encima del tope del panel con un
+     margen de seguridad. Si cae detrás del panel, la hoja debe bajar para
+     dejarlo al descubierto. */
+  if (markerY <= top + safetyMargin) {
+    return current;
+  }
+
+  return Math.min(maxShift, Math.max(0, markerY + safetyMargin));
+}
 
 function parseScheduleInput(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -7221,7 +7400,10 @@ function getScheduleValidationError(input: {
     return `La reserva no puede superar ${SCHEDULE_MAX_DAYS} días.`;
   }
 
-  if (input.tripFareMode === "round_trip" && input.requireReturnScheduledAt !== false) {
+  if (
+    input.tripFareMode === "round_trip" &&
+    input.requireReturnScheduledAt !== false
+  ) {
     const back = parseScheduleInput(input.returnScheduledAt);
     if (!back) return "Para ida y vuelta debes seleccionar la hora de regreso.";
     if (back.getTime() <= pickup.getTime()) {
@@ -7242,8 +7424,14 @@ function buildRideScheduleFields(input: {
   returnScheduledAt: string;
   scheduleKind?: "airport_pickup" | "round_trip_promotion";
 }): Record<string, unknown> {
-  const pickup = input.rideMode === "scheduled" ? parseScheduleInput(input.scheduledAt) : null;
-  const back = input.tripFareMode === "round_trip" ? parseScheduleInput(input.returnScheduledAt) : null;
+  const pickup =
+    input.rideMode === "scheduled"
+      ? parseScheduleInput(input.scheduledAt)
+      : null;
+  const back =
+    input.tripFareMode === "round_trip"
+      ? parseScheduleInput(input.returnScheduledAt)
+      : null;
   const activation = pickup
     ? new Date(pickup.getTime() - SCHEDULE_ACTIVATION_MINUTES * 60_000)
     : null;
@@ -7255,7 +7443,8 @@ function buildRideScheduleFields(input: {
   const activationIso = activation?.toISOString() ?? null;
   const returnActivationIso = returnActivation?.toISOString() ?? null;
   const isRoundTripPromotion = input.scheduleKind === "round_trip_promotion";
-  const isReturnOnlyPromotion = isRoundTripPromotion && !!back && input.rideMode !== "scheduled";
+  const isReturnOnlyPromotion =
+    isRoundTripPromotion && !!back && input.rideMode !== "scheduled";
 
   return {
     rideMode: input.rideMode,
@@ -7301,7 +7490,8 @@ function buildRideScheduleFields(input: {
     adminVisibleNow: isScheduled || isReturnOnlyPromotion,
     adminRequiresReview: isScheduled || isReturnOnlyPromotion,
     airportPickupBooking: isScheduled && !isRoundTripPromotion,
-    roundTripPromotionBooking: (isScheduled || isReturnOnlyPromotion) && isRoundTripPromotion,
+    roundTripPromotionBooking:
+      (isScheduled || isReturnOnlyPromotion) && isRoundTripPromotion,
     roundTripReturnOnly: isReturnOnlyPromotion,
     bookingPurpose: isScheduled
       ? isRoundTripPromotion
@@ -7325,10 +7515,10 @@ function buildRideScheduleFields(input: {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const HANGA_ROA          = { lat: -27.15, lng: -109.4333 };
+const HANGA_ROA = { lat: -27.15, lng: -109.4333 };
 const MIN_SCHEDULED_MINUTES = 30;
-const MAX_SCHEDULED_DAYS    = 30;
-const MAX_DESTINATIONS      = 3;
+const MAX_SCHEDULED_DAYS = 30;
+const MAX_DESTINATIONS = 3;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -7359,7 +7549,6 @@ function formatDuration(seconds: number): string {
   }
   return `${mins} min`;
 }
-
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -7400,6 +7589,153 @@ export default function RequestRidePage(): JSX.Element {
     },
     [history],
   );
+
+  /* ── Hoja arrastrable ──────────────────────────────────────────────────
+     Mismo gesto que ya usa el selector de destino (MapPointPicker): se
+     arrastra el asa para repartir el alto entre el mapa y la hoja, de modo
+     que el pasajero pueda agrandar el mapa para ubicarse o subir la hoja
+     para rellenar el formulario. Se reutilizan las constantes y el
+     rubber-band que ya existen en este archivo en vez de duplicarlos.
+
+     Esto es estado de presentación: no toca coordenadas, tarifas ni el
+     comportamiento interno del mapa. */
+  /* ── Bottom sheet arrastrable ──────────────────────────────────────────
+     El asa controla la posición vertical de TODA la hoja, que es un overlay
+     absoluto sobre el mapa. La magnitud es `sheetShift` en px (cuánto está
+     bajada respecto a su tope superior) y se pinta como `translateY`, de modo
+     que el dedo la arrastra 1:1 sin tocar el layout del mapa ni del resto.
+
+     Esto es estado de presentación: no toca coordenadas, tarifas ni el
+     comportamiento interno del mapa. */
+  const requestShellRef = useRef<HTMLDivElement | null>(null);
+  const requestSheetHeadRef = useRef<HTMLDivElement | null>(null);
+  /* null hasta la primera medida: evita pintar un px equivocado antes de
+     conocer el alto real. El CSS usa un translateY de respaldo mientras tanto. */
+  const [sheetShift, setSheetShift] = useState<number | null>(null);
+  const [sheetMaxShift, setSheetMaxShift] = useState(0);
+  const [requestSheetDragging, setRequestSheetDragging] = useState(false);
+  const sheetDragRef = useRef<{
+    startY: number;
+    /* Posición al empezar el gesto y última posición aplicada: al soltar se
+       decide con el valor real del arrastre, no con el de React (un render por
+       detrás). */
+    startShift: number;
+    shift: number;
+  } | null>(null);
+
+  /* Mide el recorrido REAL: alto del shell menos el alto de la cabecera (asa +
+     AHORA/RESERVAR), que es lo único que queda visible con la hoja abajo del
+     todo. El ResizeObserver lo mantiene al día al girar el aparato o al
+     encogerse la barra del navegador; sin números mágicos de alto. */
+  useEffect(() => {
+    const shell = requestShellRef.current;
+    if (!shell || typeof ResizeObserver === "undefined") return;
+
+    const measure = (): void => {
+      const shellHeight = shell.getBoundingClientRect().height;
+      if (shellHeight <= 0) return;
+
+      const headHeight =
+        requestSheetHeadRef.current?.getBoundingClientRect().height ??
+        REQUEST_SHEET_HANDLE_FALLBACK;
+      const max = Math.max(0, shellHeight - headHeight);
+
+      setSheetMaxShift(max);
+      setSheetShift((prev) =>
+        prev == null
+          ? Math.round(max * REQUEST_SHEET_REST_FRACTION)
+          : Math.min(prev, max),
+      );
+    };
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(shell);
+    measure();
+
+    return () => observer.disconnect();
+  }, []);
+
+  function handleRequestGripPointerDown(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    if (sheetMaxShift <= 0) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startShift =
+      sheetShift ?? Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION);
+    sheetDragRef.current = {
+      startY: event.clientY,
+      startShift,
+      shift: startShift,
+    };
+    setRequestSheetDragging(true);
+  }
+
+  function handleRequestGripPointerMove(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
+
+    const deltaPx = event.clientY - drag.startY;
+
+    /* clientY crece hacia abajo: bajar el dedo baja la hoja (shift crece) y
+       subirlo la sube, siempre 1:1. Fuera de los límites cede elásticamente. */
+    const raw = drag.startShift + deltaPx;
+    const next = rubberBandShare(raw, 0, sheetMaxShift);
+
+    drag.shift = next;
+    setSheetShift(next);
+  }
+
+  function handleRequestGripPointerUp(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    const drag = sheetDragRef.current;
+    if (!drag) return;
+
+    sheetDragRef.current = null;
+    setRequestSheetDragging(false);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    /* La hoja se queda EXACTAMENTE donde se soltó, solo acotada a los límites:
+       movimiento libre, sin posiciones fijas ni encaje. Lo único que se
+       deshace es el estiramiento elástico si el gesto terminó fuera de banda. */
+    setSheetShift(Math.min(sheetMaxShift, Math.max(0, drag.shift)));
+  }
+
+  /* Equivalente accesible del arrastre: las flechas suben y bajan la hoja en
+     pasos fijos de px, dentro del mismo recorrido acotado. */
+  function handleRequestGripKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ): void {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+    event.preventDefault();
+    const delta =
+      event.key === "ArrowUp"
+        ? -REQUEST_SHEET_KEY_STEP
+        : REQUEST_SHEET_KEY_STEP;
+
+    setSheetShift((current) => {
+      const base =
+        current ?? Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION);
+      return Math.min(sheetMaxShift, Math.max(0, base + delta));
+    });
+  }
+
+  /* Los controles interactivos de la cabecera (AHORA / RESERVAR) detienen la
+     propagación del puntero para que pulsarlos no inicie un arrastre. Es el
+     mismo recurso que usa el botón de confirmar dentro de la cabecera del
+     selector de recogida. */
+  function stopSheetDragPropagation(
+    event: ReactPointerEvent<HTMLElement>,
+  ): void {
+    event.stopPropagation();
+  }
 
   const [klapPayment, setKlapPayment] =
     useState<PendingKlapPaymentRecord | null>(null);
@@ -7467,7 +7803,9 @@ export default function RequestRidePage(): JSX.Element {
   );
 
   const handleRetryKlapPayment = useCallback(
-    async (pending: PendingKlapPaymentRecord): Promise<PendingKlapPaymentRecord> => {
+    async (
+      pending: PendingKlapPaymentRecord,
+    ): Promise<PendingKlapPaymentRecord> => {
       if (!session?.accessToken) {
         throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
       }
@@ -7541,8 +7879,12 @@ export default function RequestRidePage(): JSX.Element {
   const [originInput, setOriginInput] = useState("");
   const [destInput, setDestInput] = useState("");
 
-  const [originSuggestions, setOriginSuggestions] = useState<GoogleSuggestion[]>([]);
-  const [destSuggestions, setDestSuggestions] = useState<GoogleSuggestion[]>([]);
+  const [originSuggestions, setOriginSuggestions] = useState<
+    GoogleSuggestion[]
+  >([]);
+  const [destSuggestions, setDestSuggestions] = useState<GoogleSuggestion[]>(
+    [],
+  );
   const [searchingOrigin, setSearchingOrigin] = useState(false);
   const [searchingDest, setSearchingDest] = useState(false);
 
@@ -7559,31 +7901,37 @@ export default function RequestRidePage(): JSX.Element {
   const [notesInput, setNotesInput] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
   const [showPaymentBox, setShowPaymentBox] = useState(false);
-  const [useWalletBenefit, setUseWalletBenefit] = useState<boolean | null>(null);
+  const [useWalletBenefit, setUseWalletBenefit] = useState<boolean | null>(
+    null,
+  );
   const [walletBenefitRevision, setWalletBenefitRevision] = useState(0);
   const [backendWalletBenefitClp, setBackendWalletBenefitClp] = useState(0);
   const [walletBenefitLoading, setWalletBenefitLoading] = useState(false);
   const [pendingChargeRevision, setPendingChargeRevision] = useState(0);
-  const [
-    backendPendingPassengerCharges,
-    setBackendPendingPassengerCharges,
-  ] = useState<PassengerPendingChargeForRequest[]>([]);
+  const [backendPendingPassengerCharges, setBackendPendingPassengerCharges] =
+    useState<PassengerPendingChargeForRequest[]>([]);
   const [rideMode, setRideMode] = useState<RideMode>("now");
   const [tripFareMode, setTripFareMode] = useState<TripFareMode>("one_way");
-  const [selectedRoundTripPromotionId, setSelectedRoundTripPromotionId] = useState<string | null>(null);
-  const [pendingRoundTripPromotion, setPendingRoundTripPromotion] = useState<RoundTripPromotion | null>(null);
+  const [selectedRoundTripPromotionId, setSelectedRoundTripPromotionId] =
+    useState<string | null>(null);
+  const [pendingRoundTripPromotion, setPendingRoundTripPromotion] =
+    useState<RoundTripPromotion | null>(null);
   const [scheduledAt, setScheduledAt] = useState("");
   const [returnScheduledAt, setReturnScheduledAt] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
-  const [airportWelcomeOption, setAirportWelcomeOption] = useState<AirportWelcomeOption>("none");
+  const [airportWelcomeOption, setAirportWelcomeOption] =
+    useState<AirportWelcomeOption>("none");
   const [locating, setLocating] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fareQuote, setFareQuote] = useState<FareQuote | null>(null);
   const [fareLoading, setFareLoading] = useState(false);
-  const [fareRules, setFareRules] = useState<RapaGoFareRules>(DEFAULT_RAPAGO_FARE_RULES);
-  const [vehicleCategory, setVehicleCategory] = useState<VehicleCategory>("standard");
+  const [fareRules, setFareRules] = useState<RapaGoFareRules>(
+    DEFAULT_RAPAGO_FARE_RULES,
+  );
+  const [vehicleCategory, setVehicleCategory] =
+    useState<VehicleCategory>("standard");
   const passengerFareType = useMemo(
     () => readPassengerFareType(session?.user),
     [session?.user],
@@ -7610,13 +7958,19 @@ export default function RequestRidePage(): JSX.Element {
         : null,
     [selectedRoundTripPromotion, vehicleCategory, fareRules],
   );
-  const effectivePassengerFareType = selectedRoundTripPromotion?.passengerFareType ?? passengerFareType;
-  const effectiveTripFareMode: TripFareMode = selectedRoundTripPromotion ? "round_trip" : tripFareMode;
+  const effectivePassengerFareType =
+    selectedRoundTripPromotion?.passengerFareType ?? passengerFareType;
+  const effectiveTripFareMode: TripFareMode = selectedRoundTripPromotion
+    ? "round_trip"
+    : tripFareMode;
   const isRoundTripPromotionSelected = Boolean(selectedRoundTripPromotion);
-  const isAirportScheduledRide = rideMode === "scheduled" && !isRoundTripPromotionSelected;
-  const reservationRequiresCard = rideMode === "scheduled" || Boolean(selectedRoundTripPromotion);
+  const isAirportScheduledRide =
+    rideMode === "scheduled" && !isRoundTripPromotionSelected;
+  const reservationRequiresCard =
+    rideMode === "scheduled" || Boolean(selectedRoundTripPromotion);
   const airportScheduledRequiresCard = isAirportScheduledRide;
-  const canChooseOrigin = rideMode !== "scheduled" || isRoundTripPromotionSelected;
+  const canChooseOrigin =
+    rideMode !== "scheduled" || isRoundTripPromotionSelected;
   const requireReturnScheduledAt = effectiveTripFareMode === "round_trip";
   const roundTripPromotionReturnOnly = false;
 
@@ -7657,18 +8011,30 @@ export default function RequestRidePage(): JSX.Element {
     };
   }, []);
 
-
   useEffect(() => {
-    const refreshWalletBenefits = () => setWalletBenefitRevision((current) => current + 1);
+    const refreshWalletBenefits = () =>
+      setWalletBenefitRevision((current) => current + 1);
 
     window.addEventListener("storage", refreshWalletBenefits);
-    window.addEventListener("rapago:wallet-updated", refreshWalletBenefits as EventListener);
-    window.addEventListener(RAPAGO_WALLET_BENEFIT_EVENT_REQUEST, refreshWalletBenefits as EventListener);
+    window.addEventListener(
+      "rapago:wallet-updated",
+      refreshWalletBenefits as EventListener,
+    );
+    window.addEventListener(
+      RAPAGO_WALLET_BENEFIT_EVENT_REQUEST,
+      refreshWalletBenefits as EventListener,
+    );
 
     return () => {
       window.removeEventListener("storage", refreshWalletBenefits);
-      window.removeEventListener("rapago:wallet-updated", refreshWalletBenefits as EventListener);
-      window.removeEventListener(RAPAGO_WALLET_BENEFIT_EVENT_REQUEST, refreshWalletBenefits as EventListener);
+      window.removeEventListener(
+        "rapago:wallet-updated",
+        refreshWalletBenefits as EventListener,
+      );
+      window.removeEventListener(
+        RAPAGO_WALLET_BENEFIT_EVENT_REQUEST,
+        refreshWalletBenefits as EventListener,
+      );
     };
   }, []);
 
@@ -7710,7 +8076,6 @@ export default function RequestRidePage(): JSX.Element {
     };
   }, [session?.accessToken, walletBenefitRevision]);
 
-
   useEffect(() => {
     if (!originPoint || !destinationPoint) {
       setFareQuote(null);
@@ -7720,7 +8085,10 @@ export default function RequestRidePage(): JSX.Element {
 
     let cancelled = false;
     const origin = { lat: originPoint.lat, lng: originPoint.lng };
-    const destination = { lat: destinationPoint.lat, lng: destinationPoint.lng };
+    const destination = {
+      lat: destinationPoint.lat,
+      lng: destinationPoint.lng,
+    };
 
     const fallback = calculateEstimatedFareFromPoints(
       origin,
@@ -7754,7 +8122,8 @@ export default function RequestRidePage(): JSX.Element {
 
             if (status === google.maps.DirectionsStatus.OK && leg) {
               const km = (leg.distance?.value ?? fallback.km * 1000) / 1000;
-              const minutes = (leg.duration?.value ?? fallback.minutes * 60) / 60;
+              const minutes =
+                (leg.duration?.value ?? fallback.minutes * 60) / 60;
               setFareQuote({
                 ...calculateRapaGoFare(
                   km,
@@ -7809,6 +8178,39 @@ export default function RequestRidePage(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    const handler = (
+      event: CustomEvent<{ lat: number; lng: number; screenY: number }>,
+    ) => {
+      if (requestSheetDragging) return;
+
+      const currentShift = sheetShift ?? 0;
+      const nextShift = computeAutoSheetShift({
+        currentShift,
+        sheetMaxShift,
+        markerY: event.detail.screenY,
+        sheetTop: currentShift,
+        safetyMargin: 26,
+      });
+
+      if (Math.abs(nextShift - currentShift) > 0.5) {
+        setSheetShift(nextShift);
+      }
+    };
+
+    window.addEventListener(
+      "rapago:origin-point-visibility",
+      handler as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "rapago:origin-point-visibility",
+        handler as EventListener,
+      );
+    };
+  }, [requestSheetDragging, sheetMaxShift, sheetShift]);
+
+  useEffect(() => {
     if (rideMode !== "scheduled") return;
 
     if (selectedRoundTripPromotionId) {
@@ -7838,7 +8240,11 @@ export default function RequestRidePage(): JSX.Element {
   useEffect(() => {
     const value = originInput.trim();
 
-    if (isAirportScheduledRide || normalizeRapaNuiAutocompleteText(value).length < 2 || originPoint?.text === value) {
+    if (
+      isAirportScheduledRide ||
+      normalizeRapaNuiAutocompleteText(value).length < 2 ||
+      originPoint?.text === value
+    ) {
       setOriginSuggestions([]);
       setSearchingOrigin(false);
       return;
@@ -7864,7 +8270,10 @@ export default function RequestRidePage(): JSX.Element {
   useEffect(() => {
     const value = destInput.trim();
 
-    if (normalizeRapaNuiAutocompleteText(value).length < 2 || destinationPoint?.text === value) {
+    if (
+      normalizeRapaNuiAutocompleteText(value).length < 2 ||
+      destinationPoint?.text === value
+    ) {
       setDestSuggestions([]);
       setSearchingDest(false);
       return;
@@ -7903,9 +8312,12 @@ export default function RequestRidePage(): JSX.Element {
     setOriginPoint(confirmed);
     setOriginInput(confirmed.text);
     setOriginSuggestions([]);
+    /* Baja la hoja al reposo para que el pin quede visible en el mapa. */
   }
 
-  async function applyMovedOriginFromMap(payload: MapPointMovedPayload): Promise<void> {
+  async function applyMovedOriginFromMap(
+    payload: MapPointMovedPayload,
+  ): Promise<void> {
     if (payload.point !== "origin") return;
 
     setSubmitError(null);
@@ -7936,7 +8348,10 @@ export default function RequestRidePage(): JSX.Element {
     }
   }
 
-  function applyDestination(point: PickerResult, options?: { keepRoundTripPromotion?: boolean }): void {
+  function applyDestination(
+    point: PickerResult,
+    options?: { keepRoundTripPromotion?: boolean },
+  ): void {
     if (!options?.keepRoundTripPromotion) {
       setSelectedRoundTripPromotionId(null);
       setTripFareMode("one_way");
@@ -7958,6 +8373,8 @@ export default function RequestRidePage(): JSX.Element {
     setDestinationPoint(confirmed);
     setDestInput(confirmed.text);
     setDestSuggestions([]);
+    /* Baja la hoja al reposo para que el pin quede visible en el mapa. */
+    setSheetShift(Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION));
   }
 
   function applyRapaNuiAirportOrigin(): void {
@@ -7993,8 +8410,9 @@ export default function RequestRidePage(): JSX.Element {
     applyDestination(details);
   }
 
-
-  async function handleSelectRoundTripPromotion(promotion: RoundTripPromotion): Promise<void> {
+  async function handleSelectRoundTripPromotion(
+    promotion: RoundTripPromotion,
+  ): Promise<void> {
     setSubmitError(null);
 
     // Anakena y Terevaka son experiencias con reserva. Nunca salen como viaje
@@ -8108,7 +8526,9 @@ export default function RequestRidePage(): JSX.Element {
 
   function handleUseCurrentLocation(): void {
     if (!navigator.geolocation) {
-      setSubmitError("Tu navegador no permite obtener ubicación. Puedes escribir el origen o elegirlo manualmente en el mapa.");
+      setSubmitError(
+        "Tu navegador no permite obtener ubicación. Puedes escribir el origen o elegirlo manualmente en el mapa.",
+      );
       return;
     }
 
@@ -8125,10 +8545,10 @@ export default function RequestRidePage(): JSX.Element {
         };
 
         /*
-        * No confirmamos automáticamente.
-        * Abrimos el mismo selector tipo Uber centrado en la ubicación real,
-        * para que Rapa Go busque la calle accesible y el usuario confirme.
-        */
+         * No confirmamos automáticamente.
+         * Abrimos el mismo selector tipo Uber centrado en la ubicación real,
+         * para que Rapa Go busque la calle accesible y el usuario confirme.
+         */
         setOriginPoint({
           text: "Mi ubicación actual",
           address: "Ubicación GPS detectada",
@@ -8228,7 +8648,6 @@ export default function RequestRidePage(): JSX.Element {
     };
   }
 
-
   useEffect(() => {
     let cancelled = false;
 
@@ -8237,9 +8656,7 @@ export default function RequestRidePage(): JSX.Element {
 
       if (!session?.accessToken) return;
 
-      void fetchMyApprovedPolicyChargesForRequest(
-        session.accessToken,
-      )
+      void fetchMyApprovedPolicyChargesForRequest(session.accessToken)
         .then((charges) => {
           if (!cancelled) {
             setBackendPendingPassengerCharges(charges);
@@ -8251,10 +8668,7 @@ export default function RequestRidePage(): JSX.Element {
     };
 
     const handlePendingChargeStorage = (event: StorageEvent) => {
-      if (
-        !event.key ||
-        event.key === RAPAGO_PASSENGER_PENDING_CHARGES_KEY
-      ) {
+      if (!event.key || event.key === RAPAGO_PASSENGER_PENDING_CHARGES_KEY) {
         refreshPendingCharges();
       }
     };
@@ -8312,11 +8726,10 @@ export default function RequestRidePage(): JSX.Element {
     pendingChargeRevision >= 0
       ? readPassengerPendingChargesForRequest(session?.user)
       : [];
-  const pendingPassengerCharges =
-    mergePassengerPendingChargesForRequest(
-      backendPendingPassengerCharges,
-      localPendingPassengerCharges,
-    );
+  const pendingPassengerCharges = mergePassengerPendingChargesForRequest(
+    backendPendingPassengerCharges,
+    localPendingPassengerCharges,
+  );
   const pendingNoShowChargeTotalClp = pendingPassengerCharges
     .filter((charge) => isPassengerPendingChargeNoShow(charge.type))
     .reduce(
@@ -8332,14 +8745,15 @@ export default function RequestRidePage(): JSX.Element {
       0,
     );
   const pendingPassengerChargeTotalClp =
-    pendingNoShowChargeTotalClp +
-    pendingCancellationChargeTotalClp;
+    pendingNoShowChargeTotalClp + pendingCancellationChargeTotalClp;
   // El backend es la única autoridad del saldo disponible. Los registros
   // antiguos de LocalStorage no se suman ni se descuentan financieramente.
   const availableWalletBenefitTotalClp = backendWalletBenefitClp;
   const hasAvailableWalletBenefit = availableWalletBenefitTotalClp > 0;
 
-  function getBaseSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
+  function getBaseSelectedFareAmount(
+    method: PaymentMethod = paymentMethod,
+  ): number | null {
     if (!method) return null;
     if (selectedRoundTripPromotion) return selectedRoundTripExperienceFareClp;
     if (!fareQuote) return null;
@@ -8363,35 +8777,53 @@ export default function RequestRidePage(): JSX.Element {
   }
 
   function getWalletBenefitDiscountForAmount(amount: number | null): number {
-    if (amount == null || useWalletBenefit !== true || availableWalletBenefitTotalClp <= 0) return 0;
-    return Math.min(Math.max(0, Math.round(amount)), availableWalletBenefitTotalClp);
+    if (
+      amount == null ||
+      useWalletBenefit !== true ||
+      availableWalletBenefitTotalClp <= 0
+    )
+      return 0;
+    return Math.min(
+      Math.max(0, Math.round(amount)),
+      availableWalletBenefitTotalClp,
+    );
   }
 
-  function getSelectedFareAmountBeforeWallet(method: PaymentMethod = paymentMethod): number | null {
-    return addPendingPassengerCharges(addAirportWelcomeExtras(getBaseSelectedFareAmount(method)));
+  function getSelectedFareAmountBeforeWallet(
+    method: PaymentMethod = paymentMethod,
+  ): number | null {
+    return addPendingPassengerCharges(
+      addAirportWelcomeExtras(getBaseSelectedFareAmount(method)),
+    );
   }
 
-  function getSelectedWalletBenefitDiscount(method: PaymentMethod = paymentMethod): number {
+  function getSelectedWalletBenefitDiscount(
+    method: PaymentMethod = paymentMethod,
+  ): number {
     if (!method) return 0;
     return getWalletBenefitDiscountForAmount(
       getSelectedFareAmountBeforeWallet(method),
     );
   }
 
-  const cashPaymentAmountBeforeWallet = addPendingPassengerCharges(addAirportWelcomeExtras(
-    selectedRoundTripPromotion
-      ? selectedRoundTripExperienceFareClp
-      : fareQuote
-        ? fareQuote.cashFare
-        : null,
-  ));
-  const cardPaymentAmountBeforeWallet = addPendingPassengerCharges(addAirportWelcomeExtras(
-    selectedRoundTripPromotion
-      ? selectedRoundTripExperienceFareClp
-      : fareQuote
-        ? fareQuote.cardFare
-        : null,
-  ));
+  const cashPaymentAmountBeforeWallet = addPendingPassengerCharges(
+    addAirportWelcomeExtras(
+      selectedRoundTripPromotion
+        ? selectedRoundTripExperienceFareClp
+        : fareQuote
+          ? fareQuote.cashFare
+          : null,
+    ),
+  );
+  const cardPaymentAmountBeforeWallet = addPendingPassengerCharges(
+    addAirportWelcomeExtras(
+      selectedRoundTripPromotion
+        ? selectedRoundTripExperienceFareClp
+        : fareQuote
+          ? fareQuote.cardFare
+          : null,
+    ),
+  );
   const cashWalletBenefitDiscountClp = getWalletBenefitDiscountForAmount(
     cashPaymentAmountBeforeWallet,
   );
@@ -8420,52 +8852,117 @@ export default function RequestRidePage(): JSX.Element {
     return "Pendiente";
   }
 
-  const cashPaymentLabel = cashPaymentAmount != null
-    ? formatCLP(cashPaymentAmount)
-    : "Calculando";
-  const cashPaymentUsdLabel = cashPaymentAmount != null
-    ? formatUSDFromCLP(
-        cashPaymentAmount,
-        selectedRoundTripPromotion?.usdLabel ? fareRules.usdRate : fareQuote?.usdRate,
-      )
-    : "Calculando";
+  const cashPaymentLabel =
+    cashPaymentAmount != null ? formatCLP(cashPaymentAmount) : "Calculando";
+  const cashPaymentUsdLabel =
+    cashPaymentAmount != null
+      ? formatUSDFromCLP(
+          cashPaymentAmount,
+          selectedRoundTripPromotion?.usdLabel
+            ? fareRules.usdRate
+            : fareQuote?.usdRate,
+        )
+      : "Calculando";
 
-  const cardPaymentLabel = cardPaymentAmount != null
-    ? formatCLP(cardPaymentAmount)
-    : "Calculando";
-  const cardPaymentUsdLabel = cardPaymentAmount != null
-    ? formatUSDFromCLP(
-        cardPaymentAmount,
-        selectedRoundTripPromotion?.usdLabel ? fareRules.usdRate : fareQuote?.usdRate,
-      )
-    : "Calculando";
+  const cardPaymentLabel =
+    cardPaymentAmount != null ? formatCLP(cardPaymentAmount) : "Calculando";
+  const cardPaymentUsdLabel =
+    cardPaymentAmount != null
+      ? formatUSDFromCLP(
+          cardPaymentAmount,
+          selectedRoundTripPromotion?.usdLabel
+            ? fareRules.usdRate
+            : fareQuote?.usdRate,
+        )
+      : "Calculando";
 
-  const activePaymentAmountBeforeWallet = paymentMethod === "card"
-    ? cardPaymentAmountBeforeWallet
-    : paymentMethod === "cash"
-      ? cashPaymentAmountBeforeWallet
-      : null;
-  const activeWalletBenefitDiscountClp = paymentMethod === "card"
-    ? cardWalletBenefitDiscountClp
-    : paymentMethod === "cash"
-      ? cashWalletBenefitDiscountClp
-      : 0;
-  const activePaymentAmountAfterWallet = paymentMethod === "card"
-    ? cardPaymentAmount
-    : paymentMethod === "cash"
-      ? cashPaymentAmount
-      : null;
+  const activePaymentAmountBeforeWallet =
+    paymentMethod === "card"
+      ? cardPaymentAmountBeforeWallet
+      : paymentMethod === "cash"
+        ? cashPaymentAmountBeforeWallet
+        : null;
+  const activeWalletBenefitDiscountClp =
+    paymentMethod === "card"
+      ? cardWalletBenefitDiscountClp
+      : paymentMethod === "cash"
+        ? cashWalletBenefitDiscountClp
+        : 0;
+  const activePaymentAmountAfterWallet =
+    paymentMethod === "card"
+      ? cardPaymentAmount
+      : paymentMethod === "cash"
+        ? cashPaymentAmount
+        : null;
 
-  function getSelectedFareAmount(method: PaymentMethod = paymentMethod): number | null {
+  function getSelectedFareAmount(
+    method: PaymentMethod = paymentMethod,
+  ): number | null {
     const beforeBenefit = getSelectedFareAmountBeforeWallet(method);
     return applyWalletBenefitDiscount(beforeBenefit);
   }
 
-  function getSelectedDriverEarning(method: PaymentMethod = paymentMethod): number | null {
+  function getSelectedDriverEarning(
+    method: PaymentMethod = paymentMethod,
+  ): number | null {
     // La ganancia del conductor se calcula sobre el viaje actual, no sobre deudas anteriores ni descuentos de billetera.
     const fare = addAirportWelcomeExtras(getBaseSelectedFareAmount(method));
     if (fare == null) return null;
     return Math.round((fare * fareRules.driverPercent) / 100);
+  }
+
+  const vehicleFareDisplayMethod: Exclude<PaymentMethod, null> =
+    reservationRequiresCard || paymentMethod === "card" ? "card" : "cash";
+
+  function getVehicleCategoryDisplayFare(
+    category: VehicleCategory,
+  ): number | null {
+    if (selectedRoundTripPromotion) {
+      return addPendingPassengerCharges(
+        addAirportWelcomeExtras(
+          calculateRoundTripExperienceFare(
+            selectedRoundTripPromotion,
+            category,
+            fareRules,
+          ),
+        ),
+      );
+    }
+
+    if (!fareQuote) return null;
+
+    const categoryQuote = calculateRapaGoFare(
+      fareQuote.km,
+      fareQuote.minutes,
+      fareRules,
+      effectivePassengerFareType,
+      category,
+      destinationPoint?.text ?? destInput,
+      effectiveTripFareMode,
+    );
+
+    return addPendingPassengerCharges(
+      addAirportWelcomeExtras(
+        vehicleFareDisplayMethod === "card"
+          ? categoryQuote.cardFare
+          : categoryQuote.cashFare,
+      ),
+    );
+  }
+
+  function getVehicleCategoryEtaLabel(category: VehicleCategory): string {
+    const routeMinutes = selectedRoundTripPromotion ? 10 : fareQuote?.minutes;
+    if (routeMinutes == null)
+      return fareLoading ? "Calculando llegada" : "Llega pronto";
+
+    const baseMinutes = Math.max(
+      3,
+      Math.min(9, Math.round(routeMinutes * 0.38)),
+    );
+    const categoryOffset =
+      category === "xl" ? 2 : category === "luggage" ? 1 : 0;
+
+    return `Llega en ${baseMinutes + categoryOffset} min`;
   }
 
   function handleOpenPaymentBox(): void {
@@ -8477,7 +8974,9 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && method === "cash") {
       setPaymentMethod("card");
       setShowPaymentBox(false);
-      setSubmitError("Todas las reservas se pagan obligatoriamente con tarjeta/Klap. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.");
+      setSubmitError(
+        "Todas las reservas se pagan obligatoriamente con tarjeta/Klap. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.",
+      );
       return;
     }
 
@@ -8490,7 +8989,9 @@ export default function RequestRidePage(): JSX.Element {
     if (!session?.accessToken) return;
 
     if (hasPassengerActiveRideForRequest(session.user)) {
-      setSubmitError("Ya tienes un viaje o una reserva activa reciente. Revisa Mis Viajes antes de solicitar otra.");
+      setSubmitError(
+        "Ya tienes un viaje o una reserva activa reciente. Revisa Mis Viajes antes de solicitar otra.",
+      );
       return;
     }
 
@@ -8517,7 +9018,10 @@ export default function RequestRidePage(): JSX.Element {
       return;
     }
 
-    if (activePaymentMethod !== "cash" && String(activePaymentMethod) !== "card") {
+    if (
+      activePaymentMethod !== "cash" &&
+      String(activePaymentMethod) !== "card"
+    ) {
       setShowPaymentBox(true);
       setSubmitError("Antes de solicitar el viaje debes elegir forma de pago.");
       return;
@@ -8526,22 +9030,33 @@ export default function RequestRidePage(): JSX.Element {
     if (reservationRequiresCard && String(activePaymentMethod) !== "card") {
       setPaymentMethod("card");
       setShowPaymentBox(true);
-      setSubmitError("Todas las reservas deben pagarse obligatoriamente con tarjeta/Klap. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.");
+      setSubmitError(
+        "Todas las reservas deben pagarse obligatoriamente con tarjeta/Klap. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.",
+      );
       return;
     }
 
     if (hasAvailableWalletBenefit && useWalletBenefit === null) {
-      setSubmitError(`Tienes ${formatCLP(availableWalletBenefitTotalClp)} a favor. Elige si quieres usar tu beneficio en este viaje.`);
+      setSubmitError(
+        `Tienes ${formatCLP(availableWalletBenefitTotalClp)} a favor. Elige si quieres usar tu beneficio en este viaje.`,
+      );
       return;
     }
 
-    const selectedFareAmountBeforeWallet = getSelectedFareAmountBeforeWallet(activePaymentMethod);
-    const selectedWalletBenefitDiscountClp = getSelectedWalletBenefitDiscount(activePaymentMethod);
+    const selectedFareAmountBeforeWallet =
+      getSelectedFareAmountBeforeWallet(activePaymentMethod);
+    const selectedWalletBenefitDiscountClp =
+      getSelectedWalletBenefitDiscount(activePaymentMethod);
     const selectedFareAmount = getSelectedFareAmount(activePaymentMethod);
-    const selectedBaseFareAmount = getBaseSelectedFareAmount(activePaymentMethod);
+    const selectedBaseFareAmount =
+      getBaseSelectedFareAmount(activePaymentMethod);
     const selectedDriverEarning = getSelectedDriverEarning(activePaymentMethod);
 
-    if (selectedFareAmount == null || selectedFareAmount < 0 || selectedFareAmountBeforeWallet == null) {
+    if (
+      selectedFareAmount == null ||
+      selectedFareAmount < 0 ||
+      selectedFareAmountBeforeWallet == null
+    ) {
       setSubmitError("No se pudo calcular el monto del viaje.");
       return;
     }
@@ -8557,36 +9072,74 @@ export default function RequestRidePage(): JSX.Element {
       const notes: string[] = [];
       appendPassengerRideNote(notes, passengerNote);
 
-      notes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
+      notes.push(
+        `Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`,
+      );
       if (reservationRequiresCard) {
         notes.push("Pago obligatorio para reservas: tarjeta/Klap.");
-        notes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
-        notes.push("Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000.");
-        notes.push("Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.");
+        notes.push(
+          "Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.",
+        );
+        notes.push(
+          "Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000.",
+        );
+        notes.push(
+          "Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.",
+        );
       }
       if (pendingPassengerChargeTotalClp > 0) {
-        notes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
-        notes.push(`Total antes de beneficio billetera incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
+        notes.push(
+          `Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`,
+        );
+        notes.push(
+          `Total antes de beneficio billetera incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`,
+        );
       }
       if (selectedWalletBenefitDiscountClp > 0) {
-        notes.push(`Beneficio billetera usado en este viaje: ${formatCLP(selectedWalletBenefitDiscountClp)}.`);
-        notes.push(`Tarifa antes de beneficio billetera: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
-        notes.push(`Total final con descuento beneficio: ${formatCLP(selectedFareAmount)}.`);
+        notes.push(
+          `Beneficio billetera usado en este viaje: ${formatCLP(selectedWalletBenefitDiscountClp)}.`,
+        );
+        notes.push(
+          `Tarifa antes de beneficio billetera: ${formatCLP(selectedFareAmountBeforeWallet)}.`,
+        );
+        notes.push(
+          `Total final con descuento beneficio: ${formatCLP(selectedFareAmount)}.`,
+        );
       } else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
-        notes.push(`Beneficio billetera disponible no usado por el pasajero en este viaje: ${formatCLP(availableWalletBenefitTotalClp)}.`);
+        notes.push(
+          `Beneficio billetera disponible no usado por el pasajero en este viaje: ${formatCLP(availableWalletBenefitTotalClp)}.`,
+        );
       }
-      notes.push(`Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`);
-      notes.push(`Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`);
+      notes.push(
+        `Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`,
+      );
+      notes.push(
+        `Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`,
+      );
       if (selectedRoundTripPromotion) {
-        notes.push(`Experiencia con reserva seleccionada: ${selectedRoundTripPromotion.destinationName}.`);
-        notes.push(`Destino reservado: ${selectedRoundTripPromotion.destinationName}.`);
-        notes.push(`Tarifa fija base de la experiencia: ${formatCLP(selectedRoundTripPromotion.baseFareClp)} (${selectedRoundTripPromotion.usdLabel}).`);
+        notes.push(
+          `Experiencia con reserva seleccionada: ${selectedRoundTripPromotion.destinationName}.`,
+        );
+        notes.push(
+          `Destino reservado: ${selectedRoundTripPromotion.destinationName}.`,
+        );
+        notes.push(
+          `Tarifa fija base de la experiencia: ${formatCLP(selectedRoundTripPromotion.baseFareClp)} (${selectedRoundTripPromotion.usdLabel}).`,
+        );
         if (selectedBaseFareAmount != null) {
-          notes.push(`Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`);
+          notes.push(
+            `Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`,
+          );
         }
-        notes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
-        notes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
-        notes.push(`Ajuste de vehículo aplicado: ${vehicleCategoryLabel(vehicleCategory)} x ${(fareRules.vehicleMultipliers[vehicleCategory] ?? 1).toFixed(2)}.`);
+        notes.push(
+          `Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`,
+        );
+        notes.push(
+          `Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`,
+        );
+        notes.push(
+          `Ajuste de vehículo aplicado: ${vehicleCategoryLabel(vehicleCategory)} x ${(fareRules.vehicleMultipliers[vehicleCategory] ?? 1).toFixed(2)}.`,
+        );
         notes.push(selectedRoundTripPromotion.detail);
       }
 
@@ -8603,37 +9156,73 @@ export default function RequestRidePage(): JSX.Element {
       if (selectedRoundTripPromotion) {
         notes.push("Tipo de servicio: experiencia con reserva ida y vuelta.");
         notes.push("RAPAGO_RESERVATION_KIND: round_trip_experience.");
-        notes.push(`Fecha y hora de ida reservada: ${formatScheduleDateTime(scheduledAt)}.`);
-        notes.push(`Fecha y hora de regreso reservada: ${formatScheduleDateTime(returnScheduledAt)}.`);
-        notes.push(`Destino de la experiencia: ${selectedRoundTripPromotion.destinationName}.`);
+        notes.push(
+          `Fecha y hora de ida reservada: ${formatScheduleDateTime(scheduledAt)}.`,
+        );
+        notes.push(
+          `Fecha y hora de regreso reservada: ${formatScheduleDateTime(returnScheduledAt)}.`,
+        );
+        notes.push(
+          `Destino de la experiencia: ${selectedRoundTripPromotion.destinationName}.`,
+        );
         notes.push("La ida y el regreso pertenecen a la misma reserva.");
       }
 
       if (rideMode === "scheduled") {
-        notes.push(`RAPAGO_SCHEDULED_AT: ${String(scheduleFields.scheduledAt ?? "")}.`);
-        notes.push(`RAPAGO_ACTIVATION_AT: ${String(scheduleFields.scheduleActivationAt ?? "")}.`);
-        notes.push(`Fecha y hora de recogida agendada: ${String(scheduleFields.scheduledAt ?? "")}.`);
-        notes.push(`Viaje agendado para: ${formatScheduleDateTime(String(scheduleFields.scheduledAt ?? scheduledAt))}.`);
-        notes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(scheduleFields.scheduleActivationAt ?? ""))}.`);
-        notes.push(`Reserva congelada para conductores hasta: ${String(scheduleFields.scheduleActivationAt ?? "")}.`);
+        notes.push(
+          `RAPAGO_SCHEDULED_AT: ${String(scheduleFields.scheduledAt ?? "")}.`,
+        );
+        notes.push(
+          `RAPAGO_ACTIVATION_AT: ${String(scheduleFields.scheduleActivationAt ?? "")}.`,
+        );
+        notes.push(
+          `Fecha y hora de recogida agendada: ${String(scheduleFields.scheduledAt ?? "")}.`,
+        );
+        notes.push(
+          `Viaje agendado para: ${formatScheduleDateTime(String(scheduleFields.scheduledAt ?? scheduledAt))}.`,
+        );
+        notes.push(
+          `La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(scheduleFields.scheduleActivationAt ?? ""))}.`,
+        );
+        notes.push(
+          `Reserva congelada para conductores hasta: ${String(scheduleFields.scheduleActivationAt ?? "")}.`,
+        );
         if (selectedRoundTripPromotion) {
           notes.push("Tipo de reserva: experiencia ida y vuelta programada.");
-          notes.push(`Experiencia reservada: ${selectedRoundTripPromotion.destinationName}.`);
+          notes.push(
+            `Experiencia reservada: ${selectedRoundTripPromotion.destinationName}.`,
+          );
           notes.push("Recogida a elección del pasajero.");
-          notes.push("Gestión: administrador o asignación automática a conductor activo.");
+          notes.push(
+            "Gestión: administrador o asignación automática a conductor activo.",
+          );
         } else {
           notes.push(`Tipo de reserva: recogida aeropuerto.`);
           notes.push("Pago obligatorio para reservas: tarjeta/Klap.");
-          notes.push("Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000 y el saldo retenido restante debe liberarse por backend/Klap.");
-          notes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
-          notes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
-          notes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
+          notes.push(
+            "Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000 y el saldo retenido restante debe liberarse por backend/Klap.",
+          );
+          notes.push(
+            `Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`,
+          );
+          notes.push(
+            `RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`,
+          );
+          notes.push(
+            `RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`,
+          );
         }
 
         if (effectiveTripFareMode === "round_trip" && returnScheduledAt) {
-          notes.push(`RAPAGO_RETURN_SCHEDULED_AT: ${String(scheduleFields.returnScheduledAt ?? "")}.`);
-          notes.push(`Fecha y hora de regreso agendada: ${String(scheduleFields.returnScheduledAt ?? "")}.`);
-          notes.push(`Regreso agendado para: ${formatScheduleDateTime(String(scheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
+          notes.push(
+            `RAPAGO_RETURN_SCHEDULED_AT: ${String(scheduleFields.returnScheduledAt ?? "")}.`,
+          );
+          notes.push(
+            `Fecha y hora de regreso agendada: ${String(scheduleFields.returnScheduledAt ?? "")}.`,
+          );
+          notes.push(
+            `Regreso agendado para: ${formatScheduleDateTime(String(scheduleFields.returnScheduledAt ?? returnScheduledAt))}.`,
+          );
         }
 
         if (!selectedRoundTripPromotion && flightNumber.trim()) {
@@ -8641,23 +9230,39 @@ export default function RequestRidePage(): JSX.Element {
         }
 
         if (selectedRoundTripPromotion) {
-          notes.push("Servicio de aeropuerto: no aplica para esta experiencia.");
+          notes.push(
+            "Servicio de aeropuerto: no aplica para esta experiencia.",
+          );
         } else if (airportWelcomeOption === "flower_lei") {
-          notes.push(`Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`);
-          notes.push(`Admin debe gestionar el collar de flores para la llegada del pasajero en Mataveri.`);
-          notes.push(`Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}.`);
-          notes.push(`Total final con recibimiento: ${formatCLP(selectedFareAmount)}.`);
+          notes.push(
+            `Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`,
+          );
+          notes.push(
+            `Admin debe gestionar el collar de flores para la llegada del pasajero en Mataveri.`,
+          );
+          notes.push(
+            `Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}.`,
+          );
+          notes.push(
+            `Total final con recibimiento: ${formatCLP(selectedFareAmount)}.`,
+          );
         } else {
           notes.push("Recibimiento aeropuerto: solo recogida.");
         }
       }
 
-      notes.push(`Nombre origen visible para conductor: ${resolved.origin.text}.`);
-      notes.push(`Nombre destino visible para conductor: ${resolved.destination.text}.`);
+      notes.push(
+        `Nombre origen visible para conductor: ${resolved.origin.text}.`,
+      );
+      notes.push(
+        `Nombre destino visible para conductor: ${resolved.destination.text}.`,
+      );
       notes.push(`RAPAGO_ORIGIN_DISPLAY: ${resolved.origin.text}.`);
       notes.push(`RAPAGO_DESTINATION_DISPLAY: ${resolved.destination.text}.`);
       notes.push(`Dirección origen confirmada: ${resolved.origin.address}.`);
-      notes.push(`Dirección destino confirmada: ${resolved.destination.address}.`);
+      notes.push(
+        `Dirección destino confirmada: ${resolved.destination.address}.`,
+      );
 
       if (
         resolved.origin.originalLat != null &&
@@ -8677,28 +9282,56 @@ export default function RequestRidePage(): JSX.Element {
         `Coordenadas destino accesible: ${resolved.destination.lat.toFixed(6)}, ${resolved.destination.lng.toFixed(6)}.`,
       );
 
-      if (!selectedRoundTripPromotion && fareQuote && selectedFareAmount != null) {
+      if (
+        !selectedRoundTripPromotion &&
+        fareQuote &&
+        selectedFareAmount != null
+      ) {
         if (selectedBaseFareAmount != null && airportWelcomeSurchargeClp > 0) {
-          notes.push(`Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`);
+          notes.push(
+            `Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`,
+          );
         }
-        notes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
-        notes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
-        notes.push(`Ajuste de vehículo aplicado: ${vehicleCategoryLabel(vehicleCategory)} x ${(fareRules.vehicleMultipliers[vehicleCategory] ?? 1).toFixed(2)}.`);
+        notes.push(
+          `Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`,
+        );
+        notes.push(
+          `Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`,
+        );
+        notes.push(
+          `Ajuste de vehículo aplicado: ${vehicleCategoryLabel(vehicleCategory)} x ${(fareRules.vehicleMultipliers[vehicleCategory] ?? 1).toFixed(2)}.`,
+        );
         notes.push(`Distancia estimada: ${fareQuote.km.toFixed(1)} km.`);
         notes.push(`Duración estimada: ${fareQuote.minutes} min.`);
-        notes.push(`Tipo de cálculo tarifario: ${fareQuote.calculationType === "fixed" ? "tarifa fija" : fareQuote.ruralKm > 0 ? "urbano/rural" : "urbano"}.`);
-        notes.push(`Tipo de viaje tarifario: ${tripFareModeLabel(effectiveTripFareMode)}.`);
-        notes.push(`Tipo de pasajero tarifario: ${passengerFareTypeLabel(fareQuote.passengerFareType)}.`);
+        notes.push(
+          `Tipo de cálculo tarifario: ${fareQuote.calculationType === "fixed" ? "tarifa fija" : fareQuote.ruralKm > 0 ? "urbano/rural" : "urbano"}.`,
+        );
+        notes.push(
+          `Tipo de viaje tarifario: ${tripFareModeLabel(effectiveTripFareMode)}.`,
+        );
+        notes.push(
+          `Tipo de pasajero tarifario: ${passengerFareTypeLabel(fareQuote.passengerFareType)}.`,
+        );
         if (fareQuote.tripMultiplier > 1) {
-          notes.push(`Ida y vuelta variable: tarifa ida ${formatCLP(fareQuote.oneWayFare)} x ${fareQuote.tripMultiplier}.`);
+          notes.push(
+            `Ida y vuelta variable: tarifa ida ${formatCLP(fareQuote.oneWayFare)} x ${fareQuote.tripMultiplier}.`,
+          );
         }
-        notes.push(`Tramo urbano calculado: ${fareQuote.urbanKm.toFixed(1)} km hasta límite ${fareQuote.urbanLimitKm.toFixed(1)} km.`);
+        notes.push(
+          `Tramo urbano calculado: ${fareQuote.urbanKm.toFixed(1)} km hasta límite ${fareQuote.urbanLimitKm.toFixed(1)} km.`,
+        );
         if (fareQuote.ruralKm > 0) {
-          notes.push(`Tramo rural calculado: ${fareQuote.ruralKm.toFixed(1)} km con descuento rural ${fareQuote.ruralDiscountPercent}%.`);
-          notes.push(`KM urbano ajustado: ${formatCLP(fareQuote.urbanKmFare)}. KM rural corregido: ${formatCLP(fareQuote.ruralKmFare)}.`);
+          notes.push(
+            `Tramo rural calculado: ${fareQuote.ruralKm.toFixed(1)} km con descuento rural ${fareQuote.ruralDiscountPercent}%.`,
+          );
+          notes.push(
+            `KM urbano ajustado: ${formatCLP(fareQuote.urbanKmFare)}. KM rural corregido: ${formatCLP(fareQuote.ruralKmFare)}.`,
+          );
         }
         if (selectedDriverEarning != null) {
-          notes.push(`Ganancia estimada conductor: ${formatCLP(selectedDriverEarning)}.`);
+          notes.push(
+            `Ganancia estimada conductor: ${formatCLP(selectedDriverEarning)}.`,
+          );
         }
       }
 
@@ -8708,83 +9341,122 @@ export default function RequestRidePage(): JSX.Element {
       };
 
       if (selectedFareAmount != null) {
-        (input as CreateRideInput & {
-          estimatedFareClp?: number;
-          passengerFareType?: PassengerFareType;
-          farePassengerType?: PassengerFareType;
-          fareVehicleCategory?: VehicleCategory;
-          vehicleCategory?: VehicleCategory;
-          paymentMethod?: string;
-          tripFareMode?: TripFareMode;
-          tripType?: string;
-          isRoundTrip?: boolean;
-        }).estimatedFareClp = Math.max(
+        (
+          input as CreateRideInput & {
+            estimatedFareClp?: number;
+            passengerFareType?: PassengerFareType;
+            farePassengerType?: PassengerFareType;
+            fareVehicleCategory?: VehicleCategory;
+            vehicleCategory?: VehicleCategory;
+            paymentMethod?: string;
+            tripFareMode?: TripFareMode;
+            tripType?: string;
+            isRoundTrip?: boolean;
+          }
+        ).estimatedFareClp = Math.max(
           0,
           Math.round(
             (selectedFareAmountBeforeWallet ?? 0) -
               pendingPassengerChargeTotalClp,
           ),
         );
-        (input as CreateRideInput & {
-          passengerFareType?: PassengerFareType;
-          farePassengerType?: PassengerFareType;
-        }).passengerFareType = effectivePassengerFareType;
-        (input as CreateRideInput & {
-          passengerFareType?: PassengerFareType;
-          farePassengerType?: PassengerFareType;
-        }).farePassengerType = effectivePassengerFareType;
-        (input as CreateRideInput & {
-          passengerFareLabel?: string;
-          nationality?: string;
-          isResident?: boolean;
-          requestedByRole?: string;
-          requesterRole?: string;
-        }).passengerFareLabel = passengerFareTypeLabel(effectivePassengerFareType);
-        (input as CreateRideInput & {
-          passengerFareLabel?: string;
-          nationality?: string;
-          isResident?: boolean;
-          requestedByRole?: string;
-          requesterRole?: string;
-        }).nationality = passengerFareTypeLabel(effectivePassengerFareType);
-        (input as CreateRideInput & {
-          passengerFareLabel?: string;
-          nationality?: string;
-          isResident?: boolean;
-          requestedByRole?: string;
-          requesterRole?: string;
-        }).isResident = effectivePassengerFareType === "resident";
-        (input as CreateRideInput & { requestedByRole?: string; requesterRole?: string }).requestedByRole = "passenger";
-        (input as CreateRideInput & { requestedByRole?: string; requesterRole?: string }).requesterRole = "passenger";
-        (input as CreateRideInput & {
-          fareVehicleCategory?: VehicleCategory;
-          vehicleCategory?: VehicleCategory;
-        }).fareVehicleCategory = vehicleCategory;
-        (input as CreateRideInput & {
-          fareVehicleCategory?: VehicleCategory;
-          vehicleCategory?: VehicleCategory;
-        }).vehicleCategory = vehicleCategory;
-        (input as CreateRideInput & { paymentMethod?: string }).paymentMethod = activePaymentMethod;
-        (input as CreateRideInput & { paymentProvider?: string | null }).paymentProvider =
-          activePaymentMethod === "card" ? "klap" : null;
+        (
+          input as CreateRideInput & {
+            passengerFareType?: PassengerFareType;
+            farePassengerType?: PassengerFareType;
+          }
+        ).passengerFareType = effectivePassengerFareType;
+        (
+          input as CreateRideInput & {
+            passengerFareType?: PassengerFareType;
+            farePassengerType?: PassengerFareType;
+          }
+        ).farePassengerType = effectivePassengerFareType;
+        (
+          input as CreateRideInput & {
+            passengerFareLabel?: string;
+            nationality?: string;
+            isResident?: boolean;
+            requestedByRole?: string;
+            requesterRole?: string;
+          }
+        ).passengerFareLabel = passengerFareTypeLabel(
+          effectivePassengerFareType,
+        );
+        (
+          input as CreateRideInput & {
+            passengerFareLabel?: string;
+            nationality?: string;
+            isResident?: boolean;
+            requestedByRole?: string;
+            requesterRole?: string;
+          }
+        ).nationality = passengerFareTypeLabel(effectivePassengerFareType);
+        (
+          input as CreateRideInput & {
+            passengerFareLabel?: string;
+            nationality?: string;
+            isResident?: boolean;
+            requestedByRole?: string;
+            requesterRole?: string;
+          }
+        ).isResident = effectivePassengerFareType === "resident";
+        (
+          input as CreateRideInput & {
+            requestedByRole?: string;
+            requesterRole?: string;
+          }
+        ).requestedByRole = "passenger";
+        (
+          input as CreateRideInput & {
+            requestedByRole?: string;
+            requesterRole?: string;
+          }
+        ).requesterRole = "passenger";
+        (
+          input as CreateRideInput & {
+            fareVehicleCategory?: VehicleCategory;
+            vehicleCategory?: VehicleCategory;
+          }
+        ).fareVehicleCategory = vehicleCategory;
+        (
+          input as CreateRideInput & {
+            fareVehicleCategory?: VehicleCategory;
+            vehicleCategory?: VehicleCategory;
+          }
+        ).vehicleCategory = vehicleCategory;
+        (input as CreateRideInput & { paymentMethod?: string }).paymentMethod =
+          activePaymentMethod;
+        (
+          input as CreateRideInput & { paymentProvider?: string | null }
+        ).paymentProvider = activePaymentMethod === "card" ? "klap" : null;
         // Klap deferred capture:
         // Cancellation/no-show amounts are calculated and settled by backend.
         // Do not send passengerPendingChargeClp or finalFareWithPendingChargesClp from frontend.
         // El frontend solo expresa la decisión. El backend bloquea la cuenta,
         // verifica el saldo y calcula el monto real a consumir.
         input.useWalletBenefit = useWalletBenefit === true;
-        (input as CreateRideInput & { tripFareMode?: TripFareMode }).tripFareMode = effectiveTripFareMode;
-        (input as CreateRideInput & { tripType?: string }).tripType = effectiveTripFareMode;
-        (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip = effectiveTripFareMode === "round_trip";
+        (
+          input as CreateRideInput & { tripFareMode?: TripFareMode }
+        ).tripFareMode = effectiveTripFareMode;
+        (input as CreateRideInput & { tripType?: string }).tripType =
+          effectiveTripFareMode;
+        (input as CreateRideInput & { isRoundTrip?: boolean }).isRoundTrip =
+          effectiveTripFareMode === "round_trip";
       }
 
       // Conservador: no enviamos un campo nuevo que el backend todavía podría
       // rechazar. La nota viaja dentro de `notes` con marcadores explícitos.
-      Object.assign(input as CreateRideInput & Record<string, unknown>, scheduleFields);
+      Object.assign(
+        input as CreateRideInput & Record<string, unknown>,
+        scheduleFields,
+      );
       if (isAirportScheduledRide) {
         Object.assign(input as CreateRideInput & Record<string, unknown>, {
           airportWelcomeOption,
-          airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+          airportWelcomeLabel: hasAirportFlowerLei
+            ? AIRPORT_FLOWER_LEI_LABEL
+            : "Solo recogida",
           flowerLeiRequested: hasAirportFlowerLei,
           flowerLeiSurchargeClp: airportWelcomeSurchargeClp,
           airportWelcomeSurchargeClp,
@@ -8802,7 +9474,8 @@ export default function RequestRidePage(): JSX.Element {
         Object.assign(input as CreateRideInput & Record<string, unknown>, {
           roundTripPromotionId: selectedRoundTripPromotion.id,
           roundTripPromotionTitle: selectedRoundTripPromotion.title,
-          roundTripPromotionDestination: selectedRoundTripPromotion.destinationName,
+          roundTripPromotionDestination:
+            selectedRoundTripPromotion.destinationName,
           roundTripPromotionBooking: true,
           roundTripExperienceBooking: true,
           reservationKind: "round_trip_experience",
@@ -8829,12 +9502,11 @@ export default function RequestRidePage(): JSX.Element {
       );
       preSearchLocationService.clear();
 
-      const createdRideId = extractRideRequestIdFromResponse(createdRideResponse);
+      const createdRideId =
+        extractRideRequestIdFromResponse(createdRideResponse);
       const appliedBenefitClp = Math.max(
         0,
-        Math.round(
-          Number(createdRideResponse.walletBenefitAppliedClp ?? 0),
-        ),
+        Math.round(Number(createdRideResponse.walletBenefitAppliedClp ?? 0)),
       );
 
       if (appliedBenefitClp > 0) {
@@ -8863,40 +9535,54 @@ export default function RequestRidePage(): JSX.Element {
       // publican en admin/conductor hasta que el webhook apruebe el pago.
       // Las experiencias de ida y vuelta se guardan como una sola reserva,
       // vinculando scheduledAt y scheduledReturnAt.
-      const pendingScheduledRide = rideMode === "scheduled"
-        ? createLocalAdminScheduledRide({
-            originText: resolved.origin.text,
-            destinationText: resolved.destination.text,
-            notes: input.notes ?? null,
-            passengerNote: passengerNote || null,
-            estimatedFareClp: selectedFareAmount ?? null,
-            rideMode,
-            tripFareMode: effectiveTripFareMode,
-            scheduledAt,
-            returnScheduledAt,
-            scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
-            passengerName: getSessionDisplayName(session.user),
-            passengerEmail: getSessionEmail(session.user),
-            passengerFareType: effectivePassengerFareType,
-            passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
-            airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
-            airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
-            flowerLeiRequested: hasAirportFlowerLei,
-            airportWelcomeSurchargeClp,
-            optionalServicesTotalClp: airportWelcomeSurchargeClp,
-            baseFareBeforeExtrasClp: selectedBaseFareAmount,
-            backendCancellationReviewRequired: pendingPassengerChargeTotalClp > 0,
-            localStorageFinancialAuthority: false,
-            walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
-            walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
-            walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
-            walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
-            walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
-            originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
-            finalFareAfterWalletBenefitClp: selectedFareAmount,
-            walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
-          } as Parameters<typeof createLocalAdminScheduledRide>[0] & Record<string, unknown>)
-        : null;
+      const pendingScheduledRide =
+        rideMode === "scheduled"
+          ? createLocalAdminScheduledRide({
+              originText: resolved.origin.text,
+              destinationText: resolved.destination.text,
+              notes: input.notes ?? null,
+              passengerNote: passengerNote || null,
+              estimatedFareClp: selectedFareAmount ?? null,
+              rideMode,
+              tripFareMode: effectiveTripFareMode,
+              scheduledAt,
+              returnScheduledAt,
+              scheduleKind: selectedRoundTripPromotion
+                ? "round_trip_promotion"
+                : "airport_pickup",
+              passengerName: getSessionDisplayName(session.user),
+              passengerEmail: getSessionEmail(session.user),
+              passengerFareType: effectivePassengerFareType,
+              passengerFareLabel: passengerFareTypeLabel(
+                effectivePassengerFareType,
+              ),
+              airportWelcomeOption:
+                rideMode === "scheduled" ? airportWelcomeOption : null,
+              airportWelcomeLabel: hasAirportFlowerLei
+                ? AIRPORT_FLOWER_LEI_LABEL
+                : "Solo recogida",
+              flowerLeiRequested: hasAirportFlowerLei,
+              airportWelcomeSurchargeClp,
+              optionalServicesTotalClp: airportWelcomeSurchargeClp,
+              baseFareBeforeExtrasClp: selectedBaseFareAmount,
+              backendCancellationReviewRequired:
+                pendingPassengerChargeTotalClp > 0,
+              localStorageFinancialAuthority: false,
+              walletBenefitRequested: selectedWalletBenefitDiscountClp > 0,
+              walletBenefitApplied: selectedWalletBenefitDiscountClp > 0,
+              walletBenefitAppliedClp: selectedWalletBenefitDiscountClp,
+              walletBenefitDiscountClp: selectedWalletBenefitDiscountClp,
+              walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
+              originalFareBeforeWalletBenefitClp:
+                selectedFareAmountBeforeWallet,
+              finalFareAfterWalletBenefitClp: selectedFareAmount,
+              walletBenefitAvailableButNotUsedClp:
+                hasAvailableWalletBenefit && useWalletBenefit === false
+                  ? availableWalletBenefitTotalClp
+                  : 0,
+            } as Parameters<typeof createLocalAdminScheduledRide>[0] &
+              Record<string, unknown>)
+          : null;
 
       if (String(activePaymentMethod) === "card" && selectedFareAmount > 0) {
         if (!createdRideId) {
@@ -8911,10 +9597,7 @@ export default function RequestRidePage(): JSX.Element {
         );
 
         if (pendingPassengerChargeTotalClp > 0) {
-          markPassengerPendingChargesAppliedToRide(
-            session.user,
-            createdRideId,
-          );
+          markPassengerPendingChargesAppliedToRide(session.user, createdRideId);
         }
 
         const pendingKlapPayment: PendingKlapPaymentRecord = {
@@ -8948,10 +9631,7 @@ export default function RequestRidePage(): JSX.Element {
       }
 
       if (pendingPassengerChargeTotalClp > 0) {
-        markPassengerPendingChargesAppliedToRide(
-          session.user,
-          createdRideId,
-        );
+        markPassengerPendingChargesAppliedToRide(session.user, createdRideId);
       }
 
       setOriginPoint(null);
@@ -8975,7 +9655,8 @@ export default function RequestRidePage(): JSX.Element {
 
       goToTripsAfterRequest(createdRideId);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Error al solicitar el viaje.";
+      const message =
+        err instanceof Error ? err.message : "Error al solicitar el viaje.";
       const normalizedMessage = message.toLowerCase();
 
       if (
@@ -8994,40 +9675,78 @@ export default function RequestRidePage(): JSX.Element {
 
       if (isPassengerRolePermissionMessage(message)) {
         if (String(activePaymentMethod) === "card") {
-          setSubmitError("Para pagar con tarjeta debes estar conectado como pasajero real en la API. Inicia sesión de nuevo y vuelve a intentar.");
+          setSubmitError(
+            "Para pagar con tarjeta debes estar conectado como pasajero real en la API. Inicia sesión de nuevo y vuelve a intentar.",
+          );
           return;
         }
 
         const localNotes: string[] = [];
         appendPassengerRideNote(localNotes, passengerNote);
 
-        localNotes.push(`Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`);
+        localNotes.push(
+          `Forma de pago seleccionada: ${getPaymentLabel(activePaymentMethod)}.`,
+        );
         if (reservationRequiresCard) {
           localNotes.push("Pago obligatorio para reservas: tarjeta/Klap.");
-          localNotes.push("Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.");
-          localNotes.push("Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000.");
-          localNotes.push("Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.");
+          localNotes.push(
+            "Gestión reserva: el administrador designa conductor 30 minutos antes del inicio del servicio.",
+          );
+          localNotes.push(
+            "Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000.",
+          );
+          localNotes.push(
+            "Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.",
+          );
         }
         if (pendingPassengerChargeTotalClp > 0) {
-          localNotes.push(`Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`);
-          localNotes.push(`Total antes de beneficio billetera incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
+          localNotes.push(
+            `Cargo pendiente anterior por cancelación/no show aplicado al próximo viaje: ${formatCLP(pendingPassengerChargeTotalClp)}.`,
+          );
+          localNotes.push(
+            `Total antes de beneficio billetera incluyendo cargo pendiente anterior: ${formatCLP(selectedFareAmountBeforeWallet)}.`,
+          );
         }
         if (selectedWalletBenefitDiscountClp > 0) {
-          localNotes.push(`Beneficio billetera usado en este viaje: ${formatCLP(selectedWalletBenefitDiscountClp)}.`);
-          localNotes.push(`Tarifa antes de beneficio billetera: ${formatCLP(selectedFareAmountBeforeWallet)}.`);
-          localNotes.push(`Total final con descuento beneficio: ${formatCLP(selectedFareAmount)}.`);
+          localNotes.push(
+            `Beneficio billetera usado en este viaje: ${formatCLP(selectedWalletBenefitDiscountClp)}.`,
+          );
+          localNotes.push(
+            `Tarifa antes de beneficio billetera: ${formatCLP(selectedFareAmountBeforeWallet)}.`,
+          );
+          localNotes.push(
+            `Total final con descuento beneficio: ${formatCLP(selectedFareAmount)}.`,
+          );
         } else if (hasAvailableWalletBenefit && useWalletBenefit === false) {
-          localNotes.push(`Beneficio billetera disponible no usado por el pasajero en este viaje: ${formatCLP(availableWalletBenefitTotalClp)}.`);
+          localNotes.push(
+            `Beneficio billetera disponible no usado por el pasajero en este viaje: ${formatCLP(availableWalletBenefitTotalClp)}.`,
+          );
         }
-        localNotes.push(`Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`);
-        localNotes.push(`Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`);
+        localNotes.push(
+          `Categoría de vehículo seleccionada: ${vehicleCategoryLabel(vehicleCategory)}.`,
+        );
+        localNotes.push(
+          `Tipo de viaje seleccionado: ${tripFareModeLabel(effectiveTripFareMode)}.`,
+        );
         if (selectedRoundTripPromotion) {
-          localNotes.push(`Experiencia con reserva seleccionada: ${selectedRoundTripPromotion.destinationName}.`);
-          localNotes.push(`Destino reservado: ${selectedRoundTripPromotion.destinationName}.`);
-          localNotes.push(`Tarifa fija base de la experiencia: ${formatCLP(selectedRoundTripPromotion.baseFareClp)} (${selectedRoundTripPromotion.usdLabel}).`);
-          localNotes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
-          localNotes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
-          localNotes.push(`Ajuste de vehículo aplicado: ${vehicleCategoryLabel(vehicleCategory)} x ${(fareRules.vehicleMultipliers[vehicleCategory] ?? 1).toFixed(2)}.`);
+          localNotes.push(
+            `Experiencia con reserva seleccionada: ${selectedRoundTripPromotion.destinationName}.`,
+          );
+          localNotes.push(
+            `Destino reservado: ${selectedRoundTripPromotion.destinationName}.`,
+          );
+          localNotes.push(
+            `Tarifa fija base de la experiencia: ${formatCLP(selectedRoundTripPromotion.baseFareClp)} (${selectedRoundTripPromotion.usdLabel}).`,
+          );
+          localNotes.push(
+            `Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`,
+          );
+          localNotes.push(
+            `Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`,
+          );
+          localNotes.push(
+            `Ajuste de vehículo aplicado: ${vehicleCategoryLabel(vehicleCategory)} x ${(fareRules.vehicleMultipliers[vehicleCategory] ?? 1).toFixed(2)}.`,
+          );
           localNotes.push(selectedRoundTripPromotion.detail);
         }
 
@@ -9042,39 +9761,79 @@ export default function RequestRidePage(): JSX.Element {
         });
 
         if (selectedRoundTripPromotion) {
-          localNotes.push("Tipo de servicio: experiencia con reserva ida y vuelta.");
+          localNotes.push(
+            "Tipo de servicio: experiencia con reserva ida y vuelta.",
+          );
           localNotes.push("RAPAGO_RESERVATION_KIND: round_trip_experience.");
-          localNotes.push(`Fecha y hora de ida reservada: ${formatScheduleDateTime(scheduledAt)}.`);
-          localNotes.push(`Fecha y hora de regreso reservada: ${formatScheduleDateTime(returnScheduledAt)}.`);
-          localNotes.push(`Destino de la experiencia: ${selectedRoundTripPromotion.destinationName}.`);
+          localNotes.push(
+            `Fecha y hora de ida reservada: ${formatScheduleDateTime(scheduledAt)}.`,
+          );
+          localNotes.push(
+            `Fecha y hora de regreso reservada: ${formatScheduleDateTime(returnScheduledAt)}.`,
+          );
+          localNotes.push(
+            `Destino de la experiencia: ${selectedRoundTripPromotion.destinationName}.`,
+          );
           localNotes.push("La ida y el regreso pertenecen a la misma reserva.");
         }
 
         if (rideMode === "scheduled") {
-          localNotes.push(`RAPAGO_SCHEDULED_AT: ${String(localScheduleFields.scheduledAt ?? "")}.`);
-          localNotes.push(`RAPAGO_ACTIVATION_AT: ${String(localScheduleFields.scheduleActivationAt ?? "")}.`);
-          localNotes.push(`Fecha y hora de recogida agendada: ${String(localScheduleFields.scheduledAt ?? "")}.`);
-          localNotes.push(`Viaje agendado para: ${formatScheduleDateTime(String(localScheduleFields.scheduledAt ?? scheduledAt))}.`);
-          localNotes.push(`La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(localScheduleFields.scheduleActivationAt ?? ""))}.`);
-          localNotes.push(`Reserva congelada para conductores hasta: ${String(localScheduleFields.scheduleActivationAt ?? "")}.`);
+          localNotes.push(
+            `RAPAGO_SCHEDULED_AT: ${String(localScheduleFields.scheduledAt ?? "")}.`,
+          );
+          localNotes.push(
+            `RAPAGO_ACTIVATION_AT: ${String(localScheduleFields.scheduleActivationAt ?? "")}.`,
+          );
+          localNotes.push(
+            `Fecha y hora de recogida agendada: ${String(localScheduleFields.scheduledAt ?? "")}.`,
+          );
+          localNotes.push(
+            `Viaje agendado para: ${formatScheduleDateTime(String(localScheduleFields.scheduledAt ?? scheduledAt))}.`,
+          );
+          localNotes.push(
+            `La solicitud se activa automáticamente ${SCHEDULE_ACTIVATION_MINUTES} minutos antes: ${formatScheduleDateTime(String(localScheduleFields.scheduleActivationAt ?? ""))}.`,
+          );
+          localNotes.push(
+            `Reserva congelada para conductores hasta: ${String(localScheduleFields.scheduleActivationAt ?? "")}.`,
+          );
           if (selectedRoundTripPromotion) {
-            localNotes.push("Tipo de reserva: experiencia ida y vuelta programada.");
-            localNotes.push(`Experiencia reservada: ${selectedRoundTripPromotion.destinationName}.`);
+            localNotes.push(
+              "Tipo de reserva: experiencia ida y vuelta programada.",
+            );
+            localNotes.push(
+              `Experiencia reservada: ${selectedRoundTripPromotion.destinationName}.`,
+            );
             localNotes.push("Recogida a elección del pasajero.");
-            localNotes.push("Gestión: administrador o asignación automática a conductor activo.");
+            localNotes.push(
+              "Gestión: administrador o asignación automática a conductor activo.",
+            );
           } else {
             localNotes.push(`Tipo de reserva: recogida aeropuerto.`);
             localNotes.push("Pago obligatorio para reservas: tarjeta/Klap.");
-            localNotes.push("Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000 y el saldo retenido restante debe liberarse por backend/Klap.");
-            localNotes.push(`Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`);
-            localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`);
-            localNotes.push(`RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`);
+            localNotes.push(
+              "Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000 y el saldo retenido restante debe liberarse por backend/Klap.",
+            );
+            localNotes.push(
+              `Origen automático aeropuerto: ${RAPA_NUI_AIRPORT_DESTINATION.text}.`,
+            );
+            localNotes.push(
+              `RAPAGO_AIRPORT_ORIGIN_LAT: ${RAPA_NUI_AIRPORT_DESTINATION.lat}.`,
+            );
+            localNotes.push(
+              `RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`,
+            );
           }
 
           if (effectiveTripFareMode === "round_trip" && returnScheduledAt) {
-            localNotes.push(`RAPAGO_RETURN_SCHEDULED_AT: ${String(localScheduleFields.returnScheduledAt ?? "")}.`);
-            localNotes.push(`Fecha y hora de regreso agendada: ${String(localScheduleFields.returnScheduledAt ?? "")}.`);
-            localNotes.push(`Regreso agendado para: ${formatScheduleDateTime(String(localScheduleFields.returnScheduledAt ?? returnScheduledAt))}.`);
+            localNotes.push(
+              `RAPAGO_RETURN_SCHEDULED_AT: ${String(localScheduleFields.returnScheduledAt ?? "")}.`,
+            );
+            localNotes.push(
+              `Fecha y hora de regreso agendada: ${String(localScheduleFields.returnScheduledAt ?? "")}.`,
+            );
+            localNotes.push(
+              `Regreso agendado para: ${formatScheduleDateTime(String(localScheduleFields.returnScheduledAt ?? returnScheduledAt))}.`,
+            );
           }
 
           if (!selectedRoundTripPromotion && flightNumber.trim()) {
@@ -9082,19 +9841,33 @@ export default function RequestRidePage(): JSX.Element {
           }
 
           if (selectedRoundTripPromotion) {
-            localNotes.push("Servicio de aeropuerto: no aplica para esta experiencia.");
+            localNotes.push(
+              "Servicio de aeropuerto: no aplica para esta experiencia.",
+            );
           } else if (airportWelcomeOption === "flower_lei") {
-            localNotes.push(`Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`);
-            localNotes.push(`Admin debe gestionar el collar de flores para la llegada del pasajero en Mataveri.`);
-            localNotes.push(`Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}.`);
-            localNotes.push(`Total final con recibimiento: ${formatCLP(selectedFareAmount)}.`);
+            localNotes.push(
+              `Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`,
+            );
+            localNotes.push(
+              `Admin debe gestionar el collar de flores para la llegada del pasajero en Mataveri.`,
+            );
+            localNotes.push(
+              `Recargo recibimiento ${AIRPORT_FLOWER_LEI_LABEL}: ${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}.`,
+            );
+            localNotes.push(
+              `Total final con recibimiento: ${formatCLP(selectedFareAmount)}.`,
+            );
           } else {
             localNotes.push("Recibimiento aeropuerto: solo recogida.");
           }
         }
 
-        localNotes.push(`Dirección origen confirmada: ${resolved.origin.address}.`);
-        localNotes.push(`Dirección destino confirmada: ${resolved.destination.address}.`);
+        localNotes.push(
+          `Dirección origen confirmada: ${resolved.origin.address}.`,
+        );
+        localNotes.push(
+          `Dirección destino confirmada: ${resolved.destination.address}.`,
+        );
 
         if (
           resolved.origin.originalLat != null &&
@@ -9114,22 +9887,43 @@ export default function RequestRidePage(): JSX.Element {
           `Coordenadas destino accesible: ${resolved.destination.lat.toFixed(6)}, ${resolved.destination.lng.toFixed(6)}.`,
         );
 
-        if (!selectedRoundTripPromotion && fareQuote && selectedFareAmount != null) {
-          if (selectedBaseFareAmount != null && airportWelcomeSurchargeClp > 0) {
-            localNotes.push(`Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`);
+        if (
+          !selectedRoundTripPromotion &&
+          fareQuote &&
+          selectedFareAmount != null
+        ) {
+          if (
+            selectedBaseFareAmount != null &&
+            airportWelcomeSurchargeClp > 0
+          ) {
+            localNotes.push(
+              `Tarifa base antes de servicios opcionales: ${formatCLP(selectedBaseFareAmount)}.`,
+            );
           }
-          localNotes.push(`Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`);
-          localNotes.push(`Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`);
+          localNotes.push(
+            `Tarifa RAPA GO calculada: ${formatCLP(selectedFareAmount)}.`,
+          );
+          localNotes.push(
+            `Tarifa estimada pasajero: ${formatCLP(selectedFareAmount)}.`,
+          );
           localNotes.push(`Distancia estimada: ${fareQuote.km.toFixed(1)} km.`);
           localNotes.push(`Duración estimada: ${fareQuote.minutes} min.`);
-          localNotes.push(`Tipo de viaje tarifario: ${tripFareModeLabel(effectiveTripFareMode)}.`);
-          localNotes.push(`Tipo de pasajero tarifario: ${passengerFareTypeLabel(fareQuote.passengerFareType)}.`);
+          localNotes.push(
+            `Tipo de viaje tarifario: ${tripFareModeLabel(effectiveTripFareMode)}.`,
+          );
+          localNotes.push(
+            `Tipo de pasajero tarifario: ${passengerFareTypeLabel(fareQuote.passengerFareType)}.`,
+          );
           if (fareQuote.tripMultiplier > 1) {
-            localNotes.push(`Ida y vuelta variable: tarifa ida ${formatCLP(fareQuote.oneWayFare)} x ${fareQuote.tripMultiplier}.`);
+            localNotes.push(
+              `Ida y vuelta variable: tarifa ida ${formatCLP(fareQuote.oneWayFare)} x ${fareQuote.tripMultiplier}.`,
+            );
           }
 
           if (selectedDriverEarning != null) {
-            localNotes.push(`Ganancia estimada conductor: ${formatCLP(selectedDriverEarning)}.`);
+            localNotes.push(
+              `Ganancia estimada conductor: ${formatCLP(selectedDriverEarning)}.`,
+            );
           }
         }
 
@@ -9144,13 +9938,20 @@ export default function RequestRidePage(): JSX.Element {
             tripFareMode: effectiveTripFareMode,
             scheduledAt,
             returnScheduledAt,
-            scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
+            scheduleKind: selectedRoundTripPromotion
+              ? "round_trip_promotion"
+              : "airport_pickup",
             passengerName: getSessionDisplayName(session.user),
             passengerEmail: getSessionEmail(session.user),
             passengerFareType: effectivePassengerFareType,
-            passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
-            airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
-            airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
+            passengerFareLabel: passengerFareTypeLabel(
+              effectivePassengerFareType,
+            ),
+            airportWelcomeOption:
+              rideMode === "scheduled" ? airportWelcomeOption : null,
+            airportWelcomeLabel: hasAirportFlowerLei
+              ? AIRPORT_FLOWER_LEI_LABEL
+              : "Solo recogida",
             flowerLeiRequested: hasAirportFlowerLei,
             airportWelcomeSurchargeClp,
             optionalServicesTotalClp: airportWelcomeSurchargeClp,
@@ -9165,14 +9966,21 @@ export default function RequestRidePage(): JSX.Element {
           walletBenefitOriginalFareClp: selectedFareAmountBeforeWallet,
           originalFareBeforeWalletBenefitClp: selectedFareAmountBeforeWallet,
           finalFareAfterWalletBenefitClp: selectedFareAmount,
-          walletBenefitAvailableButNotUsedClp: hasAvailableWalletBenefit && useWalletBenefit === false ? availableWalletBenefitTotalClp : 0,
+          walletBenefitAvailableButNotUsedClp:
+            hasAvailableWalletBenefit && useWalletBenefit === false
+              ? availableWalletBenefitTotalClp
+              : 0,
           tripFareMode: effectiveTripFareMode,
           tripType: effectiveTripFareMode,
           isRoundTrip: effectiveTripFareMode === "round_trip",
           roundTripPromotionBooking: Boolean(selectedRoundTripPromotion),
           roundTripOutboundNow: false,
-          roundTripReturnPickupRequested: Boolean(selectedRoundTripPromotion && returnScheduledAt),
-          roundTripReturnPickupAt: selectedRoundTripPromotion ? returnScheduledAt : null,
+          roundTripReturnPickupRequested: Boolean(
+            selectedRoundTripPromotion && returnScheduledAt,
+          ),
+          roundTripReturnPickupAt: selectedRoundTripPromotion
+            ? returnScheduledAt
+            : null,
           airportReservationRequiresCard: isAirportScheduledRide,
           reservationRequiresCard: reservationRequiresCard,
           paymentRequiredProvider: reservationRequiresCard ? "klap" : null,
@@ -9181,10 +9989,7 @@ export default function RequestRidePage(): JSX.Element {
           cardCancellationCreditName: null,
         } as LocalPassengerRideData;
 
-        saveLocalPassengerRides([
-          localRide,
-          ...readLocalPassengerRides(),
-        ]);
+        saveLocalPassengerRides([localRide, ...readLocalPassengerRides()]);
 
         if (pendingPassengerChargeTotalClp > 0) {
           markPassengerPendingChargesAppliedToRide(
@@ -9207,28 +10012,37 @@ export default function RequestRidePage(): JSX.Element {
         }
 
         if (rideMode === "scheduled") {
-          upsertLocalAdminScheduledRide(createLocalAdminScheduledRide({
-            originText: resolved.origin.text,
-            destinationText: resolved.destination.text,
-            notes: limitRideNotes(localNotes.join(" ")),
-            passengerNote: passengerNote || null,
-            estimatedFareClp: selectedFareAmount ?? null,
-            rideMode,
-            tripFareMode: effectiveTripFareMode,
-            scheduledAt,
-            returnScheduledAt,
-            scheduleKind: selectedRoundTripPromotion ? "round_trip_promotion" : "airport_pickup",
-            passengerName: getSessionDisplayName(session.user),
-            passengerEmail: getSessionEmail(session.user),
-            passengerFareType: effectivePassengerFareType,
-            passengerFareLabel: passengerFareTypeLabel(effectivePassengerFareType),
-            airportWelcomeOption: rideMode === "scheduled" ? airportWelcomeOption : null,
-            airportWelcomeLabel: hasAirportFlowerLei ? AIRPORT_FLOWER_LEI_LABEL : "Solo recogida",
-            flowerLeiRequested: hasAirportFlowerLei,
-            airportWelcomeSurchargeClp,
-            optionalServicesTotalClp: airportWelcomeSurchargeClp,
-            baseFareBeforeExtrasClp: selectedBaseFareAmount,
-          }));
+          upsertLocalAdminScheduledRide(
+            createLocalAdminScheduledRide({
+              originText: resolved.origin.text,
+              destinationText: resolved.destination.text,
+              notes: limitRideNotes(localNotes.join(" ")),
+              passengerNote: passengerNote || null,
+              estimatedFareClp: selectedFareAmount ?? null,
+              rideMode,
+              tripFareMode: effectiveTripFareMode,
+              scheduledAt,
+              returnScheduledAt,
+              scheduleKind: selectedRoundTripPromotion
+                ? "round_trip_promotion"
+                : "airport_pickup",
+              passengerName: getSessionDisplayName(session.user),
+              passengerEmail: getSessionEmail(session.user),
+              passengerFareType: effectivePassengerFareType,
+              passengerFareLabel: passengerFareTypeLabel(
+                effectivePassengerFareType,
+              ),
+              airportWelcomeOption:
+                rideMode === "scheduled" ? airportWelcomeOption : null,
+              airportWelcomeLabel: hasAirportFlowerLei
+                ? AIRPORT_FLOWER_LEI_LABEL
+                : "Solo recogida",
+              flowerLeiRequested: hasAirportFlowerLei,
+              airportWelcomeSurchargeClp,
+              optionalServicesTotalClp: airportWelcomeSurchargeClp,
+              baseFareBeforeExtrasClp: selectedBaseFareAmount,
+            }),
+          );
         }
 
         setOriginPoint(null);
@@ -9260,42 +10074,39 @@ export default function RequestRidePage(): JSX.Element {
     }
   }
 
-  const canRequest = ((!!originPoint || !!originInput.trim()) &&
+  const canRequest =
+    (!!originPoint || !!originInput.trim()) &&
     (!!destinationPoint || !!destInput.trim()) &&
-    (
-      rideMode === "now" ||
-      (!!scheduledAt && (!requireReturnScheduledAt || !!returnScheduledAt))
-    ) &&
-    !submitting) && paymentMethod !== null;
+    (rideMode === "now" ||
+      (!!scheduledAt && (!requireReturnScheduledAt || !!returnScheduledAt))) &&
+    !submitting &&
+    paymentMethod !== null;
 
-  const mapOrigin = useMemo(
-    () => {
-      if (isAirportScheduledRide) {
-        return {
-          text: RAPA_NUI_AIRPORT_DESTINATION.text,
-          lat: RAPA_NUI_AIRPORT_DESTINATION.lat,
-          lng: RAPA_NUI_AIRPORT_DESTINATION.lng,
-          placeId: RAPA_NUI_AIRPORT_DESTINATION.placeId ?? null,
-          originalLat: null,
-          originalLng: null,
-          walkMeters: 0,
-          isAccessiblePickup: false,
-        };
-      }
-
+  const mapOrigin = useMemo(() => {
+    if (isAirportScheduledRide) {
       return {
-        text: originPoint?.text ?? originInput.trim() ?? "Origen",
-        lat: originPoint?.lat ?? null,
-        lng: originPoint?.lng ?? null,
-        placeId: originPoint?.placeId ?? null,
-        originalLat: originPoint?.originalLat ?? null,
-        originalLng: originPoint?.originalLng ?? null,
-        walkMeters: originPoint?.walkMeters ?? null,
-        isAccessiblePickup: originPoint?.isAccessiblePickup ?? null,
+        text: RAPA_NUI_AIRPORT_DESTINATION.text,
+        lat: RAPA_NUI_AIRPORT_DESTINATION.lat,
+        lng: RAPA_NUI_AIRPORT_DESTINATION.lng,
+        placeId: RAPA_NUI_AIRPORT_DESTINATION.placeId ?? null,
+        originalLat: null,
+        originalLng: null,
+        walkMeters: 0,
+        isAccessiblePickup: false,
       };
-    },
-    [isAirportScheduledRide, originInput, originPoint],
-  );
+    }
+
+    return {
+      text: originPoint?.text ?? originInput.trim() ?? "Origen",
+      lat: originPoint?.lat ?? null,
+      lng: originPoint?.lng ?? null,
+      placeId: originPoint?.placeId ?? null,
+      originalLat: originPoint?.originalLat ?? null,
+      originalLng: originPoint?.originalLng ?? null,
+      walkMeters: originPoint?.walkMeters ?? null,
+      isAccessiblePickup: originPoint?.isAccessiblePickup ?? null,
+    };
+  }, [isAirportScheduledRide, originInput, originPoint]);
 
   const mapDestination = useMemo(
     () => ({
@@ -9321,1862 +10132,1872 @@ export default function RequestRidePage(): JSX.Element {
     new Date(Date.now() + SCHEDULE_MAX_DAYS * 24 * 60 * 60_000),
   );
 
-return (
+  return (
     <IonPage
       className="rapago-section-page rapago-request-page"
-      data-rapago-theme={theme}
-    >
+      data-rapago-theme={theme}>
       <RapagoSectionHeader
         title="Solicitar Viaje"
         onBack={() => history.replace(ROUTES.PASSENGER.HOME)}
         backLabel="Volver al inicio"
       />
 
-      <IonContent fullscreen style={{ "--background": "transparent" } as CSSProperties}>
-        <div className="rp-request-scroll">
+      {/* SIN `fullscreen` a propósito.
+
+          Con `fullscreen`, ion-content abarca TODA la página —incluido el área
+          que hay debajo del header— y Ionic lo compensa metiendo un padding
+          variable (--offset-top / --offset-bottom) dentro de su shadow DOM. Es
+          decir: la altura del contenedor y la altura realmente utilizable
+          dejaban de coincidir, y esa diferencia es la franja por la que
+          asomaba el fondo de la página.
+
+          Sin `fullscreen`, ion-content ocupa exactamente el hueco que queda
+          tras el header, los offsets valen 0 y la columna interior puede
+          repartir el alto sin compensar nada. */}
+      <IonContent
+        className="rp-request-main-content"
+        style={{ "--background": "transparent" } as CSSProperties}>
+        <div
+          ref={requestShellRef}
+          className={`rp-request-uber-shell${
+            requestSheetDragging ? " is-dragging" : ""
+          }`}
+          /* Desplazamiento en px de la hoja respecto a su tope superior. El CSS
+             lo aplica como translateY sobre el overlay, sin tocar el layout del
+             mapa. Mientras no hay medida usa el translateY de respaldo del CSS. */
+          style={
+            {
+              "--rq-sheet-shift":
+                sheetShift != null ? `${sheetShift}px` : undefined,
+            } as CSSProperties
+          }>
           <div
-            style={{
-              margin: "14px 16px 12px",
-              padding: "14px",
-              borderRadius: 22,
-              background: "var(--rp-surface)",
-              border: "1.5px solid rgba(210,164,58,.38)",
-              boxShadow: "var(--rp-shadow)",
-            }}
-          >
-            <div style={{ fontWeight: 950, fontSize: "1rem", marginBottom: 3 }}>
-              Primero elige cuándo quieres viajar
-            </div>
-            <div style={{ color: "var(--rp-muted)", fontSize: ".78rem", fontWeight: 800, marginBottom: 12 }}>
-              Después podrás seleccionar el origen y el destino.
-            </div>
-            <div style={sectionLabelStyle()}>Cuándo viajas</div>
-
-            <div
-              role="tablist"
-              aria-label="Cuándo viajas"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: "8px",
-                marginBottom: "18px",
+            className="rp-request-main-map"
+            aria-label="Mapa del viaje solicitado">
+            <MapFallback
+              origin={mapOrigin}
+              destination={mapDestination}
+              height={320}
+              showRoute
+              originDraggable={canChooseOrigin}
+              onOriginChange={(payload) => {
+                void applyMovedOriginFromMap(payload);
               }}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={rideMode === "now"}
-                onClick={selectRideModeNow}
-                style={{
-                  minHeight: "48px",
-                  padding: "12px",
-                  borderRadius: "14px",
-                  background:
-                    rideMode === "now"
-                      ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
-                      : "linear-gradient(180deg,#FFFDF7 0%,#F2E5C9 100%)",
-                  color: "#111111",
-                  border:
-                    rideMode === "now"
-                      ? "2px solid #B98517"
-                      : "1.5px solid rgba(138,100,28,.42)",
-                  boxShadow:
-                    rideMode === "now"
-                      ? "0 10px 22px rgba(210,164,58,.28)"
-                      : "0 6px 14px rgba(17,24,39,.08)",
-                  fontWeight: 950,
-                  letterSpacing: ".03em",
-                  textShadow: "none",
-                  opacity: 1,
-                }}
-              >
-                AHORA
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={rideMode === "scheduled"}
-                onClick={selectRideModeScheduled}
-                style={{
-                  minHeight: "48px",
-                  padding: "12px",
-                  borderRadius: "14px",
-                  background:
-                    rideMode === "scheduled"
-                      ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
-                      : "linear-gradient(180deg,#FFFDF7 0%,#F2E5C9 100%)",
-                  color: "#111111",
-                  border:
-                    rideMode === "scheduled"
-                      ? "2px solid #B98517"
-                      : "1.5px solid rgba(138,100,28,.42)",
-                  boxShadow:
-                    rideMode === "scheduled"
-                      ? "0 10px 22px rgba(210,164,58,.28)"
-                      : "0 6px 14px rgba(17,24,39,.08)",
-                  fontWeight: 950,
-                  letterSpacing: ".03em",
-                  textShadow: "none",
-                  opacity: 1,
-                }}
-              >
-                RESERVAR
-              </button>
-            </div>
-
+            />
           </div>
 
-          <div
-            style={{
-              padding: "18px 16px 20px",
-              borderTop: "1px solid rgba(210,164,58,.18)",
-            }}
-          >
-            <div style={sectionLabelStyle()}>Origen</div>
-
-            <button
-              type="button"
-              aria-label={
-                canChooseOrigin
-                  ? "Abrir búsqueda y mapa para elegir el origen"
-                  : "Origen fijo en Aeropuerto Internacional Mataveri"
-              }
-              disabled={!canChooseOrigin}
-              onClick={() => {
-                if (!canChooseOrigin || suppressPickerOpenRef.current) return;
-                setPickerAutoFocusSearch(true);
-                setPickerTarget("origin");
-              }}
-              style={{
-                width: "100%",
-                minHeight: "58px",
-                marginBottom: "12px",
-                padding: "0 14px",
-                display: "grid",
-                gridTemplateColumns: "30px minmax(0,1fr) 30px",
-                alignItems: "center",
-                gap: "8px",
-                borderRadius: "var(--rp-radius-sm)",
-                border: "var(--rp-border-w) solid var(--rp-border-c)",
-                background: "var(--rp-field-bg)",
-                color: "var(--rp-field-fg)",
-                boxShadow: "var(--rp-shadow)",
-                cursor: canChooseOrigin ? "pointer" : "default",
-                opacity: canChooseOrigin ? 1 : 0.82,
-                textAlign: "left",
-              }}
-            >
-              <IonIcon
-                icon={locationOutline}
-                aria-hidden="true"
-                style={{ fontSize: "1.25rem", color: "var(--rp-accent)" }}
-              />
-
-              <span style={{ minWidth: 0, display: "grid", gap: "1px" }}>
-                <small
-                  style={{
-                    fontSize: ".6rem",
-                    fontWeight: 800,
-                    letterSpacing: ".05em",
-                    textTransform: "uppercase",
-                    opacity: 0.62,
-                  }}
-                >
-                  {!canChooseOrigin
-                    ? "Origen fijo"
-                    : originPoint
-                      ? "Confirmado \u00B7 toca para cambiar"
-                      : "Toca para buscar"}
-                </small>
-                <span
-                  style={{
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    fontSize: ".92rem",
-                    fontWeight: 850,
-                    opacity: originInput.trim() ? 1 : 0.55,
-                  }}
-                >
-                  {originInput.trim() || "Buscar direcci\u00F3n de origen"}
-                </span>
-              </span>
-
-              {searchingOrigin ? (
-                <IonSpinner name="dots" />
-              ) : (
-                <IonIcon
-                  icon={originPoint ? checkmarkCircleOutline : searchOutline}
-                  aria-hidden="true"
-                  style={{
-                    fontSize: "1.1rem",
-                    color: originPoint
-                      ? "var(--rp-ok-fg, #146b45)"
-                      : "var(--rp-accent)",
-                  }}
-                />
-              )}
-            </button>
-
-            {originPoint?.walkMeters != null && originPoint.walkMeters > 8 && (
-              <div
-                className="rp-request-note"
-                style={{
-                  margin: "-6px 0 14px",
-                  padding: "10px 12px",
-                  fontSize: ".78rem",
-                  lineHeight: 1.35,
-                }}
-              >
-                <strong>Punto accesible recomendado:</strong>{" "}
-                el conductor te recoge en {originPoint.text}. Camina aprox.{" "}
-                {originPoint.walkMeters} m hasta la calle. En el mapa verás tu punto real
-                en azul y la recogida accesible como 🚗.
-              </div>
-            )}
-
-            {!canChooseOrigin ? (
-              <div style={{ margin: "-4px 0 22px", color: "var(--rp-accent)", fontSize: ".78rem", fontWeight: 900, lineHeight: 1.35, display: "flex", alignItems: "center", gap: 5 }}>
-              <IonIcon icon={airplaneOutline} style={{ fontSize: "1rem", flexShrink: 0 }} /> Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el destino.
-              </div>
-            ) : originPoint ? null : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2,minmax(0,1fr))",
-                  gap: "10px",
-                  margin: "0 0 22px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (suppressPickerOpenRef.current) return;
-                    setPickerAutoFocusSearch(false);
-                    setPickerTarget("origin");
-                  }}
-                  style={{
-                    minHeight: "66px",
-                    padding: "10px 8px",
-                    borderRadius: "16px",
-                    border: "1.5px solid var(--rp-border-c)",
-                    background: "var(--rp-surface)",
-                    color: "var(--rp-field-fg)",
-                    boxShadow: "var(--rp-shadow)",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "5px",
-                    fontWeight: 900,
-                  }}
-                >
-                  <IonIcon
-                    icon={navigateOutline}
-                    aria-hidden="true"
-                    style={{ fontSize: "1.25rem", color: "var(--rp-accent)" }}
-                  />
-                  <span style={{ fontSize: ".78rem", lineHeight: 1.15 }}>
-                    Elegir en mapa
-                  </span>
-                  <small style={{ fontSize: ".62rem", opacity: 0.72 }}>
-                    Buscar o mover punto
-                  </small>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleUseCurrentLocation}
-                  disabled={locating}
-                  style={{
-                    minHeight: "66px",
-                    padding: "10px 8px",
-                    borderRadius: "16px",
-                    border: "1.5px solid #B98517",
-                    background:
-                      "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)",
-                    color: "#111111",
-                    boxShadow: "0 10px 20px rgba(210,164,58,.25)",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "5px",
-                    fontWeight: 950,
-                    opacity: locating ? 0.72 : 1,
-                  }}
-                >
-                  {locating ? (
-                    <IonSpinner name="dots" />
-                  ) : (
-                    <>
-                      <IonIcon
-                        icon={locateOutline}
-                        aria-hidden="true"
-                        style={{ fontSize: "1.25rem" }}
-                      />
-                      <span style={{ fontSize: ".78rem", lineHeight: 1.15 }}>
-                        Mi ubicación
-                      </span>
-                      <small style={{ fontSize: ".62rem", opacity: 0.72 }}>
-                        Detectar con GPS
-                      </small>
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-
-            <div style={sectionLabelStyle()}>Destino</div>
-
-            <button
-              type="button"
-              aria-label={
-                selectedRoundTripPromotion
-                  ? `Destino fijo: ${selectedRoundTripPromotion.destinationName}`
-                  : "Abrir búsqueda y mapa para elegir el destino"
-              }
-              disabled={Boolean(selectedRoundTripPromotion)}
-              onClick={() => {
-                if (selectedRoundTripPromotion || suppressPickerOpenRef.current) return;
-                setPickerAutoFocusSearch(true);
-                setPickerTarget("destination");
-              }}
-              style={{
-                width: "100%",
-                minHeight: "58px",
-                marginBottom: "12px",
-                padding: "0 14px",
-                display: "grid",
-                gridTemplateColumns: "30px minmax(0,1fr) 30px",
-                alignItems: "center",
-                gap: "8px",
-                borderRadius: "var(--rp-radius-sm)",
-                border: "var(--rp-border-w) solid var(--rp-border-c)",
-                background: "var(--rp-field-bg)",
-                color: "var(--rp-field-fg)",
-                boxShadow: "var(--rp-shadow)",
-                cursor: selectedRoundTripPromotion ? "default" : "pointer",
-                opacity: selectedRoundTripPromotion ? 0.82 : 1,
-                textAlign: "left",
-              }}
-            >
-              <IonIcon
-                icon={flagOutline}
-                aria-hidden="true"
-                style={{ fontSize: "1.2rem", color: "var(--rp-danger-fg)" }}
-              />
-
-              <span style={{ minWidth: 0, display: "grid", gap: "1px" }}>
-                <small
-                  style={{
-                    fontSize: ".6rem",
-                    fontWeight: 800,
-                    letterSpacing: ".05em",
-                    textTransform: "uppercase",
-                    opacity: 0.62,
-                  }}
-                >
-                  {selectedRoundTripPromotion
-                    ? "Destino fijo"
-                    : destinationPoint
-                      ? "Confirmado \u00B7 toca para cambiar"
-                      : "Toca para buscar"}
-                </small>
-                <span
-                  style={{
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    fontSize: ".92rem",
-                    fontWeight: 850,
-                    opacity: destInput.trim() ? 1 : 0.55,
-                  }}
-                >
-                  {destInput.trim() || "Buscar direcci\u00F3n de destino"}
-                </span>
-              </span>
-
-              {searchingDest ? (
-                <IonSpinner name="dots" />
-              ) : (
-                <IonIcon
-                  icon={destinationPoint ? checkmarkCircleOutline : searchOutline}
-                  aria-hidden="true"
-                  style={{
-                    fontSize: "1.1rem",
-                    color: destinationPoint
-                      ? "var(--rp-ok-fg, #146b45)"
-                      : "var(--rp-danger-fg)",
-                  }}
-                />
-              )}
-            </button>
-
-            {!destinationPoint && (
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedRoundTripPromotion || suppressPickerOpenRef.current) return;
-                setPickerAutoFocusSearch(false);
-                setPickerTarget("destination");
-              }}
-              disabled={Boolean(selectedRoundTripPromotion)}
-              style={{
-                width: "100%",
-                minHeight: "66px",
-                margin: "0 0 22px",
-                padding: "10px 14px",
-                borderRadius: "16px",
-                border: "1.5px solid var(--rp-border-c)",
-                background: "var(--rp-surface)",
-                color: "var(--rp-field-fg)",
-                boxShadow: "var(--rp-shadow)",
-                display: "grid",
-                gridTemplateColumns: "34px minmax(0,1fr)",
-                alignItems: "center",
-                gap: "10px",
-                textAlign: "left",
-                fontWeight: 900,
-                opacity: selectedRoundTripPromotion ? 0.72 : 1,
-              }}
-            >
-              <IonIcon
-                icon={flagOutline}
-                aria-hidden="true"
-                style={{ fontSize: "1.3rem", color: "var(--rp-danger-fg)" }}
-              />
-              <span>
-                <strong style={{ display: "block", fontSize: ".82rem" }}>
-                  {selectedRoundTripPromotion
-                    ? `Destino fijo: ${selectedRoundTripPromotion.destinationName}`
-                    : rideMode === "scheduled"
-                      ? "Elegir destino desde el aeropuerto"
-                      : "Elegir destino"}
-                </strong>
-                {!selectedRoundTripPromotion && (
-                  <small
-                    style={{
-                      display: "block",
-                      marginTop: "3px",
-                      fontSize: ".65rem",
-                      opacity: 0.7,
-                    }}
-                  >
-                    Buscar un lugar o marcarlo directamente en el mapa
-                  </small>
-                )}
-              </span>
-            </button>
-            )}
-
-            {/* El mapa vive debajo de ORIGEN y DESTINO para que el formulario
-                sea lo primero que encuentra el pasajero. Se mantiene a sangre
-                completa con margen negativo: mismo alto y mismo comportamiento
-                que antes, solo cambia su posicion en el orden de lectura. */}
+          {/* Sin padding inline: el del CSS reserva además la altura del dock
+              fijo, y un padding aquí lo pisaba y dejaba la última tarjeta
+              debajo del botón. */}
+          <div className="rp-request-bottom-sheet">
+            {/* Cabecera fija y zona de arrastre, igual que la de "Confirmar
+                recogida": los manejadores del puntero van en TODA la cabecera,
+                no solo en la barrita, así que se puede agarrar en cualquier
+                punto para subir y bajar la ventana. El asa es solo la señal
+                visual de que se puede arrastrar. */}
             <div
-              style={{
-                margin: "2px -16px 22px",
-                borderTop: "1px solid rgba(210,164,58,.18)",
-                borderBottom: "1px solid rgba(210,164,58,.18)",
-              }}
-            >
-              <MapFallback
-                origin={mapOrigin}
-                destination={mapDestination}
-                height={320}
-                showRoute
-                originDraggable={canChooseOrigin}
-                onOriginChange={(payload) => {
-                  void applyMovedOriginFromMap(payload);
-                }}
-              />
-            </div>
-
-
-            {rideMode === "now" && (
-              <>
-            <div style={sectionLabelStyle()}>Tipo de viaje opcional</div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr",
-                gap: "8px",
-                marginBottom: "18px",
-              }}
-            >
+              ref={requestSheetHeadRef}
+              className="rq-sheet-head"
+              onPointerDown={handleRequestGripPointerDown}
+              onPointerMove={handleRequestGripPointerMove}
+              onPointerUp={handleRequestGripPointerUp}
+              onPointerCancel={handleRequestGripPointerUp}>
               <button
                 type="button"
-                aria-pressed={!selectedRoundTripPromotion}
-                onClick={() => {
-                  clearRoundTripPromotion();
-                }}
-                style={{
-                  border: !selectedRoundTripPromotion
-                    ? "2.5px solid #F8D879"
-                    : "1.5px solid rgba(210,164,58,.28)",
-                  borderRadius: "16px",
-                  minHeight: "72px",
-                  padding: "10px 12px",
-                  background: !selectedRoundTripPromotion
-                    ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
-                    : "linear-gradient(135deg,#242424 0%,#171717 100%)",
-                  color: !selectedRoundTripPromotion ? "#111111" : "#F6F2EC",
-                  boxShadow: !selectedRoundTripPromotion
-                    ? "0 12px 24px rgba(210,164,58,.28)"
-                    : "0 8px 16px rgba(0,0,0,.18)",
-                  fontWeight: 950,
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>
-                  <IonIcon icon={arrowForwardOutline} />
-                </div>
-                <div style={{ marginTop: 6, fontSize: ".86rem", lineHeight: 1.15 }}>
-                  Solo ida
-                </div>
-                <div
-                  style={{
-                    marginTop: 4,
-                    fontSize: ".68rem",
-                    lineHeight: 1.18,
-                    opacity: !selectedRoundTripPromotion ? 0.82 : 0.62,
-                    fontWeight: 800,
-                  }}
-                >
-                  Viaje inmediato para moverte ahora por Rapa Nui.
-                </div>
+                className="rq-grip"
+                aria-expanded={
+                  sheetShift != null && sheetShift < sheetMaxShift * 0.5
+                }
+                aria-label={
+                  sheetShift != null && sheetShift > sheetMaxShift * 0.5
+                    ? "Mostrar el formulario del viaje. También puedes arrastrar esta barra."
+                    : "Plegar el formulario y ver el mapa completo. También puedes arrastrar esta barra."
+                }
+                onKeyDown={handleRequestGripKeyDown}>
+                <span className="rq-grip__bar" aria-hidden="true" />
               </button>
+
+              {/* El selector "cuándo" vive DENTRO de la hoja, no flotando sobre
+                  el mapa: allí tapaba parte del mapa justo cuando el pasajero
+                  lo agranda para ubicarse. */}
+              <div
+                className="rq-seg"
+                role="tablist"
+                aria-label="Cuándo quieres viajar">
+                <button
+                  type="button"
+                  role="tab"
+                  className="rq-seg__option"
+                  aria-selected={rideMode === "now"}
+                  onPointerDown={stopSheetDragPropagation}
+                  onPointerUp={stopSheetDragPropagation}
+                  onClick={selectRideModeNow}>
+                  <IonIcon icon={flashOutline} aria-hidden="true" />
+                  AHORA
+                </button>
+
+                <button
+                  type="button"
+                  role="tab"
+                  className="rq-seg__option"
+                  aria-selected={rideMode === "scheduled"}
+                  onPointerDown={stopSheetDragPropagation}
+                  onPointerUp={stopSheetDragPropagation}
+                  onClick={selectRideModeScheduled}>
+                  <IonIcon icon={calendarOutline} aria-hidden="true" />
+                  RESERVAR
+                </button>
+              </div>
             </div>
 
-              </>
-            )}
+            {/* Cuerpo desplazable. Es el ÚNICO elemento con scroll de la hoja:
+                el asa y AHORA/RESERVAR quedan fuera de él, así que no se
+                mueven al desplazar y arrastrar el asa nunca se confunde con un
+                scroll. Antes la cabecera iba con position:sticky dentro del
+                propio scroll, que es más frágil: cualquier ancestro con
+                overflow o transform la despega. */}
+            <div className="rq-sheet-body">
+              <div className="rp-request-route-eyebrow rq-eyebrow">Tu ruta</div>
 
-            <div style={sectionLabelStyle()}>Vehículo</div>
+              {/* Origen y destino viven en un mismo bloque "riel": punto, línea
+                punteada y cuadrado, como en cualquier app de movilidad. Antes
+                eran dos tarjetas sueltas separadas por notas y por dos botones
+                de 66px, así que no se leían como los dos extremos de un mismo
+                viaje. data-state permite al CSS distinguir vacío de confirmado
+                sin depender solo del color. */}
+              <div className="rq-route">
+                <button
+                  type="button"
+                  className="rp-request-place-row rp-request-place-row--origin rq-place"
+                  data-state={originPoint ? "set" : "empty"}
+                  aria-label={
+                    canChooseOrigin
+                      ? "Abrir búsqueda y mapa para elegir el origen"
+                      : "Origen fijo en Aeropuerto Internacional Mataveri"
+                  }
+                  disabled={!canChooseOrigin}
+                  onClick={() => {
+                    if (!canChooseOrigin || suppressPickerOpenRef.current)
+                      return;
+                    setPickerAutoFocusSearch(true);
+                    setPickerTarget("origin");
+                  }}>
+                  <span className="rq-place__marker" aria-hidden="true" />
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                gap: "8px",
-                marginBottom: "18px",
-              }}
-            >
-              {(["standard", "xl", "luggage"] as VehicleCategory[]).map((category) => {
-                const active = vehicleCategory === category;
+                  <span className="rq-place__copy">
+                    <small className="rq-place__label">
+                      {!canChooseOrigin
+                        ? "Origen fijo"
+                        : originPoint
+                          ? "Confirmado \u00B7 toca para cambiar"
+                          : "Toca para buscar"}
+                    </small>
+                    <span className="rq-place__value">
+                      {originInput.trim() || "Buscar direcci\u00F3n de origen"}
+                    </span>
+                  </span>
 
-                return (
-                  <button
-                    key={category}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => {
-                      setVehicleCategory(category);
-                      setSubmitError(null);
-                    }}
-                    style={{
-                      border: active
-                        ? "2.5px solid #F8D879"
-                        : "1.5px solid rgba(210,164,58,.28)",
-                      borderRadius: "16px",
-                      minHeight: "86px",
-                      padding: "10px 8px",
-                      background: active
-                        ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
-                        : "linear-gradient(135deg,#242424 0%,#171717 100%)",
-                      color: active ? "#111111" : "#F6F2EC",
-                      boxShadow: active
-                        ? "0 12px 24px rgba(210,164,58,.28)"
-                        : "0 8px 16px rgba(0,0,0,.18)",
-                      fontWeight: 950,
-                      textAlign: "center",
-                    }}
-                  >
-                    <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>
-                      <IonIcon icon={vehicleCategoryIcon(category)} />
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: ".76rem", lineHeight: 1.15 }}>
-                      {vehicleCategoryTitle(category)}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontSize: ".64rem",
-                        lineHeight: 1.18,
-                        opacity: active ? 0.82 : 0.62,
-                        fontWeight: 800,
+                  <span className="rq-place__action" aria-hidden="true">
+                    {searchingOrigin ? (
+                      <IonSpinner name="dots" />
+                    ) : (
+                      <IonIcon
+                        icon={
+                          originPoint ? checkmarkCircleOutline : searchOutline
+                        }
+                      />
+                    )}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className="rp-request-place-row rp-request-place-row--destination rq-place"
+                  data-state={destinationPoint ? "set" : "empty"}
+                  aria-label={
+                    selectedRoundTripPromotion
+                      ? `Destino fijo: ${selectedRoundTripPromotion.destinationName}`
+                      : "Abrir búsqueda y mapa para elegir el destino"
+                  }
+                  disabled={Boolean(selectedRoundTripPromotion)}
+                  onClick={() => {
+                    if (
+                      selectedRoundTripPromotion ||
+                      suppressPickerOpenRef.current
+                    )
+                      return;
+                    setPickerAutoFocusSearch(true);
+                    setPickerTarget("destination");
+                  }}>
+                  <span className="rq-place__marker" aria-hidden="true" />
+
+                  <span className="rq-place__copy">
+                    <small className="rq-place__label">
+                      {selectedRoundTripPromotion
+                        ? "Destino fijo"
+                        : destinationPoint
+                          ? "Confirmado \u00B7 toca para cambiar"
+                          : "Toca para buscar"}
+                    </small>
+                    <span className="rq-place__value">
+                      {destInput.trim() || "Buscar direcci\u00F3n de destino"}
+                    </span>
+                  </span>
+
+                  <span className="rq-place__action" aria-hidden="true">
+                    {searchingDest ? (
+                      <IonSpinner name="dots" />
+                    ) : (
+                      <IonIcon
+                        icon={
+                          destinationPoint
+                            ? checkmarkCircleOutline
+                            : searchOutline
+                        }
+                      />
+                    )}
+                  </span>
+                </button>
+              </div>
+
+              {/* Los atajos van DESPUÉS del riel, no intercalados entre origen y
+                destino, que es lo que antes rompía la lectura de la ruta. Y
+                son píldoras de 40px en vez de dos tarjetas de 66px: hacen lo
+                mismo que tocar la fila, así que no deben competir con ella. */}
+              {(canChooseOrigin && !originPoint) || !destinationPoint ? (
+                <div className="rq-quick">
+                  {canChooseOrigin && !originPoint && (
+                    <>
+                      <button
+                        type="button"
+                        className="rq-quick__btn"
+                        onClick={() => {
+                          if (suppressPickerOpenRef.current) return;
+                          setPickerAutoFocusSearch(false);
+                          setPickerTarget("origin");
+                        }}>
+                        <IonIcon icon={navigateOutline} aria-hidden="true" />
+                        Elegir en mapa
+                      </button>
+
+                      <button
+                        type="button"
+                        className="rq-quick__btn rq-quick__btn--primary"
+                        onClick={handleUseCurrentLocation}
+                        disabled={locating}
+                        aria-label="Mi ubicación · Detectar con GPS">
+                        {locating ? (
+                          <IonSpinner name="dots" />
+                        ) : (
+                          <>
+                            <IonIcon icon={locateOutline} aria-hidden="true" />
+                            Mi ubicación
+                          </>
+                        )}
+                      </button>
+                    </>
+                  )}
+
+                  {!destinationPoint && (
+                    <button
+                      type="button"
+                      className="rq-quick__btn"
+                      onClick={() => {
+                        if (
+                          selectedRoundTripPromotion ||
+                          suppressPickerOpenRef.current
+                        )
+                          return;
+                        setPickerAutoFocusSearch(false);
+                        setPickerTarget("destination");
                       }}
-                    >
-                      {vehicleCategoryDescription(category)}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {rideMode === "scheduled" && (
-              <>
-            <div style={sectionLabelStyle()}>Experiencias con reserva</div>
-
-            <div
-              style={{
-                margin: "0 0 18px",
-                border: "1.5px solid rgba(248,216,121,.32)",
-                borderRadius: "24px",
-                background:
-                  "radial-gradient(circle at top left, rgba(248,216,121,.20), transparent 34%), linear-gradient(145deg,#191919 0%,#0d0d0d 72%)",
-                padding: "14px",
-                boxShadow: "0 18px 42px rgba(0,0,0,.34)",
-                overflow: "hidden",
-                position: "relative",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  right: -28,
-                  top: -34,
-                  width: 120,
-                  height: 120,
-                  borderRadius: "50%",
-                  background: "rgba(248,216,121,.12)",
-                  filter: "blur(2px)",
-                  pointerEvents: "none",
-                }}
-              />
-
-              <div
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  alignItems: "flex-start",
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      color: "#F8D879",
-                      fontSize: ".72rem",
-                      fontWeight: 950,
-                      letterSpacing: ".06em",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Descubre Rapa Nui
-                  </div>
-                  <div
-                    style={{
-                      color: "#F6F2EC",
-                      fontSize: "1.08rem",
-                      fontWeight: 950,
-                      lineHeight: 1.1,
-                      marginTop: 4,
-                    }}
-                  >
-                    Experiencias con ida y regreso
-                  </div>
-                  <div
-                    style={{
-                      color: "rgba(246,242,236,.70)",
-                      fontSize: ".73rem",
-                      lineHeight: 1.35,
-                      fontWeight: 800,
-                      marginTop: 6,
-                    }}
-                  >
-                    Reserva con anticipación para {passengerFareTypeLabel(passengerFareType)}. El destino queda confirmado y tú eliges dónde pasamos a buscarte.
-                  </div>
+                      disabled={Boolean(selectedRoundTripPromotion)}>
+                      <IonIcon icon={flagOutline} aria-hidden="true" />
+                      {selectedRoundTripPromotion
+                        ? `Destino fijo: ${selectedRoundTripPromotion.destinationName}`
+                        : "Elegir destino en mapa"}
+                    </button>
+                  )}
                 </div>
+              ) : null}
 
-                <span
-                  style={{
-                    flex: "0 0 auto",
-                    borderRadius: 999,
-                    padding: "6px 10px",
-                    background: "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)",
-                    color: "#111111",
-                    fontSize: ".66rem",
-                    fontWeight: 950,
-                    boxShadow: "0 8px 18px rgba(210,164,58,.28)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Tarifa fija
+              {originPoint?.walkMeters != null &&
+                originPoint.walkMeters > 8 && (
+                  <div className="rp-request-note">
+                    <strong>Punto accesible recomendado:</strong> el conductor
+                    te recoge en {originPoint.text}. Camina aprox.{" "}
+                    {originPoint.walkMeters} m hasta la calle. En el mapa verás
+                    tu punto real en azul y la recogida accesible con el icono
+                    de coche.
+                  </div>
+                )}
+
+              {!canChooseOrigin && (
+                <div className="rq-hint">
+                  <IonIcon icon={airplaneOutline} aria-hidden="true" />
+                  Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el
+                  destino.
+                </div>
+              )}
+
+              {/* Este grupo tiene UNA sola opción, y en modo "ahora" está
+                siempre seleccionada, así que como "elección" no elige nada: su
+                único uso real es volver a solo-ida cuando hay una experiencia
+                de ida y vuelta activa. Se conserva el botón y su handler tal
+                cual —sigue haciendo falta en ese caso— pero baja de tarjeta de
+                72px centrada a una fila discreta, para que deje de competir
+                con el selector de vehículo, que es la decisión de verdad. */}
+              {rideMode === "now" && (
+                <>
+                  <div className="rq-eyebrow">Tipo de viaje</div>
+
+                  <div className="rq-tripmode">
+                    <button
+                      type="button"
+                      className="rq-tripmode__btn"
+                      aria-pressed={!selectedRoundTripPromotion}
+                      onClick={() => {
+                        clearRoundTripPromotion();
+                      }}>
+                      <IonIcon icon={arrowForwardOutline} aria-hidden="true" />
+                      <span className="rq-tripmode__copy">
+                        <strong>Solo ida</strong>
+                        <small>
+                          Viaje inmediato para moverte ahora por Rapa Nui.
+                        </small>
+                      </span>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              <div className="rp-request-vehicle-heading">
+                <div>
+                  <strong>Elige tu vehículo</strong>
+                  <span>Precio final, sin sorpresas</span>
+                </div>
+                <span className="rp-request-route-metric">
+                  {fareQuote
+                    ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min`
+                    : fareLoading
+                      ? "Calculando ruta"
+                      : "Ruta pendiente"}
                 </span>
               </div>
 
-              {roundTripPromotions.length === 0 ? (
-                <div
-                  style={{
-                    position: "relative",
-                    border: "1px dashed rgba(248,216,121,.28)",
-                    borderRadius: "18px",
-                    padding: "14px",
-                    color: "rgba(246,242,236,.72)",
-                    fontSize: ".76rem",
-                    lineHeight: 1.35,
-                    fontWeight: 850,
-                    background: "rgba(255,255,255,.035)",
-                  }}
-                >
-                  Por ahora no hay experiencias con reserva disponibles para tu perfil.
-                </div>
-              ) : (
-                <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr", gap: 11 }}>
-                  {roundTripPromotions.map((promotion) => {
-                    const active = selectedRoundTripPromotion?.id === promotion.id;
-                    const destinationKey = String(promotion.destinationName ?? "").toLowerCase();
-                    const promoIconRef = destinationKey.includes("anakena")
-                      ? sunnyOutline
-                      : destinationKey.includes("terevaka")
-                        ? compassOutline
-                        : carOutline;
-                    const promoTitle = destinationKey.includes("anakena")
-                      ? "Escapada a Anakena"
-                      : destinationKey.includes("terevaka")
-                        ? "Subida a Terevaka"
-                        : promotion.destinationName;
-                    const experienceFareClp = calculateRoundTripExperienceFare(
-                      promotion,
-                      vehicleCategory,
-                      fareRules,
-                    );
-                    const experienceUsdLabel = formatUSDFromCLP(
-                      experienceFareClp,
-                      fareRules.usdRate,
-                    );
-                    const priceChanged = vehicleCategory !== "standard";
+              <div className="rp-request-vehicle-list">
+                {(["standard", "xl", "luggage"] as VehicleCategory[]).map(
+                  (category) => {
+                    const active = vehicleCategory === category;
+                    const categoryFareAmount =
+                      getVehicleCategoryDisplayFare(category);
+                    const categoryUsdLabel =
+                      categoryFareAmount != null
+                        ? formatUSDFromCLP(
+                            categoryFareAmount,
+                            selectedRoundTripPromotion?.usdLabel
+                              ? fareRules.usdRate
+                              : fareQuote?.usdRate,
+                          )
+                        : "USD --";
+                    const capacityLabel = category === "xl" ? "6" : "4";
 
                     return (
                       <button
-                        key={promotion.id}
+                        key={category}
                         type="button"
-                        onClick={() => setPendingRoundTripPromotion(promotion)}
-                        style={{
-                          width: "100%",
-                          border: active
-                            ? "2.5px solid #F8D879"
-                            : "1.5px solid rgba(248,216,121,.28)",
-                          borderRadius: "22px",
-                          background: active
-                            ? "linear-gradient(135deg,#F8D879 0%,#E7BC50 55%,#C99320 100%)"
-                            : "linear-gradient(135deg,rgba(255,255,255,.08) 0%,rgba(255,255,255,.035) 100%)",
-                          color: active ? "#111111" : "#F6F2EC",
-                          padding: "14px",
-                          textAlign: "left",
-                          boxShadow: active
-                            ? "0 18px 34px rgba(210,164,58,.36)"
-                            : "0 10px 24px rgba(0,0,0,.24)",
-                          fontWeight: 900,
-                          overflow: "hidden",
-                          position: "relative",
-                        }}
-                      >
-                        <div
-                          style={{
-                            position: "absolute",
-                            right: -18,
-                            bottom: -24,
-                            fontSize: "4.8rem",
-                            opacity: active ? .16 : .10,
-                            transform: "rotate(-8deg)",
-                            pointerEvents: "none",
-                          }}
-                        >
-                          <IonIcon icon={promoIconRef} />
-                        </div>
+                        className={`rp-request-vehicle-card ${active ? "is-active" : ""}`}
+                        aria-pressed={active}
+                        onClick={() => {
+                          setVehicleCategory(category);
+                          setSubmitError(null);
+                        }}>
+                        <span
+                          className="rp-request-vehicle-icon"
+                          aria-hidden="true">
+                          <IonIcon icon={vehicleCategoryIcon(category)} />
+                        </span>
 
-                        <div
-                          style={{
-                            position: "relative",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 12,
-                            alignItems: "flex-start",
-                          }}
-                        >
-                          <div style={{ display: "flex", gap: 10, minWidth: 0 }}>
-                            <div
-                              style={{
-                                width: 42,
-                                height: 42,
-                                borderRadius: 16,
-                                background: active ? "rgba(17,17,17,.12)" : "rgba(248,216,121,.12)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: "1.35rem",
-                                flex: "0 0 auto",
-                              }}
-                            >
-                            <IonIcon icon={promoIconRef} />
-                            </div>
-
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: "1.02rem", lineHeight: 1.05, fontWeight: 950 }}>
-                                {promoTitle}
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 5,
-                                  fontSize: ".72rem",
-                                  lineHeight: 1.25,
-                                  fontWeight: 850,
-                                  opacity: active ? .82 : .70,
-                                }}
-                              >
-                                {promotion.destinationName} · Ida y vuelta
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 4,
-                                  fontSize: ".68rem",
-                                  lineHeight: 1.2,
-                                  fontWeight: 850,
-                                  opacity: active ? .76 : .58,
-                                }}
-                              >
-                                Especial para {promotion.passengerLabel}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              textAlign: "right",
-                              flex: "0 0 auto",
-                              padding: "4px 0 0",
-                            }}
-                          >
-                            <div style={{ fontSize: "1.15rem", fontWeight: 950, lineHeight: 1 }}>
-                              {formatCLP(experienceFareClp)}
-                            </div>
-                            <div style={{ fontSize: ".70rem", fontWeight: 900, opacity: .78, marginTop: 3 }}>
-                              {experienceUsdLabel}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            position: "relative",
-                            marginTop: 12,
-                            display: "flex",
-                            gap: 7,
-                            flexWrap: "wrap",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span
-                            style={{
-                              borderRadius: 999,
-                              padding: "5px 8px",
-                              fontSize: ".63rem",
-                              background: active ? "rgba(17,17,17,.14)" : "rgba(34,197,94,.14)",
-                              color: active ? "#111111" : "#86efac",
-                              fontWeight: 950,
-                            }}
-                          >
-                            Destino automático
+                        <span className="rp-request-vehicle-copy">
+                          <span className="rp-request-vehicle-title">
+                            {vehicleCategoryTitle(category)}
+                            <small>{capacityLabel}</small>
                           </span>
-                          <span
-                            style={{
-                              borderRadius: 999,
-                              padding: "5px 8px",
-                              fontSize: ".63rem",
-                              background: active ? "rgba(17,17,17,.12)" : "rgba(248,216,121,.12)",
-                              color: active ? "#111111" : "#F8D879",
-                              fontWeight: 950,
-                            }}
-                          >
-                            Recogida a elección · ida y regreso programados
+                          <span className="rp-request-vehicle-description">
+                            {vehicleCategoryDescription(category)}
                           </span>
-                          {priceChanged && (
-                            <span
-                              style={{
-                                borderRadius: 999,
-                                padding: "5px 8px",
-                                fontSize: ".63rem",
-                                background: active ? "rgba(17,17,17,.10)" : "rgba(255,255,255,.06)",
-                                color: active ? "#111111" : "rgba(246,242,236,.75)",
-                                fontWeight: 950,
-                              }}
-                            >
-                              Tarifa ajustada por vehículo
-                            </span>
-                          )}
-                        </div>
+                          <span className="rp-request-vehicle-eta">
+                            <IonIcon icon={timeOutline} aria-hidden="true" />
+                            {getVehicleCategoryEtaLabel(category)}
+                          </span>
+                        </span>
 
-                        <div
-                          style={{
-                            position: "relative",
-                            marginTop: 12,
-                            borderTop: active ? "1px solid rgba(17,17,17,.16)" : "1px solid rgba(255,255,255,.08)",
-                            paddingTop: 10,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 10,
-                            alignItems: "center",
-                            fontSize: ".72rem",
-                            fontWeight: 950,
-                            opacity: active ? .86 : .72,
-                          }}
-                        >
-                          <span>
-                            {active ? "Experiencia seleccionada" : "Toca para reservar esta experiencia"}
-                          </span>
-                          <span aria-hidden="true">→</span>
-                        </div>
+                        <span className="rp-request-vehicle-price">
+                          <strong>
+                            {categoryFareAmount != null
+                              ? formatCLP(categoryFareAmount)
+                              : "Calculando"}
+                          </strong>
+                          <small>{categoryUsdLabel}</small>
+                        </span>
                       </button>
                     );
-                  })}
-                </div>
-              )}
+                  },
+                )}
+              </div>
 
-              {selectedRoundTripPromotion && (
-                <IonButton
-                  expand="block"
-                  fill="clear"
-                  onClick={clearRoundTripPromotion}
-                  style={
-                    {
-                      /* Este botón vive DENTRO del panel de experiencias, que
+              {rideMode === "scheduled" && (
+                <>
+                  <div className="rq-eyebrow">Experiencias con reserva</div>
+
+                  <div
+                    style={{
+                      margin: "0 0 18px",
+                      border: "1.5px solid rgba(248,216,121,.32)",
+                      borderRadius: "24px",
+                      background:
+                        "radial-gradient(circle at top left, rgba(248,216,121,.20), transparent 34%), linear-gradient(145deg,#191919 0%,#0d0d0d 72%)",
+                      padding: "14px",
+                      boxShadow: "0 18px 42px rgba(0,0,0,.34)",
+                      overflow: "hidden",
+                      position: "relative",
+                    }}>
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: -28,
+                        top: -34,
+                        width: 120,
+                        height: 120,
+                        borderRadius: "50%",
+                        background: "rgba(248,216,121,.12)",
+                        filter: "blur(2px)",
+                        pointerEvents: "none",
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        position: "relative",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "flex-start",
+                        marginBottom: 12,
+                      }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            color: "#F8D879",
+                            fontSize: ".72rem",
+                            fontWeight: 950,
+                            letterSpacing: ".06em",
+                            textTransform: "uppercase",
+                          }}>
+                          Descubre Rapa Nui
+                        </div>
+                        <div
+                          style={{
+                            color: "#F6F2EC",
+                            fontSize: "1.08rem",
+                            fontWeight: 950,
+                            lineHeight: 1.1,
+                            marginTop: 4,
+                          }}>
+                          Experiencias con ida y regreso
+                        </div>
+                        <div
+                          style={{
+                            color: "rgba(246,242,236,.70)",
+                            fontSize: ".73rem",
+                            lineHeight: 1.35,
+                            fontWeight: 800,
+                            marginTop: 6,
+                          }}>
+                          Reserva con anticipación para{" "}
+                          {passengerFareTypeLabel(passengerFareType)}. El
+                          destino queda confirmado y tú eliges dónde pasamos a
+                          buscarte.
+                        </div>
+                      </div>
+
+                      <span
+                        style={{
+                          flex: "0 0 auto",
+                          borderRadius: 999,
+                          padding: "6px 10px",
+                          background:
+                            "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)",
+                          color: "#111111",
+                          fontSize: ".66rem",
+                          fontWeight: 950,
+                          boxShadow: "0 8px 18px rgba(210,164,58,.28)",
+                          whiteSpace: "nowrap",
+                        }}>
+                        Tarifa fija
+                      </span>
+                    </div>
+
+                    {roundTripPromotions.length === 0 ? (
+                      <div
+                        style={{
+                          position: "relative",
+                          border: "1px dashed rgba(248,216,121,.28)",
+                          borderRadius: "18px",
+                          padding: "14px",
+                          color: "rgba(246,242,236,.72)",
+                          fontSize: ".76rem",
+                          lineHeight: 1.35,
+                          fontWeight: 850,
+                          background: "rgba(255,255,255,.035)",
+                        }}>
+                        Por ahora no hay experiencias con reserva disponibles
+                        para tu perfil.
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          position: "relative",
+                          display: "grid",
+                          gridTemplateColumns: "1fr",
+                          gap: 11,
+                        }}>
+                        {roundTripPromotions.map((promotion) => {
+                          const active =
+                            selectedRoundTripPromotion?.id === promotion.id;
+                          const destinationKey = String(
+                            promotion.destinationName ?? "",
+                          ).toLowerCase();
+                          const promoIconRef = destinationKey.includes(
+                            "anakena",
+                          )
+                            ? sunnyOutline
+                            : destinationKey.includes("terevaka")
+                              ? compassOutline
+                              : carOutline;
+                          const promoTitle = destinationKey.includes("anakena")
+                            ? "Escapada a Anakena"
+                            : destinationKey.includes("terevaka")
+                              ? "Subida a Terevaka"
+                              : promotion.destinationName;
+                          const experienceFareClp =
+                            calculateRoundTripExperienceFare(
+                              promotion,
+                              vehicleCategory,
+                              fareRules,
+                            );
+                          const experienceUsdLabel = formatUSDFromCLP(
+                            experienceFareClp,
+                            fareRules.usdRate,
+                          );
+                          const priceChanged = vehicleCategory !== "standard";
+
+                          return (
+                            <button
+                              key={promotion.id}
+                              type="button"
+                              onClick={() =>
+                                setPendingRoundTripPromotion(promotion)
+                              }
+                              style={{
+                                width: "100%",
+                                border: active
+                                  ? "2.5px solid #F8D879"
+                                  : "1.5px solid rgba(248,216,121,.28)",
+                                borderRadius: "22px",
+                                background: active
+                                  ? "linear-gradient(135deg,#F8D879 0%,#E7BC50 55%,#C99320 100%)"
+                                  : "linear-gradient(135deg,rgba(255,255,255,.08) 0%,rgba(255,255,255,.035) 100%)",
+                                color: active ? "#111111" : "#F6F2EC",
+                                padding: "14px",
+                                textAlign: "left",
+                                boxShadow: active
+                                  ? "0 18px 34px rgba(210,164,58,.36)"
+                                  : "0 10px 24px rgba(0,0,0,.24)",
+                                fontWeight: 900,
+                                overflow: "hidden",
+                                position: "relative",
+                              }}>
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  right: -18,
+                                  bottom: -24,
+                                  fontSize: "4.8rem",
+                                  opacity: active ? 0.16 : 0.1,
+                                  transform: "rotate(-8deg)",
+                                  pointerEvents: "none",
+                                }}>
+                                <IonIcon icon={promoIconRef} />
+                              </div>
+
+                              <div
+                                style={{
+                                  position: "relative",
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 12,
+                                  alignItems: "flex-start",
+                                }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: 10,
+                                    minWidth: 0,
+                                  }}>
+                                  <div
+                                    style={{
+                                      width: 42,
+                                      height: 42,
+                                      borderRadius: 16,
+                                      background: active
+                                        ? "rgba(17,17,17,.12)"
+                                        : "rgba(248,216,121,.12)",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontSize: "1.35rem",
+                                      flex: "0 0 auto",
+                                    }}>
+                                    <IonIcon icon={promoIconRef} />
+                                  </div>
+
+                                  <div style={{ minWidth: 0 }}>
+                                    <div
+                                      style={{
+                                        fontSize: "1.02rem",
+                                        lineHeight: 1.05,
+                                        fontWeight: 950,
+                                      }}>
+                                      {promoTitle}
+                                    </div>
+                                    <div
+                                      style={{
+                                        marginTop: 5,
+                                        fontSize: ".72rem",
+                                        lineHeight: 1.25,
+                                        fontWeight: 850,
+                                        opacity: active ? 0.82 : 0.7,
+                                      }}>
+                                      {promotion.destinationName} · Ida y vuelta
+                                    </div>
+                                    <div
+                                      style={{
+                                        marginTop: 4,
+                                        fontSize: ".68rem",
+                                        lineHeight: 1.2,
+                                        fontWeight: 850,
+                                        opacity: active ? 0.76 : 0.58,
+                                      }}>
+                                      Especial para {promotion.passengerLabel}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div
+                                  style={{
+                                    textAlign: "right",
+                                    flex: "0 0 auto",
+                                    padding: "4px 0 0",
+                                  }}>
+                                  <div
+                                    style={{
+                                      fontSize: "1.15rem",
+                                      fontWeight: 950,
+                                      lineHeight: 1,
+                                    }}>
+                                    {formatCLP(experienceFareClp)}
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: ".70rem",
+                                      fontWeight: 900,
+                                      opacity: 0.78,
+                                      marginTop: 3,
+                                    }}>
+                                    {experienceUsdLabel}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div
+                                style={{
+                                  position: "relative",
+                                  marginTop: 12,
+                                  display: "flex",
+                                  gap: 7,
+                                  flexWrap: "wrap",
+                                  alignItems: "center",
+                                }}>
+                                <span
+                                  style={{
+                                    borderRadius: 999,
+                                    padding: "5px 8px",
+                                    fontSize: ".63rem",
+                                    background: active
+                                      ? "rgba(17,17,17,.14)"
+                                      : "rgba(34,197,94,.14)",
+                                    color: active ? "#111111" : "#86efac",
+                                    fontWeight: 950,
+                                  }}>
+                                  Destino automático
+                                </span>
+                                <span
+                                  style={{
+                                    borderRadius: 999,
+                                    padding: "5px 8px",
+                                    fontSize: ".63rem",
+                                    background: active
+                                      ? "rgba(17,17,17,.12)"
+                                      : "rgba(248,216,121,.12)",
+                                    color: active ? "#111111" : "#F8D879",
+                                    fontWeight: 950,
+                                  }}>
+                                  Recogida a elección · ida y regreso
+                                  programados
+                                </span>
+                                {priceChanged && (
+                                  <span
+                                    style={{
+                                      borderRadius: 999,
+                                      padding: "5px 8px",
+                                      fontSize: ".63rem",
+                                      background: active
+                                        ? "rgba(17,17,17,.10)"
+                                        : "rgba(255,255,255,.06)",
+                                      color: active
+                                        ? "#111111"
+                                        : "rgba(246,242,236,.75)",
+                                      fontWeight: 950,
+                                    }}>
+                                    Tarifa ajustada por vehículo
+                                  </span>
+                                )}
+                              </div>
+
+                              <div
+                                style={{
+                                  position: "relative",
+                                  marginTop: 12,
+                                  borderTop: active
+                                    ? "1px solid rgba(17,17,17,.16)"
+                                    : "1px solid rgba(255,255,255,.08)",
+                                  paddingTop: 10,
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  alignItems: "center",
+                                  fontSize: ".72rem",
+                                  fontWeight: 950,
+                                  opacity: active ? 0.86 : 0.72,
+                                }}>
+                                <span>
+                                  {active
+                                    ? "Experiencia seleccionada"
+                                    : "Toca para reservar esta experiencia"}
+                                </span>
+                                <span aria-hidden="true">→</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {selectedRoundTripPromotion && (
+                      <IonButton
+                        expand="block"
+                        fill="clear"
+                        onClick={clearRoundTripPromotion}
+                        style={
+                          {
+                            /* Este botón vive DENTRO del panel de experiencias, que
                          es oscuro en los dos temas por su degradado literal.
                          Por eso no toma el oro de icono (de día sería #7d5a17
                          sobre #191919: 2,80:1) sino la constante de marca, que
                          vale igual en día y en noche. */
-                      "--rp-clear-fg": "var(--rp-gold-light)",
-                      marginTop: "12px",
-                      fontWeight: 950,
-                    } as CSSProperties
-                  }
-                >
-                  Volver a recogida reservada en Mataveri
-                </IonButton>
+                            "--rp-clear-fg": "var(--rp-gold-light)",
+                            marginTop: "12px",
+                            fontWeight: 950,
+                          } as CSSProperties
+                        }>
+                        Volver a recogida reservada en Mataveri
+                      </IonButton>
+                    )}
+                  </div>
+                </>
               )}
-            </div>
-              </>
-            )}
 
-            {(rideMode === "scheduled" || selectedRoundTripPromotion) && (
-              <div className="rp-request-panel">
-                <div className="rp-request-label">
-                  <span aria-hidden className="rp-request-label__tick" />
-                  {selectedRoundTripPromotion
-                    ? "Programa la ida y el regreso"
-                    : "Reserva tu recogida en Mataveri"}
-                </div>
+              {(rideMode === "scheduled" || selectedRoundTripPromotion) && (
+                <div className="rp-request-panel">
+                  <div className="rp-request-label">
+                    <span aria-hidden className="rp-request-label__tick" />
+                    {selectedRoundTripPromotion
+                      ? "Programa la ida y el regreso"
+                      : "Reserva tu recogida en Mataveri"}
+                  </div>
 
-                <div
-                  style={{
-                    color: "var(--rp-label)",
-                    fontSize: "0.72rem",
-                    fontWeight: 900,
-                    marginBottom: "8px",
-                    textTransform: "uppercase",
-                    letterSpacing: ".04em",
-                  }}
-                >
-                  {selectedRoundTripPromotion
-                    ? "Fecha y hora de ida"
-                    : "Fecha y hora de recogida"}
-                </div>
+                  <div className="rq-eyebrow">
+                    {selectedRoundTripPromotion
+                      ? "Fecha y hora de ida"
+                      : "Fecha y hora de recogida"}
+                  </div>
 
-                <IonItem
-                  lines="none"
-                  style={
-                    {
-                      "--background": "#ffffff",
-                      "--border-radius": "14px",
-                      "--padding-start": "14px",
-                      "--inner-padding-end": "12px",
-                      "--min-height": "50px",
-                      "--highlight-color-focused": "var(--rp-gold)",
-                      border: "1.5px solid rgba(210,164,58,.30)",
-                      marginBottom: "10px",
-                      overflow: "hidden",
-                    } as CSSProperties
-                  }
-                >
-                  <IonIcon icon={calendarOutline} slot="end" style={{ color: "var(--rp-icon-fg)" }} />
-                  <IonInput
-                    type="datetime-local"
-                    value={scheduledAt}
-                    min={scheduleMinInput}
-                    max={scheduleMaxInput}
-                    onIonInput={(event) =>
-                      setScheduledAt(String(event.detail.value ?? ""))
-                    }
-                  />
-                </IonItem>
+                  <IonItem
+                    lines="none"
+                    style={inputItemStyle({ marginBottom: "10px" })}>
+                    <IonIcon
+                      icon={calendarOutline}
+                      slot="end"
+                      style={{ color: "var(--rp-icon-fg)" }}
+                    />
+                    <IonInput
+                      type="datetime-local"
+                      value={scheduledAt}
+                      min={scheduleMinInput}
+                      max={scheduleMaxInput}
+                      onIonInput={(event) =>
+                        setScheduledAt(String(event.detail.value ?? ""))
+                      }
+                    />
+                  </IonItem>
 
-                <IonNote
-                  style={{
-                    fontSize: "0.72rem",
-                    display: "block",
-                    marginBottom: "14px",
-                    color: "var(--rp-label)",
-                    lineHeight: 1.45,
-                  }}
-                >
-                  {selectedRoundTripPromotion ? (
+                  <IonNote
+                    style={{
+                      fontSize: "0.72rem",
+                      display: "block",
+                      marginBottom: "14px",
+                      color: "var(--rp-label)",
+                      lineHeight: 1.45,
+                    }}>
+                    {selectedRoundTripPromotion ? (
+                      <>
+                        Elige dónde pasamos a buscarte y programa ambos
+                        horarios. La reserva queda congelada para conductores y
+                        se habilita {SCHEDULE_ACTIVATION_MINUTES} minutos antes
+                        de la ida.
+                        <br />
+                        <strong>Pago obligatorio con tarjeta:</strong> la tarifa
+                        incluye ida y regreso. Sin conductor asignado la
+                        cancelación es gratuita; con conductor asignado tienes 1
+                        minuto gratis y luego corresponde 30% con tope $3.000.
+                      </>
+                    ) : (
+                      <>
+                        El origen queda automático en Aeropuerto Internacional
+                        Mataveri de Rapa Nui. Tú eliges el destino final y el
+                        tipo de recibimiento. La reserva se habilita{" "}
+                        {SCHEDULE_ACTIVATION_MINUTES} minutos antes.
+                        <br />
+                        <strong>Pago obligatorio con tarjeta:</strong> sin
+                        conductor asignado la cancelación es gratuita; con
+                        conductor asignado tienes 1 minuto gratis y luego
+                        corresponde 30% con tope $3.000.
+                      </>
+                    )}
+                  </IonNote>
+
+                  {requireReturnScheduledAt && (
                     <>
-                      Elige dónde pasamos a buscarte y programa ambos horarios. La reserva queda congelada para conductores y se habilita {SCHEDULE_ACTIVATION_MINUTES} minutos antes de la ida.
-                      <br />
-                      <strong>Pago obligatorio con tarjeta:</strong> la tarifa incluye ida y regreso. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.
-                    </>
-                  ) : (
-                    <>
-                      El origen queda automático en Aeropuerto Internacional Mataveri de Rapa Nui. Tú eliges el destino final y el tipo de recibimiento. La reserva se habilita {SCHEDULE_ACTIVATION_MINUTES} minutos antes.
-                      <br />
-                      <strong>Pago obligatorio con tarjeta:</strong> sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.
+                      <div className="rq-eyebrow">Hora de regreso</div>
+
+                      <IonItem
+                        lines="none"
+                        style={inputItemStyle({ marginBottom: "14px" })}>
+                        <IonIcon
+                          icon={calendarOutline}
+                          slot="end"
+                          style={{ color: "var(--rp-icon-fg)" }}
+                        />
+                        <IonInput
+                          type="datetime-local"
+                          value={returnScheduledAt}
+                          min={scheduledAt || scheduleMinInput}
+                          max={scheduleMaxInput}
+                          onIonInput={(event) =>
+                            setReturnScheduledAt(
+                              String(event.detail.value ?? ""),
+                            )
+                          }
+                        />
+                      </IonItem>
                     </>
                   )}
-                </IonNote>
 
-                {requireReturnScheduledAt && (
-                  <>
-                    <div
-                      style={{
-                        color: "var(--rp-label)",
-                        fontSize: "0.72rem",
-                        fontWeight: 900,
-                        marginBottom: "8px",
-                        textTransform: "uppercase",
-                        letterSpacing: ".04em",
-                      }}
-                    >
-                      Hora de regreso
-                    </div>
+                  {!selectedRoundTripPromotion && (
+                    <>
+                      <div className="rq-eyebrow">
+                        Número de vuelo (opcional)
+                      </div>
 
-                    <IonItem
-                      lines="none"
-                      style={
-                        {
-                          "--background": "#ffffff",
-                          "--border-radius": "14px",
-                          "--padding-start": "14px",
-                          "--inner-padding-end": "12px",
-                          "--min-height": "50px",
-                          "--highlight-color-focused": "var(--rp-gold)",
-                          border: "1.5px solid rgba(210,164,58,.30)",
-                          marginBottom: "14px",
-                          overflow: "hidden",
-                        } as CSSProperties
-                      }
-                    >
-                      <IonIcon icon={calendarOutline} slot="end" style={{ color: "var(--rp-icon-fg)" }} />
-                      <IonInput
-                        type="datetime-local"
-                        value={returnScheduledAt}
-                        min={scheduledAt || scheduleMinInput}
-                        max={scheduleMaxInput}
-                        onIonInput={(event) =>
-                          setReturnScheduledAt(String(event.detail.value ?? ""))
-                        }
-                      />
-                    </IonItem>
-                  </>
-                )}
+                      <IonItem
+                        lines="none"
+                        style={inputItemStyle({ marginBottom: "12px" })}>
+                        <IonIcon
+                          icon={timeOutline}
+                          slot="start"
+                          style={{ color: "var(--rp-icon-fg)" }}
+                        />
+                        <IonInput
+                          value={flightNumber}
+                          placeholder="Ej: LA800"
+                          onIonInput={(event) =>
+                            setFlightNumber(String(event.detail.value ?? ""))
+                          }
+                        />
+                      </IonItem>
 
-                {!selectedRoundTripPromotion && (
-                  <>
-                <div
-                  style={{
-                    color: "var(--rp-label)",
-                    fontSize: "0.72rem",
-                    fontWeight: 900,
-                    marginBottom: "8px",
-                    textTransform: "uppercase",
-                    letterSpacing: ".04em",
-                  }}
-                >
-                  Número de vuelo opcional
-                </div>
+                      <div className="rq-eyebrow">Recibimiento (opcional)</div>
 
-                <IonItem
-                  lines="none"
-                  style={
-                    {
-                      "--background": "#ffffff",
-                      "--border-radius": "14px",
-                      "--padding-start": "14px",
-                      "--inner-padding-end": "12px",
-                      "--min-height": "50px",
-                      "--highlight-color-focused": "var(--rp-gold)",
-                      border: "1.5px solid rgba(210,164,58,.30)",
-                      marginBottom: "12px",
-                      overflow: "hidden",
-                    } as CSSProperties
-                  }
-                >
-                  <IonIcon icon={timeOutline} slot="start" style={{ color: "var(--rp-icon-fg)" }} />
-                  <IonInput
-                    value={flightNumber}
-                    placeholder="Ej: LA800"
-                    onIonInput={(event) =>
-                      setFlightNumber(String(event.detail.value ?? ""))
-                    }
-                  />
-                </IonItem>
-
-
-                <div
-                  style={{
-                    color: "var(--rp-label)",
-                    fontSize: "0.72rem",
-                    fontWeight: 900,
-                    marginBottom: "8px",
-                    textTransform: "uppercase",
-                    letterSpacing: ".04em",
-                  }}
-                >
-                  Recibimiento opcional
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                    gap: "8px",
-                    marginBottom: "12px",
-                  }}
-                >
-                  {([
-                    {
-                      id: "none" as AirportWelcomeOption,
-                      icon: carOutline,
-                      title: "Solo recogida",
-                      text: "El conductor te espera y te lleva directo.",
-                    },
-                    {
-                      id: "flower_lei" as AirportWelcomeOption,
-                      icon: flowerOutline,
-                      title: "Collar de flores",
-                      text: `Bienvenida Rapa Nui al llegar · +${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}`,
-                    },
-                  ]).map((option) => {
-                    const active = airportWelcomeOption === option.id;
-
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => setAirportWelcomeOption(option.id)}
+                      <div
                         style={{
-                          border: active
-                            ? "2px solid #D2A43A"
-                            : isDark
-                              ? "1px solid rgba(214,166,64,.34)"
-                              : "1px solid rgba(210,164,58,.32)",
-                          borderRadius: "14px",
-                          minHeight: "82px",
-                          padding: "10px 8px",
-                          background: active
-                            ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
-                            : isDark
-                              ? "rgba(255,255,255,.055)"
-                              : "#ffffff",
-                          color: active ? "#111111" : isDark ? "#f6f2ec" : "#111111",
-                          boxShadow: active
-                            ? "0 10px 22px rgba(210,164,58,.28)"
-                            : isDark
-                              ? "0 6px 14px rgba(0,0,0,.34)"
-                              : "0 6px 14px rgba(0,0,0,.08)",
-                          textAlign: "left",
-                          fontWeight: 950,
-                        }}
-                      >
-                        <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>
-                          <IonIcon icon={option.icon} />
-                        </div>
-                        <div style={{ marginTop: 5, fontSize: ".78rem", lineHeight: 1.15 }}>
-                          {option.title}
-                        </div>
+                          display: "grid",
+                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                          gap: "8px",
+                          marginBottom: "12px",
+                        }}>
+                        {[
+                          {
+                            id: "none" as AirportWelcomeOption,
+                            icon: carOutline,
+                            title: "Solo recogida",
+                            text: "El conductor te espera y te lleva directo.",
+                          },
+                          {
+                            id: "flower_lei" as AirportWelcomeOption,
+                            icon: flowerOutline,
+                            title: "Collar de flores",
+                            text: `Bienvenida Rapa Nui al llegar · +${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}`,
+                          },
+                        ].map((option) => {
+                          const active = airportWelcomeOption === option.id;
+
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setAirportWelcomeOption(option.id)}
+                              style={{
+                                border: active
+                                  ? "2px solid #D2A43A"
+                                  : isDark
+                                    ? "1px solid rgba(214,166,64,.34)"
+                                    : "1px solid rgba(210,164,58,.32)",
+                                borderRadius: "14px",
+                                minHeight: "82px",
+                                padding: "10px 8px",
+                                background: active
+                                  ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
+                                  : isDark
+                                    ? "rgba(255,255,255,.055)"
+                                    : "#ffffff",
+                                color: active
+                                  ? "#111111"
+                                  : isDark
+                                    ? "#f6f2ec"
+                                    : "#111111",
+                                boxShadow: active
+                                  ? "0 10px 22px rgba(210,164,58,.28)"
+                                  : isDark
+                                    ? "0 6px 14px rgba(0,0,0,.34)"
+                                    : "0 6px 14px rgba(0,0,0,.08)",
+                                textAlign: "left",
+                                fontWeight: 950,
+                              }}>
+                              <div
+                                style={{ fontSize: "1.5rem", lineHeight: 1 }}>
+                                <IonIcon icon={option.icon} />
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 5,
+                                  fontSize: ".78rem",
+                                  lineHeight: 1.15,
+                                }}>
+                                {option.title}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 4,
+                                  color: active
+                                    ? "rgba(17,17,17,.62)"
+                                    : isDark
+                                      ? "rgba(246,242,236,.62)"
+                                      : "rgba(17,17,17,.62)",
+                                  fontSize: ".64rem",
+                                  lineHeight: 1.22,
+                                  fontWeight: 850,
+                                }}>
+                                {option.text}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {airportWelcomeOption === "flower_lei" && (
                         <div
                           style={{
-                            marginTop: 4,
-                            color: active
-                              ? "rgba(17,17,17,.62)"
-                              : isDark
-                                ? "rgba(246,242,236,.62)"
-                                : "rgba(17,17,17,.62)",
-                            fontSize: ".64rem",
-                            lineHeight: 1.22,
-                            fontWeight: 850,
-                          }}
-                        >
-                          {option.text}
+                            background: isDark
+                              ? "linear-gradient(135deg,rgba(214,166,64,.16),rgba(214,166,64,.10))"
+                              : "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
+                            border: isDark
+                              ? "1px solid rgba(214,166,64,.42)"
+                              : "1px solid rgba(210,164,58,.42)",
+                            color: isDark ? "#f1c864" : "#4F350D",
+                            borderRadius: "14px",
+                            padding: "10px 12px",
+                            fontSize: "0.74rem",
+                            lineHeight: 1.35,
+                            fontWeight: 900,
+                            marginBottom: "12px",
+                            boxShadow: isDark
+                              ? "0 10px 22px rgba(0,0,0,.30)"
+                              : "0 10px 22px rgba(210,164,58,.14)",
+                          }}>
+                          <>
+                            <IonIcon
+                              icon={flowerOutline}
+                              style={{
+                                verticalAlign: "middle",
+                                marginRight: 4,
+                                fontSize: "1rem",
+                              }}
+                            />{" "}
+                            <strong>Collar de flores agregado.</strong> Sumamos{" "}
+                            {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} al
+                            total para preparar tu bienvenida Rapa Nui al
+                            llegar.
+                          </>
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                      )}
+                    </>
+                  )}
 
-                {airportWelcomeOption === "flower_lei" && (
                   <div
                     style={{
                       background: isDark
-                        ? "linear-gradient(135deg,rgba(214,166,64,.16),rgba(214,166,64,.10))"
-                        : "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
-                      border: isDark
-                        ? "1px solid rgba(214,166,64,.42)"
-                        : "1px solid rgba(210,164,58,.42)",
-                      color: isDark ? "#f1c864" : "#4F350D",
+                        ? "linear-gradient(135deg,rgba(214,166,64,.14) 0%,rgba(214,166,64,.08) 100%)"
+                        : "linear-gradient(135deg,#fff7d6 0%,#ffe39a 100%)",
+                      color: isDark ? "#f0e6d4" : "#111",
                       borderRadius: "14px",
-                      padding: "10px 12px",
-                      fontSize: "0.74rem",
-                      lineHeight: 1.35,
-                      fontWeight: 900,
-                      marginBottom: "12px",
+                      padding: "13px 14px",
+                      fontSize: "0.8rem",
+                      lineHeight: 1.45,
+                      border: isDark
+                        ? "1px solid rgba(214,166,64,.34)"
+                        : "1px solid rgba(210,164,58,.36)",
                       boxShadow: isDark
-                        ? "0 10px 22px rgba(0,0,0,.30)"
-                        : "0 10px 22px rgba(210,164,58,.14)",
-                    }}
-                  >
-                    <><IonIcon icon={flowerOutline} style={{ verticalAlign: "middle", marginRight: 4, fontSize: "1rem" }} />{" "}<strong>Collar de flores agregado.</strong> Sumamos {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} al total para preparar tu bienvenida Rapa Nui al llegar.</>
-                  </div>
-                )}
-                  </>
-                )}
-
-                <div
-                  style={{
-                    background: isDark
-                      ? "linear-gradient(135deg,rgba(214,166,64,.14) 0%,rgba(214,166,64,.08) 100%)"
-                      : "linear-gradient(135deg,#fff7d6 0%,#ffe39a 100%)",
-                    color: isDark ? "#f0e6d4" : "#111",
-                    borderRadius: "14px",
-                    padding: "13px 14px",
-                    fontSize: "0.8rem",
-                    lineHeight: 1.45,
-                    border: isDark
-                      ? "1px solid rgba(214,166,64,.34)"
-                      : "1px solid rgba(210,164,58,.36)",
-                    boxShadow: isDark
-                      ? "0 12px 24px rgba(0,0,0,.32)"
-                      : "0 12px 24px rgba(210,164,58,.16)",
-                  }}
-                >
-                  {selectedRoundTripPromotion ? (
-                    <>
-                      <><IonIcon icon={leafOutline} style={{ verticalAlign: "middle", marginRight: 4, fontSize: "1rem" }} />{" "}<strong>Experiencia ida y vuelta reservada.</strong> Ambos horarios quedarán programados y vinculados a la misma reserva.</>
-                    </>
-                  ) : (
-                    <>
-                      <><IonIcon icon={airplaneOutline} style={{ verticalAlign: "middle", marginRight: 4, fontSize: "1rem" }} />{" "}<strong>Recogida programada desde Mataveri.</strong> Tú eliges el destino, la hora y el recibimiento. Prepararemos tu viaje y te avisaremos cuando tu RapaGo esté listo para ir por ti.</>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div style={sectionLabelStyle()}>Notas opcional</div>
-
-            <IonItem
-              lines="none"
-              style={inputItemStyle({ marginBottom: "18px" })}
-            >
-              <IonTextarea
-                value={notesInput}
-                placeholder="Ej: Maletas grandes"
-                rows={3}
-                maxlength={RAPAGO_PASSENGER_NOTE_MAX_LENGTH}
-                onIonInput={(event) =>
-                  setNotesInput(String(event.detail.value ?? ""))
-                }
-              />
-            </IonItem>
-
-            <div
-              style={{
-                margin: "12px 0 20px",
-                borderRadius: "28px",
-                border: "1.5px solid rgba(248,216,121,.46)",
-                background: "linear-gradient(145deg,#101010 0%,#1E1608 58%,#D2A43A 155%)",
-                boxShadow: "0 22px 48px rgba(0,0,0,.32), 0 0 0 1px rgba(255,255,255,.04) inset",
-                overflow: "hidden",
-                color: "#F6F2EC",
-                position: "relative",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  right: -46,
-                  top: -52,
-                  width: 160,
-                  height: 160,
-                  borderRadius: "50%",
-                  background: "radial-gradient(circle, rgba(248,216,121,.42), rgba(248,216,121,0) 68%)",
-                  pointerEvents: "none",
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  left: -42,
-                  bottom: -56,
-                  width: 140,
-                  height: 140,
-                  borderRadius: "50%",
-                  background: "radial-gradient(circle, rgba(210,164,58,.28), rgba(210,164,58,0) 70%)",
-                  pointerEvents: "none",
-                }}
-              />
-
-              <div style={{ position: "relative", padding: "18px 16px 16px" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 14,
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div
-                      style={{
-                        color: "#F8D879",
-                        fontSize: ".7rem",
-                        fontWeight: 950,
-                        letterSpacing: ".08em",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      {selectedRoundTripPromotion ? "Experiencia RAPA GO" : "Tu viaje RAPA GO"}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 5,
-                        color: "#FFFFFF",
-                        fontSize: "1.22rem",
-                        lineHeight: 1.05,
-                        fontWeight: 950,
-                      }}
-                    >
-                      {selectedRoundTripPromotion
-                        ? `${selectedRoundTripPromotion.destinationName} · ida y regreso reservados`
-                        : paymentMethod === "cash"
-                          ? "Listo para solicitar"
-                          : "Elige tu forma de pago"}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 7,
-                        color: "rgba(246,242,236,.76)",
-                        fontSize: ".76rem",
-                        lineHeight: 1.35,
-                        fontWeight: 800,
-                      }}
-                    >
-                      {selectedRoundTripPromotion
-                        ? "Tarifa confirmada, destino definido y horarios de ida y regreso programados."
-                        : fareQuote
-                          ? "Precio estimado transparente para moverte por Rapa Nui."
-                          : "El precio aparecerá cuando selecciones origen y destino."}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      flex: "0 0 auto",
-                      minWidth: 118,
-                      borderRadius: "22px",
-                      padding: "11px 12px",
-                      background: "linear-gradient(180deg,#FFF3B0 0%,#D2A43A 100%)",
-                      color: "#111111",
-                      textAlign: "right",
-                      boxShadow: "0 16px 30px rgba(210,164,58,.32)",
-                    }}
-                  >
-                    <div style={{ fontSize: ".62rem", fontWeight: 950, letterSpacing: ".06em", textTransform: "uppercase", color: "#6E4B12" }}>
-                      Total
-                    </div>
-                    <div style={{ marginTop: 2, fontSize: "1.02rem", lineHeight: 1.05, fontWeight: 950 }}>
-                      {cashPaymentLabel}
-                    </div>
-                    <div style={{ marginTop: 2, fontSize: ".72rem", fontWeight: 950, color: "#4F350D" }}>
-                      {cashPaymentUsdLabel}
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 7,
-                    marginTop: 14,
-                  }}
-                >
-                  <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(248,216,121,.16)", border: "1px solid rgba(248,216,121,.24)", color: "#F8D879", fontSize: ".66rem", fontWeight: 950 }}>
-                    {selectedRoundTripPromotion ? "Tarifa confirmada" : "Precio claro"}
-                  </span>
-                  <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.10)", color: "#F6F2EC", fontSize: ".66rem", fontWeight: 900 }}>
-                    {fareQuote ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min` : "Calculando ruta"}
-                  </span>
-                  <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.10)", color: "#F6F2EC", fontSize: ".66rem", fontWeight: 900 }}>
-                    {vehicleCategoryTitle(vehicleCategory)}
-                  </span>
-                  {hasAirportFlowerLei && (
-                    <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(248,216,121,.16)", border: "1px solid rgba(248,216,121,.28)", color: "#F8D879", fontSize: ".66rem", fontWeight: 950 }}>
-                      <IonIcon icon={flowerOutline} style={{ verticalAlign: "middle", fontSize: "0.8rem" }} />{" "}Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
-                    </span>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 14,
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ borderRadius: 18, padding: "10px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.08)" }}>
-                    <div style={{ color: "rgba(246,242,236,.58)", fontSize: ".62rem", fontWeight: 950, textTransform: "uppercase" }}>
-                      Pasajero
-                    </div>
-                    <div style={{ marginTop: 4, color: "#FFFFFF", fontSize: ".72rem", fontWeight: 950, lineHeight: 1.15 }}>
-                      {passengerFareTypeLabel(effectivePassengerFareType)}
-                    </div>
-                  </div>
-                  <div style={{ borderRadius: 18, padding: "10px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.08)" }}>
-                    <div style={{ color: "rgba(246,242,236,.58)", fontSize: ".62rem", fontWeight: 950, textTransform: "uppercase" }}>
-                      Viaje
-                    </div>
-                    <div style={{ marginTop: 4, color: "#FFFFFF", fontSize: ".72rem", fontWeight: 950, lineHeight: 1.15 }}>
-                      {selectedRoundTripPromotion ? "Experiencia ida y vuelta" : tripFareModeLabel(tripFareMode)}
-                    </div>
-                  </div>
-                  <div style={{ borderRadius: 18, padding: "10px 9px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.08)" }}>
-                    <div style={{ color: "rgba(246,242,236,.58)", fontSize: ".62rem", fontWeight: 950, textTransform: "uppercase" }}>
-                      Pago
-                    </div>
-                    <div style={{ marginTop: 4, color: "#FFFFFF", fontSize: ".72rem", fontWeight: 950, lineHeight: 1.15 }}>
-                      {paymentMethod === "cash" ? "Efectivo listo" : paymentMethod === "card" ? "Tarjeta lista" : "Pendiente"}
-                    </div>
-                  </div>
-                </div>
-
-                {selectedRoundTripPromotion && returnScheduledAt ? (
-                  <div
-                    style={{
-                      marginTop: 12,
-                      borderRadius: 18,
-                      padding: "10px 12px",
-                      background: "rgba(248,216,121,.12)",
-                      border: "1px solid rgba(248,216,121,.20)",
-                      color: "#F8D879",
-                      fontSize: ".73rem",
-                      lineHeight: 1.35,
-                      fontWeight: 900,
-                    }}
-                  >
-                    <IonIcon icon={calendarOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
-                    Regreso agendado para {formatScheduleDateTime(returnScheduledAt)}
-                  </div>
-                ) : rideMode === "scheduled" && scheduledAt ? (
-                  <div
-                    style={{
-                      marginTop: 12,
-                      borderRadius: 18,
-                      padding: "10px 12px",
-                      background: "rgba(248,216,121,.12)",
-                      border: "1px solid rgba(248,216,121,.20)",
-                      color: "#F8D879",
-                      fontSize: ".73rem",
-                      lineHeight: 1.35,
-                      fontWeight: 900,
-                    }}
-                  >
-                    <IonIcon icon={calendarOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
-                    Agendado para {formatScheduleDateTime(scheduledAt)}{requireReturnScheduledAt && returnScheduledAt ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}` : ""}
-                  </div>
-                ) : null}
-
-                {pendingPassengerChargeTotalClp > 0 && (
-                  <div
-                    style={{
-                      marginTop: 12,
-                      borderRadius: 18,
-                      padding: "11px 12px",
-                      background: "rgba(255,196,9,.16)",
-                      border: "1px solid rgba(255,196,9,.34)",
-                      color: "#F8D879",
-                      fontSize: ".75rem",
-                      lineHeight: 1.35,
-                      fontWeight: 900,
-                    }}
-                  >
-                    <IonIcon icon={alertCircleOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
-                    Cargos aprobados que se sumarán a este viaje: <strong>{formatCLP(pendingPassengerChargeTotalClp)}</strong>.
-                    {pendingCancellationChargeTotalClp > 0 && (
+                        ? "0 12px 24px rgba(0,0,0,.32)"
+                        : "0 12px 24px rgba(210,164,58,.16)",
+                    }}>
+                    {selectedRoundTripPromotion ? (
                       <>
-                        <br />Cancelación después de 1 minuto desde la asignación: <strong>{formatCLP(pendingCancellationChargeTotalClp)}</strong>.
+                        <>
+                          <IonIcon
+                            icon={leafOutline}
+                            style={{
+                              verticalAlign: "middle",
+                              marginRight: 4,
+                              fontSize: "1rem",
+                            }}
+                          />{" "}
+                          <strong>Experiencia ida y vuelta reservada.</strong>{" "}
+                          Ambos horarios quedarán programados y vinculados a la
+                          misma reserva.
+                        </>
+                      </>
+                    ) : (
+                      <>
+                        <>
+                          <IonIcon
+                            icon={airplaneOutline}
+                            style={{
+                              verticalAlign: "middle",
+                              marginRight: 4,
+                              fontSize: "1rem",
+                            }}
+                          />{" "}
+                          <strong>Recogida programada desde Mataveri.</strong>{" "}
+                          Tú eliges el destino, la hora y el recibimiento.
+                          Prepararemos tu viaje y te avisaremos cuando tu RapaGo
+                          esté listo para ir por ti.
+                        </>
                       </>
                     )}
-                    {pendingNoShowChargeTotalClp > 0 && (
-                      <>
-                        <br />No Show aprobado: <strong>{formatCLP(pendingNoShowChargeTotalClp)}</strong>.
-                      </>
-                    )}
-                    <br />Se aplican exclusivamente a esta cuenta y quedarán asociados a este nuevo viaje.
                   </div>
-                )}
+                </div>
+              )}
 
-                {fareQuote && (
-                  <div
-                    style={{
-                      marginTop: 13,
-                      borderRadius: "20px",
-                      padding: "12px",
-                      background: "rgba(255,255,255,.96)",
-                      color: "#111111",
-                      boxShadow: "0 10px 24px rgba(0,0,0,.16)",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ color: "#7A5417", fontSize: ".68rem", fontWeight: 950, letterSpacing: ".06em", textTransform: "uppercase" }}>
-                          Resumen de tarifa
-                        </div>
-                        <div style={{ marginTop: 4, fontSize: ".86rem", lineHeight: 1.28, fontWeight: 950 }}>
-                          {selectedRoundTripPromotion
-                            ? `${selectedRoundTripPromotion.destinationName} · ida y regreso programados`
-                            : fareQuote.calculationType === "fixed"
-                              ? "Destino con tarifa fija"
-                              : fareQuote.ruralKm > 0
-                                ? `${fareQuote.urbanKm.toFixed(1)} km urbanos + ${fareQuote.ruralKm.toFixed(1)} km rurales`
-                                : `${fareQuote.urbanKm.toFixed(1)} km urbanos`}
-                        </div>
-                        <div style={{ marginTop: 5, color: "rgba(17,17,17,.64)", fontSize: ".72rem", lineHeight: 1.35, fontWeight: 800 }}>
-                          {selectedRoundTripPromotion
-                            ? "Experiencia disponible para tu perfil. Elige la recogida y programa ambos horarios."
-                            : fareQuote.ruralKm > 0
-                              ? "El sistema combina tramo urbano y rural según la ruta seleccionada."
-                              : "Tarifa calculada con las reglas activas de RAPA GO."}
-                        </div>
-                      </div>
-                      <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-                        <div style={{ color: "#111111", fontSize: ".94rem", fontWeight: 950 }}>
-                          {cashPaymentLabel}
-                        </div>
-                        <div style={{ color: "#7A5417", fontSize: ".72rem", fontWeight: 950 }}>
-                          {cashPaymentUsdLabel}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+              <div className="rq-eyebrow">Notas (opcional)</div>
 
-                <IonButton
-                  expand="block"
-                  onClick={handleOpenPaymentBox}
-                  style={
-                    {
-                      marginTop: "14px",
-                      "--background": paymentMethod === "cash"
-                        ? "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)"
-                        : "linear-gradient(135deg,#FFFFFF 0%,#F8D879 100%)",
-                      "--background-activated": "#D2A43A",
-                      "--color": "#111111",
-                      "--border-radius": "18px",
-                      height: "48px",
-                      fontWeight: 950,
-                      letterSpacing: ".02em",
-                      boxShadow: "0 16px 30px rgba(210,164,58,.26)",
-                    } as CSSProperties
+              <IonItem
+                lines="none"
+                style={inputItemStyle({ marginBottom: "18px" })}>
+                <IonTextarea
+                  value={notesInput}
+                  placeholder="Ej: Maletas grandes"
+                  rows={3}
+                  maxlength={RAPAGO_PASSENGER_NOTE_MAX_LENGTH}
+                  onIonInput={(event) =>
+                    setNotesInput(String(event.detail.value ?? ""))
                   }
-                >
-                  {paymentMethod === "cash"
-                    ? "Efectivo seleccionado · continuar"
-                    : paymentMethod === "card"
-                      ? useWalletBenefit === true && activePaymentAmountAfterWallet === 0
-                        ? "Tarjeta + Beneficio · sin cobro Klap"
-                        : "Tarjeta seleccionada · Klap"
-                      : "Elegir forma de pago"}
-                </IonButton>
-              </div>
+                />
+              </IonItem>
 
-              {showPaymentBox && (
-                <div
-                  style={{
-                    margin: "0 12px 14px",
-                    padding: "14px",
-                    borderRadius: "22px",
-                    background: "linear-gradient(180deg,#FFFDF7 0%,#F7E7B6 100%)",
-                    border: "1.5px solid rgba(248,216,121,.54)",
-                    color: "#111111",
-                    boxShadow: "0 18px 35px rgba(0,0,0,.22)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                    <div>
-                      <div style={{ color: "#7A5417", fontSize: ".7rem", fontWeight: 950, letterSpacing: ".06em", textTransform: "uppercase" }}>
-                        Pago seguro
+              {/* Resumen de tarifa. Antes era una losa negra fija
+                (linear-gradient #101010→#1E1608→#D2A43A) con dos círculos
+                decorativos, y en modo día quedaba como un folleto nocturno
+                pegado en medio de un formulario claro. Ahora usa la superficie
+                del tema, y el TOTAL —que es el dato por el que existe la
+                tarjeta— pasa a ser el elemento más grande: antes el titular de
+                marketing iba a 1,22rem y el precio a 1,02rem. */}
+              <div className="rp-request-fare-summary">
+                <div className="rq-fare__body">
+                  <div className="rq-fare__head">
+                    <div className="rq-fare__copy">
+                      <div className="rq-fare__eyebrow">
+                        {selectedRoundTripPromotion
+                          ? "Experiencia RAPA GO"
+                          : "Tu viaje RAPA GO"}
                       </div>
-                      <div style={{ marginTop: 3, fontWeight: 950, fontSize: "1.08rem", lineHeight: 1.05 }}>
-                        ¿Cómo quieres pagar?
+                      <div className="rq-fare__headline">
+                        {selectedRoundTripPromotion
+                          ? `${selectedRoundTripPromotion.destinationName} · ida y regreso reservados`
+                          : paymentMethod === "cash"
+                            ? "Listo para solicitar"
+                            : "Elige tu forma de pago"}
                       </div>
-                      <div style={{ marginTop: 6, color: "rgba(17,17,17,.66)", fontSize: ".74rem", lineHeight: 1.35, fontWeight: 800 }}>
-                        {reservationRequiresCard ? "Todas las reservas se pagan obligatoriamente con tarjeta. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000." : "Elige efectivo al conductor o paga con tarjeta mediante Klap Checkout Transparente."}
+                      <div className="rq-fare__sub">
+                        {selectedRoundTripPromotion
+                          ? "Tarifa confirmada, destino definido y horarios de ida y regreso programados."
+                          : fareQuote
+                            ? "Precio estimado transparente para moverte por Rapa Nui."
+                            : "El precio aparecerá cuando selecciones origen y destino."}
                       </div>
                     </div>
-                    <span style={{ borderRadius: 999, padding: "6px 9px", background: "#fff7e8", color: "#9A6A10", fontSize: ".66rem", fontWeight: 950, whiteSpace: "nowrap" }}>
-                      Klap activo
-                    </span>
+
+                    <div className="rq-fare__total">
+                      <div className="rq-fare__total-label">Total</div>
+                      <div className="rq-fare__total-value">
+                        {cashPaymentLabel}
+                      </div>
+                      <div className="rq-fare__total-usd">
+                        {cashPaymentUsdLabel}
+                      </div>
+                    </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginTop: 13 }}>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectPayment("cash")}
+                  <div className="rq-fare__chips">
+                    <span className="rq-chip rq-chip--gold">
+                      {selectedRoundTripPromotion
+                        ? "Tarifa confirmada"
+                        : "Precio claro"}
+                    </span>
+                    <span className="rq-chip">
+                      {fareQuote
+                        ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min`
+                        : "Calculando ruta"}
+                    </span>
+                    <span className="rq-chip">
+                      {vehicleCategoryTitle(vehicleCategory)}
+                    </span>
+                    {hasAirportFlowerLei && (
+                      <span className="rq-chip rq-chip--gold">
+                        <IonIcon icon={flowerOutline} aria-hidden="true" />
+                        Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="rq-fare__stats">
+                    <div className="rq-stat">
+                      <div className="rq-stat__label">Pasajero</div>
+                      <div className="rq-stat__value">
+                        {passengerFareTypeLabel(effectivePassengerFareType)}
+                      </div>
+                    </div>
+                    <div className="rq-stat">
+                      <div className="rq-stat__label">Viaje</div>
+                      <div className="rq-stat__value">
+                        {selectedRoundTripPromotion
+                          ? "Experiencia ida y vuelta"
+                          : tripFareModeLabel(tripFareMode)}
+                      </div>
+                    </div>
+                    <div className="rq-stat">
+                      <div className="rq-stat__label">Pago</div>
+                      <div className="rq-stat__value">
+                        {paymentMethod === "cash"
+                          ? "Efectivo listo"
+                          : paymentMethod === "card"
+                            ? "Tarjeta lista"
+                            : "Pendiente"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {selectedRoundTripPromotion && returnScheduledAt ? (
+                    <div className="rq-fare__sched">
+                      <IonIcon
+                        icon={calendarOutline}
+                        aria-hidden="true"
+                        style={{ verticalAlign: "-2px", marginRight: 4 }}
+                      />
+                      Regreso agendado para{" "}
+                      {formatScheduleDateTime(returnScheduledAt)}
+                    </div>
+                  ) : rideMode === "scheduled" && scheduledAt ? (
+                    <div className="rq-fare__sched">
+                      <IonIcon
+                        icon={calendarOutline}
+                        aria-hidden="true"
+                        style={{ verticalAlign: "-2px", marginRight: 4 }}
+                      />
+                      Agendado para {formatScheduleDateTime(scheduledAt)}
+                      {requireReturnScheduledAt && returnScheduledAt
+                        ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}`
+                        : ""}
+                    </div>
+                  ) : null}
+
+                  {pendingPassengerChargeTotalClp > 0 && (
+                    <div className="rq-fare__sched rq-fare__sched--warn">
+                      <IonIcon
+                        icon={alertCircleOutline}
+                        aria-hidden="true"
+                        style={{ verticalAlign: "-2px", marginRight: 4 }}
+                      />
+                      Cargos aprobados que se sumarán a este viaje:{" "}
+                      <strong>
+                        {formatCLP(pendingPassengerChargeTotalClp)}
+                      </strong>
+                      .
+                      {pendingCancellationChargeTotalClp > 0 && (
+                        <>
+                          <br />
+                          Cancelación después de 1 minuto desde la asignación:{" "}
+                          <strong>
+                            {formatCLP(pendingCancellationChargeTotalClp)}
+                          </strong>
+                          .
+                        </>
+                      )}
+                      {pendingNoShowChargeTotalClp > 0 && (
+                        <>
+                          <br />
+                          No Show aprobado:{" "}
+                          <strong>
+                            {formatCLP(pendingNoShowChargeTotalClp)}
+                          </strong>
+                          .
+                        </>
+                      )}
+                      <br />
+                      Se aplican exclusivamente a esta cuenta y quedarán
+                      asociados a este nuevo viaje.
+                    </div>
+                  )}
+
+                  {fareQuote && (
+                    <div
                       style={{
-                        border: paymentMethod === "cash" ? "3px solid #111111" : "2px solid rgba(17,17,17,.10)",
+                        marginTop: 13,
                         borderRadius: "20px",
-                        padding: "14px 13px",
-                        minHeight: "92px",
-                        background: "linear-gradient(135deg,#21C55D 0%,#F8D879 42%,#D2A43A 100%)",
+                        padding: "12px",
+                        background: "rgba(255,255,255,.96)",
                         color: "#111111",
-                        boxShadow: paymentMethod === "cash" ? "0 16px 30px rgba(34,197,94,.26)" : "0 10px 22px rgba(0,0,0,.10)",
-                        transform: paymentMethod === "cash" ? "scale(1.015)" : "scale(1)",
-                        transition: "all .18s ease",
-                        fontWeight: 950,
-                        textAlign: "left",
-                        width: "100%",
-                        opacity: reservationRequiresCard ? .48 : 1,
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                        <div>
-                          <IonIcon icon={cashOutline} aria-hidden="true" style={{ fontSize: "1.35rem", lineHeight: 1 }} />
-                          <div style={{ marginTop: 5, fontSize: ".94rem" }}>{reservationRequiresCard ? "Efectivo no disponible" : "Efectivo al conductor"}</div>
-                          <div style={{ marginTop: 3, fontSize: ".72rem", fontWeight: 850, opacity: .78 }}>
-                            {reservationRequiresCard ? "Reservas: solo tarjeta" : "Confirmación inmediata"}
+                        boxShadow: "0 10px 24px rgba(0,0,0,.16)",
+                      }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          alignItems: "flex-start",
+                        }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              color: "#7A5417",
+                              fontSize: ".68rem",
+                              fontWeight: 950,
+                              letterSpacing: ".06em",
+                              textTransform: "uppercase",
+                            }}>
+                            Resumen de tarifa
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: ".86rem",
+                              lineHeight: 1.28,
+                              fontWeight: 950,
+                            }}>
+                            {selectedRoundTripPromotion
+                              ? `${selectedRoundTripPromotion.destinationName} · ida y regreso programados`
+                              : fareQuote.calculationType === "fixed"
+                                ? "Destino con tarifa fija"
+                                : fareQuote.ruralKm > 0
+                                  ? `${fareQuote.urbanKm.toFixed(1)} km urbanos + ${fareQuote.ruralKm.toFixed(1)} km rurales`
+                                  : `${fareQuote.urbanKm.toFixed(1)} km urbanos`}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 5,
+                              color: "rgba(17,17,17,.64)",
+                              fontSize: ".72rem",
+                              lineHeight: 1.35,
+                              fontWeight: 800,
+                            }}>
+                            {selectedRoundTripPromotion
+                              ? "Experiencia disponible para tu perfil. Elige la recogida y programa ambos horarios."
+                              : fareQuote.ruralKm > 0
+                                ? "El sistema combina tramo urbano y rural según la ruta seleccionada."
+                                : "Tarifa calculada con las reglas activas de RAPA GO."}
                           </div>
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: "1.04rem", lineHeight: 1.05, fontWeight: 950 }}>
+                        <div style={{ flex: "0 0 auto", textAlign: "right" }}>
+                          <div
+                            style={{
+                              color: "#111111",
+                              fontSize: ".94rem",
+                              fontWeight: 950,
+                            }}>
                             {cashPaymentLabel}
                           </div>
-                          <div style={{ marginTop: 2, fontSize: ".74rem", fontWeight: 950, color: "#4F350D" }}>
+                          <div
+                            style={{
+                              color: "#7A5417",
+                              fontSize: ".72rem",
+                              fontWeight: 950,
+                            }}>
                             {cashPaymentUsdLabel}
                           </div>
                         </div>
                       </div>
-                    </button>
+                    </div>
+                  )}
 
-                    <button
-                      type="button"
-                      onClick={() => handleSelectPayment("card")}
-                      style={{
-                        border: paymentMethod === "card" ? "3px solid #111111" : "2px solid rgba(17,17,17,.12)",
-                        borderRadius: "20px",
-                        padding: "14px 13px",
-                        minHeight: "82px",
-                        background: "linear-gradient(135deg,#FFFFFF 0%,#E8F2FF 50%,#DDEBFF 100%)",
-                        color: "#111111",
-                        boxShadow: paymentMethod === "card" ? "0 12px 24px rgba(0,0,0,.18)" : "0 8px 18px rgba(0,0,0,.06)",
-                        transform: paymentMethod === "card" ? "scale(1.015)" : "scale(1)",
-                        transition: "all .18s ease",
+                  <IonButton
+                    expand="block"
+                    className="rp-request-payment-cta"
+                    onClick={handleOpenPaymentBox}
+                    style={
+                      {
+                        marginTop: "14px",
+                        "--background":
+                          paymentMethod === "cash"
+                            ? "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)"
+                            : "linear-gradient(135deg,#FFFFFF 0%,#F8D879 100%)",
+                        "--background-activated": "#D2A43A",
+                        "--color": "#111111",
+                        "--border-radius": "18px",
+                        height: "48px",
                         fontWeight: 950,
-                        textAlign: "left",
-                        width: "100%",
-                        opacity: 1,
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                        <div>
-                          <IonIcon icon={cardOutline} aria-hidden="true" style={{ fontSize: "1.25rem", lineHeight: 1 }} />
-                          <div style={{ marginTop: 5, fontSize: ".9rem" }}>Tarjeta</div>
-                          <div style={{ marginTop: 3, fontSize: ".72rem", fontWeight: 850, opacity: .72 }}>
-                            Klap seguro
-                          </div>
+                        letterSpacing: ".02em",
+                        boxShadow: "0 16px 30px rgba(210,164,58,.26)",
+                      } as CSSProperties
+                    }>
+                    {paymentMethod === "cash"
+                      ? "Efectivo seleccionado · continuar"
+                      : paymentMethod === "card"
+                        ? useWalletBenefit === true &&
+                          activePaymentAmountAfterWallet === 0
+                          ? "Tarjeta + Beneficio · sin cobro Klap"
+                          : "Tarjeta seleccionada · Klap"
+                        : "Elegir forma de pago"}
+                  </IonButton>
+                </div>
+
+                {showPaymentBox && (
+                  <div
+                    className="rp-request-payment-panel"
+                    style={{
+                      margin: "0 12px 14px",
+                      padding: "14px",
+                      borderRadius: "22px",
+                      background:
+                        "linear-gradient(180deg,#FFFDF7 0%,#F7E7B6 100%)",
+                      border: "1.5px solid rgba(248,216,121,.54)",
+                      color: "#111111",
+                      boxShadow: "0 18px 35px rgba(0,0,0,.22)",
+                    }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        alignItems: "flex-start",
+                      }}>
+                      <div>
+                        <div
+                          style={{
+                            color: "#7A5417",
+                            fontSize: ".7rem",
+                            fontWeight: 950,
+                            letterSpacing: ".06em",
+                            textTransform: "uppercase",
+                          }}>
+                          Pago seguro
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: ".92rem", lineHeight: 1.05, fontWeight: 950 }}>
-                            {cardPaymentLabel}
-                          </div>
-                          <div style={{ marginTop: 2, fontSize: ".72rem", fontWeight: 850, opacity: .72 }}>
-                            {cardPaymentUsdLabel}
-                          </div>
+                        <div
+                          style={{
+                            marginTop: 3,
+                            fontWeight: 950,
+                            fontSize: "1.08rem",
+                            lineHeight: 1.05,
+                          }}>
+                          ¿Cómo quieres pagar?
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 6,
+                            color: "rgba(17,17,17,.66)",
+                            fontSize: ".74rem",
+                            lineHeight: 1.35,
+                            fontWeight: 800,
+                          }}>
+                          {reservationRequiresCard
+                            ? "Todas las reservas se pagan obligatoriamente con tarjeta. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000."
+                            : "Elige efectivo al conductor o paga con tarjeta mediante Klap Checkout Transparente."}
                         </div>
                       </div>
-                    </button>
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 9px",
+                          background: "#fff7e8",
+                          color: "#9A6A10",
+                          fontSize: ".66rem",
+                          fontWeight: 950,
+                          whiteSpace: "nowrap",
+                        }}>
+                        Klap activo
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr",
+                        gap: 10,
+                        marginTop: 13,
+                      }}>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPayment("cash")}
+                        style={{
+                          border:
+                            paymentMethod === "cash"
+                              ? "3px solid #111111"
+                              : "2px solid rgba(17,17,17,.10)",
+                          borderRadius: "20px",
+                          padding: "14px 13px",
+                          minHeight: "92px",
+                          background:
+                            "linear-gradient(135deg,#21C55D 0%,#F8D879 42%,#D2A43A 100%)",
+                          color: "#111111",
+                          boxShadow:
+                            paymentMethod === "cash"
+                              ? "0 16px 30px rgba(34,197,94,.26)"
+                              : "0 10px 22px rgba(0,0,0,.10)",
+                          transform:
+                            paymentMethod === "cash"
+                              ? "scale(1.015)"
+                              : "scale(1)",
+                          transition: "all .18s ease",
+                          fontWeight: 950,
+                          textAlign: "left",
+                          width: "100%",
+                          opacity: reservationRequiresCard ? 0.48 : 1,
+                        }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                          }}>
+                          <div>
+                            <IonIcon
+                              icon={cashOutline}
+                              aria-hidden="true"
+                              style={{ fontSize: "1.35rem", lineHeight: 1 }}
+                            />
+                            <div style={{ marginTop: 5, fontSize: ".94rem" }}>
+                              {reservationRequiresCard
+                                ? "Efectivo no disponible"
+                                : "Efectivo al conductor"}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 3,
+                                fontSize: ".72rem",
+                                fontWeight: 850,
+                                opacity: 0.78,
+                              }}>
+                              {reservationRequiresCard
+                                ? "Reservas: solo tarjeta"
+                                : "Confirmación inmediata"}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div
+                              style={{
+                                fontSize: "1.04rem",
+                                lineHeight: 1.05,
+                                fontWeight: 950,
+                              }}>
+                              {cashPaymentLabel}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 2,
+                                fontSize: ".74rem",
+                                fontWeight: 950,
+                                color: "#4F350D",
+                              }}>
+                              {cashPaymentUsdLabel}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPayment("card")}
+                        style={{
+                          border:
+                            paymentMethod === "card"
+                              ? "3px solid #111111"
+                              : "2px solid rgba(17,17,17,.12)",
+                          borderRadius: "20px",
+                          padding: "14px 13px",
+                          minHeight: "82px",
+                          background:
+                            "linear-gradient(135deg,#FFFFFF 0%,#E8F2FF 50%,#DDEBFF 100%)",
+                          color: "#111111",
+                          boxShadow:
+                            paymentMethod === "card"
+                              ? "0 12px 24px rgba(0,0,0,.18)"
+                              : "0 8px 18px rgba(0,0,0,.06)",
+                          transform:
+                            paymentMethod === "card"
+                              ? "scale(1.015)"
+                              : "scale(1)",
+                          transition: "all .18s ease",
+                          fontWeight: 950,
+                          textAlign: "left",
+                          width: "100%",
+                          opacity: 1,
+                        }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                          }}>
+                          <div>
+                            <IonIcon
+                              icon={cardOutline}
+                              aria-hidden="true"
+                              style={{ fontSize: "1.25rem", lineHeight: 1 }}
+                            />
+                            <div style={{ marginTop: 5, fontSize: ".9rem" }}>
+                              Tarjeta
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 3,
+                                fontSize: ".72rem",
+                                fontWeight: 850,
+                                opacity: 0.72,
+                              }}>
+                              Klap seguro
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div
+                              style={{
+                                fontSize: ".92rem",
+                                lineHeight: 1.05,
+                                fontWeight: 950,
+                              }}>
+                              {cardPaymentLabel}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 2,
+                                fontSize: ".72rem",
+                                fontWeight: 850,
+                                opacity: 0.72,
+                              }}>
+                              {cardPaymentUsdLabel}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              {hasAvailableWalletBenefit &&
+                paymentMethod !== null &&
+                activePaymentAmountBeforeWallet != null && (
+                  <IonCard
+                    style={{
+                      margin: "0 0 14px",
+                      borderRadius: 24,
+                      background:
+                        "linear-gradient(135deg,#EAFBF0 0%,#FFF7D6 100%)",
+                      border: "1.5px solid rgba(34,197,94,.28)",
+                      boxShadow: "0 16px 34px rgba(0,0,0,.18)",
+                      color: "#111111",
+                    }}>
+                    <IonCardContent style={{ padding: "15px 16px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          alignItems: "flex-start",
+                        }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              color: "#15803D",
+                              fontSize: ".72rem",
+                              fontWeight: 950,
+                              textTransform: "uppercase",
+                              letterSpacing: ".05em",
+                            }}>
+                            Beneficio disponible
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: "1rem",
+                              fontWeight: 950,
+                              lineHeight: 1.22,
+                            }}>
+                            ¿Quieres usar tu saldo a favor en este viaje?
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 5,
+                              color: "#36543B",
+                              fontSize: ".78rem",
+                              fontWeight: 820,
+                              lineHeight: 1.35,
+                            }}>
+                            {walletBenefitLoading
+                              ? "Sincronizando tu saldo aprobado…"
+                              : paymentMethod === "card"
+                                ? `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta primero el Beneficio y Klap cobra solo el saldo restante.`
+                                : `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta el monto real del total de este viaje.`}
+                          </div>
+                        </div>
+                        <IonBadge
+                          color="success"
+                          style={{ fontWeight: 950, flexShrink: 0 }}>
+                          A favor
+                        </IonBadge>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: 9,
+                          marginTop: 13,
+                        }}>
+                        <IonButton
+                          expand="block"
+                          color="success"
+                          fill={useWalletBenefit === true ? "solid" : "outline"}
+                          onClick={() => {
+                            setUseWalletBenefit(true);
+                            setSubmitError(null);
+                          }}
+                          style={
+                            {
+                              "--border-radius": "16px",
+                              height: "44px",
+                              fontWeight: 950,
+                            } as CSSProperties
+                          }>
+                          Sí, usar
+                        </IonButton>
+                        <IonButton
+                          expand="block"
+                          color="medium"
+                          fill={
+                            useWalletBenefit === false ? "solid" : "outline"
+                          }
+                          onClick={() => {
+                            setUseWalletBenefit(false);
+                            setSubmitError(null);
+                          }}
+                          style={
+                            {
+                              "--border-radius": "16px",
+                              height: "44px",
+                              fontWeight: 950,
+                            } as CSSProperties
+                          }>
+                          No usar
+                        </IonButton>
+                      </div>
+
+                      {useWalletBenefit === true &&
+                        activeWalletBenefitDiscountClp > 0 &&
+                        activePaymentAmountAfterWallet != null && (
+                          <div
+                            style={{
+                              marginTop: 12,
+                              padding: 12,
+                              borderRadius: 18,
+                              background: "rgba(34,197,94,.13)",
+                              border: "1px solid rgba(34,197,94,.24)",
+                              color: "#14532D",
+                              fontSize: ".82rem",
+                              fontWeight: 900,
+                              lineHeight: 1.4,
+                            }}>
+                            Total original:{" "}
+                            {formatCLP(activePaymentAmountBeforeWallet)}
+                            <br />
+                            Descuento beneficio: -
+                            {formatCLP(activeWalletBenefitDiscountClp)}
+                            <br />
+                            Total a pagar ahora:{" "}
+                            {formatCLP(activePaymentAmountAfterWallet)}
+                          </div>
+                        )}
+
+                      {useWalletBenefit === false && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            padding: 11,
+                            borderRadius: 18,
+                            background: "rgba(255,255,255,.58)",
+                            color: "#4B3B28",
+                            fontSize: ".78rem",
+                            fontWeight: 830,
+                            lineHeight: 1.35,
+                          }}>
+                          No se aplicará descuento. Tu saldo seguirá disponible
+                          para otro viaje.
+                        </div>
+                      )}
+                    </IonCardContent>
+                  </IonCard>
+                )}
             </div>
 
-            {hasAvailableWalletBenefit && paymentMethod !== null && activePaymentAmountBeforeWallet != null && (
-              <IonCard
-                style={{
-                  margin: "0 0 14px",
-                  borderRadius: 24,
-                  background: "linear-gradient(135deg,#EAFBF0 0%,#FFF7D6 100%)",
-                  border: "1.5px solid rgba(34,197,94,.28)",
-                  boxShadow: "0 16px 34px rgba(0,0,0,.18)",
-                  color: "#111111",
-                }}
-              >
-                <IonCardContent style={{ padding: "15px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: "#15803D", fontSize: ".72rem", fontWeight: 950, textTransform: "uppercase", letterSpacing: ".05em" }}>
-                        Beneficio disponible
-                      </div>
-                      <div style={{ marginTop: 4, fontSize: "1rem", fontWeight: 950, lineHeight: 1.22 }}>
-                        ¿Quieres usar tu saldo a favor en este viaje?
-                      </div>
-                      <div style={{ marginTop: 5, color: "#36543B", fontSize: ".78rem", fontWeight: 820, lineHeight: 1.35 }}>
-                        {walletBenefitLoading
-                          ? "Sincronizando tu saldo aprobado…"
-                          : paymentMethod === "card"
-                            ? `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta primero el Beneficio y Klap cobra solo el saldo restante.`
-                            : `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta el monto real del total de este viaje.`}
-                      </div>
-                    </div>
-                    <IonBadge color="success" style={{ fontWeight: 950, flexShrink: 0 }}>
-                      A favor
-                    </IonBadge>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 13 }}>
-                    <IonButton
-                      expand="block"
-                      color="success"
-                      fill={useWalletBenefit === true ? "solid" : "outline"}
-                      onClick={() => {
-                        setUseWalletBenefit(true);
-                        setSubmitError(null);
-                      }}
-                      style={{
-                        "--border-radius": "16px",
-                        height: "44px",
-                        fontWeight: 950,
-                      } as CSSProperties}
-                    >
-                      Sí, usar
-                    </IonButton>
-                    <IonButton
-                      expand="block"
-                      color="medium"
-                      fill={useWalletBenefit === false ? "solid" : "outline"}
-                      onClick={() => {
-                        setUseWalletBenefit(false);
-                        setSubmitError(null);
-                      }}
-                      style={{
-                        "--border-radius": "16px",
-                        height: "44px",
-                        fontWeight: 950,
-                      } as CSSProperties}
-                    >
-                      No usar
-                    </IonButton>
-                  </div>
-
-                  {useWalletBenefit === true && activeWalletBenefitDiscountClp > 0 && activePaymentAmountAfterWallet != null && (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        padding: 12,
-                        borderRadius: 18,
-                        background: "rgba(34,197,94,.13)",
-                        border: "1px solid rgba(34,197,94,.24)",
-                        color: "#14532D",
-                        fontSize: ".82rem",
-                        fontWeight: 900,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      Total original: {formatCLP(activePaymentAmountBeforeWallet)}
-                      <br />Descuento beneficio: -{formatCLP(activeWalletBenefitDiscountClp)}
-                      <br />Total a pagar ahora: {formatCLP(activePaymentAmountAfterWallet)}
-                    </div>
-                  )}
-
-                  {useWalletBenefit === false && (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        padding: 11,
-                        borderRadius: 18,
-                        background: "rgba(255,255,255,.58)",
-                        color: "#4B3B28",
-                        fontSize: ".78rem",
-                        fontWeight: 830,
-                        lineHeight: 1.35,
-                      }}
-                    >
-                      No se aplicará descuento. Tu saldo seguirá disponible para otro viaje.
-                    </div>
-                  )}
-                </IonCardContent>
-              </IonCard>
-            )}
-
-            {submitError && (
-              /* role="alert" para que el lector de pantalla lo anuncie: es un
-                 error que aparece DESPUÉS de pulsar, sin mover el foco. */
-              <IonText color="danger" role="alert">
-                <p style={{ fontWeight: 700, fontSize: ".84rem" }}>
+            {/* El dock vive DENTRO de la hoja: así cuando la hoja se plega para
+              ver el mapa completo, el dock se oculta con ella. Si fuera hermano
+              del shell ocuparía espacio fijo al fondo e impediría que el mapa
+              llegara al tope. */}
+            <div
+              className="rp-request-action-dock"
+              role="group"
+              aria-label="Confirmación del viaje">
+              {submitError && (
+                /* El error vive DENTRO del dock fijo. Antes se pintaba en el
+                   flujo normal del scroll, por encima de un dock que es
+                   position:fixed: el usuario pulsaba un botón anclado abajo y
+                   el mensaje aparecía a una pantalla larga de distancia, así
+                   que solo lo percibía quien usaba lector de pantalla.
+                   role="alert" para que se anuncie sin mover el foco. */
+                <p className="rq-dock-error" role="alert">
                   {submitError}
                 </p>
-              </IonText>
-            )}
+              )}
 
-<IonButton
-              expand="block"
-              onClick={() => void handleRequest()}
-              disabled={!canRequest || submitting}
-              style={
-                {
-                  "--background": "var(--rp-btn-primary)",
-                  "--background-activated": "linear-gradient(135deg,#c89b3c,#b84f2e)",
-                  "--color": "var(--rp-btn-primary-fg)",
-                  "--border-radius": "var(--rp-radius-sm)",
-                  height: "48px",
-                  fontWeight: 850,
-                  letterSpacing: ".03em",
-                  boxShadow: "var(--rp-shadow-accent)",
-                } as CSSProperties
-              }
-            >
-              {submitting ? (
+              <div className="rp-request-action-dock__meta">
+                <button
+                  type="button"
+                  className="rp-request-payment-chip"
+                  data-required={paymentMethod === null ? "true" : "false"}
+                  onClick={handleOpenPaymentBox}>
+                  <IonIcon
+                    icon={paymentMethod === "card" ? cardOutline : cashOutline}
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {paymentMethod === null
+                      ? "Elegir forma de pago"
+                      : getPaymentLabel(paymentMethod)}
+                  </span>
+                  <strong>Cambiar</strong>
+                </button>
+
+                <span className="rp-request-fare-chip">
+                  <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" />
+                  {passengerFareTypeLabel(effectivePassengerFareType)}
+                </span>
+              </div>
+
+              <IonButton
+                expand="block"
+                className="rp-request-confirm-sticky"
+                onClick={() => void handleRequest()}
+                disabled={!canRequest || submitting}
+                style={
+                  {
+                    /* Solo las propiedades personalizadas de Ionic, que no se
+                       pueden fijar desde una hoja de estilos sin ::part().
+                       El alto, el peso y la sombra los pone ahora el CSS, que
+                       además sabe apagar la sombra dorada cuando el botón está
+                       deshabilitado: con la sombra a pleno brillo parecía
+                       pulsable justo cuando no lo era. */
+                    "--background": "var(--rp-btn-primary)",
+                    "--background-activated":
+                      "linear-gradient(135deg,#c89b3c,#b84f2e)",
+                    "--color": "var(--rp-btn-primary-fg)",
+                  } as CSSProperties
+                }>
+                {submitting ? (
                   <IonSpinner name="dots" />
                 ) : paymentMethod === null ? (
-                  "ELIGE FORMA DE PAGO"
+                  /* Enunciado, no orden: el botón está deshabilitado en este
+                     estado, así que pedirle al usuario que actúe sobre algo que
+                     no se puede pulsar era un callejón sin salida. La acción
+                     real es el chip de pago de arriba, que se resalta solo. */
+                  "FALTA ELEGIR FORMA DE PAGO"
                 ) : selectedRoundTripPromotion ? (
                   paymentMethod === "card" &&
                   useWalletBenefit === true &&
-                  activePaymentAmountAfterWallet === 0
-                    ? "RESERVAR EXPERIENCIA CON BENEFICIO"
-                    : "RESERVAR EXPERIENCIA Y PAGAR"
+                  activePaymentAmountAfterWallet === 0 ? (
+                    "RESERVAR EXPERIENCIA CON BENEFICIO"
+                  ) : (
+                    "RESERVAR EXPERIENCIA Y PAGAR"
+                  )
                 ) : rideMode === "scheduled" ? (
                   paymentMethod === "card" &&
                   useWalletBenefit === true &&
-                  activePaymentAmountAfterWallet === 0
-                    ? "RESERVAR CON BENEFICIO"
-                    : "RESERVAR Y PAGAR SALDO CON TARJETA"
+                  activePaymentAmountAfterWallet === 0 ? (
+                    "RESERVAR CON BENEFICIO"
+                  ) : (
+                    "RESERVAR Y PAGAR SALDO CON TARJETA"
+                  )
                 ) : paymentMethod === "card" ? (
                   useWalletBenefit === true &&
-                  activePaymentAmountAfterWallet === 0
-                    ? "SOLICITAR CON BENEFICIO"
-                    : "PAGAR SALDO CON TARJETA"
+                  activePaymentAmountAfterWallet === 0 ? (
+                    "SOLICITAR CON BENEFICIO"
+                  ) : (
+                    "PAGAR SALDO CON TARJETA"
+                  )
                 ) : (
                   "SOLICITAR VIAJE"
                 )}
-            </IonButton>
+              </IonButton>
+            </div>
           </div>
         </div>
 
@@ -11209,7 +12030,11 @@ return (
         {pickerTarget && (
           <MapPointPicker
             isOpen={pickerTarget !== null}
-            title={pickerTarget === "origin" ? "Confirmar recogida" : "Confirmar destino"}
+            title={
+              pickerTarget === "origin"
+                ? "Confirmar recogida"
+                : "Confirmar destino"
+            }
             mode={pickerTarget}
             initialPoint={pickerInitialPoint}
             autoFocusSearch={pickerAutoFocusSearch}

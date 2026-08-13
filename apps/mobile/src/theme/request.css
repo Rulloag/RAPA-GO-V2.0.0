@@ -247,9 +247,7 @@ ion-modal.request-map-modal {
 
 .request-map-sheet--collapsed {
   transform: translateY(
-    calc(
-      100% - var(--request-sheet-peek) + var(--request-sheet-drag-y)
-    )
+    calc(100% - var(--request-sheet-peek) + var(--request-sheet-drag-y))
   );
 }
 
@@ -397,11 +395,7 @@ ion-modal.request-map-modal {
   height: 24px;
   padding: 5px;
   box-sizing: border-box;
-  background: color-mix(
-    in srgb,
-    #ef4444 12%,
-    var(--rp-surface, #ffffff)
-  );
+  background: color-mix(in srgb, #ef4444 12%, var(--rp-surface, #ffffff));
   color: #dc2626;
   border-radius: 999px;
 }
@@ -433,11 +427,7 @@ ion-modal.request-map-modal {
 }
 
 .request-map-frequent__item--active {
-  background: color-mix(
-    in srgb,
-    #fee2e2 64%,
-    var(--rp-surface, #ffffff)
-  );
+  background: color-mix(in srgb, #fee2e2 64%, var(--rp-surface, #ffffff));
   border-color: #ef4444;
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.12);
 }
@@ -659,10 +649,7 @@ ion-modal.request-map-modal {
   --background-activated: #bd8d23;
   --color: var(--rp-btn-primary-fg, #111827);
   --border-radius: 14px;
-  --box-shadow: var(
-    --rp-shadow-accent,
-    0 10px 24px rgba(185, 126, 22, 0.26)
-  );
+  --box-shadow: var(--rp-shadow-accent, 0 10px 24px rgba(185, 126, 22, 0.26));
   min-height: 52px;
   margin: 0;
   font-size: 0.9rem;
@@ -686,9 +673,7 @@ ion-modal.request-map-modal {
 
   .request-map-sheet--collapsed {
     transform: translateY(
-      calc(
-        100% - var(--request-sheet-peek) + var(--request-sheet-drag-y)
-      )
+      calc(100% - var(--request-sheet-peek) + var(--request-sheet-drag-y))
     );
   }
 

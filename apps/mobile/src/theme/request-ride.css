@@ -78,7 +78,8 @@
   --request-sheet-peek: 52px;
   --request-sheet-expanded-height: min(58dvh, 560px);
 
-  background: radial-gradient(
+  background:
+    radial-gradient(
       120% 90% at 50% -10%,
       color-mix(in srgb, var(--rp-gold) 8%, var(--rp-bg)) 0%,
       var(--rp-bg) 46%
@@ -92,8 +93,10 @@
 
 .request-map-page,
 .request-map-page * {
-  transition: background-color 200ms var(--rp-ease, ease),
-    border-color 200ms var(--rp-ease, ease), color 160ms var(--rp-ease, ease),
+  transition:
+    background-color 200ms var(--rp-ease, ease),
+    border-color 200ms var(--rp-ease, ease),
+    color 160ms var(--rp-ease, ease),
     box-shadow 200ms var(--rp-ease, ease);
 }
 
@@ -105,8 +108,11 @@
 .request-map-page .request-map-suggestion,
 .request-map-page .request-map-sheet,
 .request-map-page .request-map-selected ion-icon {
-  transition: border-color 150ms var(--rp-ease, ease), background-color 150ms var(--rp-ease, ease),
-    transform 120ms var(--rp-ease, ease), box-shadow 150ms var(--rp-ease, ease);
+  transition:
+    border-color 150ms var(--rp-ease, ease),
+    background-color 150ms var(--rp-ease, ease),
+    transform 120ms var(--rp-ease, ease),
+    box-shadow 150ms var(--rp-ease, ease);
 }
 
 /* ---- Encabezado ---- */
@@ -137,7 +143,9 @@
   font-size: 0.82rem;
   font-weight: 850;
   border-radius: var(--rp-radius-sm);
-  transition: opacity 160ms var(--rp-ease), transform 160ms var(--rp-ease);
+  transition:
+    opacity 160ms var(--rp-ease),
+    transform 160ms var(--rp-ease);
 }
 
 .request-map-back:active {
@@ -204,13 +212,16 @@
   border-radius: 999px;
   box-shadow: 0 10px 28px rgba(47, 36, 24, 0.16);
   overflow: hidden;
-  transition: box-shadow 180ms var(--rp-ease), border-color 180ms var(--rp-ease);
+  transition:
+    box-shadow 180ms var(--rp-ease),
+    border-color 180ms var(--rp-ease);
 }
 
 .request-map-search__field.ion-focused,
 .request-map-search__field:focus-within {
   border-color: color-mix(in srgb, var(--rp-gold) 55%, transparent);
-  box-shadow: 0 10px 28px rgba(47, 36, 24, 0.18),
+  box-shadow:
+    0 10px 28px rgba(47, 36, 24, 0.18),
     0 0 0 3px color-mix(in srgb, var(--rp-gold) 22%, transparent);
 }
 
@@ -331,7 +342,9 @@
   border-radius: 999px;
   box-shadow: 0 10px 25px rgba(47, 36, 24, 0.16);
   font-size: 24px;
-  transition: transform 140ms var(--rp-ease), box-shadow 140ms var(--rp-ease),
+  transition:
+    transform 140ms var(--rp-ease),
+    box-shadow 140ms var(--rp-ease),
     background-color 140ms var(--rp-ease);
 }
 
@@ -578,8 +591,11 @@
   text-align: left;
   scroll-snap-align: start;
   cursor: pointer;
-  transition: border-color 150ms var(--rp-ease), background-color 150ms var(--rp-ease),
-    transform 120ms var(--rp-ease), box-shadow 150ms var(--rp-ease);
+  transition:
+    border-color 150ms var(--rp-ease),
+    background-color 150ms var(--rp-ease),
+    transform 120ms var(--rp-ease),
+    box-shadow 150ms var(--rp-ease);
 }
 
 @media (hover: hover) {
@@ -607,7 +623,9 @@
   background: var(--rp-chip-icon-bg);
   color: var(--rp-chip-icon-fg);
   border-radius: 999px;
-  transition: background-color 150ms var(--rp-ease), color 150ms var(--rp-ease);
+  transition:
+    background-color 150ms var(--rp-ease),
+    color 150ms var(--rp-ease);
 }
 
 .request-map-frequent__item span {
@@ -683,7 +701,9 @@
   border: 1px solid var(--rp-border-c);
   border-radius: var(--rp-radius-lg);
   text-align: left;
-  transition: border-color 150ms var(--rp-ease), background-color 150ms var(--rp-ease),
+  transition:
+    border-color 150ms var(--rp-ease),
+    background-color 150ms var(--rp-ease),
     transform 120ms var(--rp-ease);
 }
 
@@ -744,6 +764,7 @@
   font-weight: 650;
   line-height: 1.3;
   -webkit-box-orient: vertical;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
 }
 
@@ -818,13 +839,16 @@
   font-weight: 650;
   line-height: 1.35;
   -webkit-box-orient: vertical;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
 }
 
 .request-map-selected ion-icon {
   color: var(--rp-icon-fg);
   font-size: 20px;
-  transition: transform 140ms var(--rp-ease), color 140ms var(--rp-ease);
+  transition:
+    transform 140ms var(--rp-ease),
+    color 140ms var(--rp-ease);
   cursor: pointer;
 }
 
@@ -899,7 +923,12 @@
 
 /* ---- Botón confirmar ---- */
 .request-map-confirm {
-  --background: linear-gradient(165deg, var(--rp-gold-soft) 0%, var(--rp-btn-primary) 55%, var(--rp-gold-dark) 100%);
+  --background: linear-gradient(
+    165deg,
+    var(--rp-gold-soft) 0%,
+    var(--rp-btn-primary) 55%,
+    var(--rp-gold-dark) 100%
+  );
   --background-activated: var(--rp-gold-dark);
   --background-hover: var(--rp-gold-soft);
   --color: var(--rp-btn-primary-fg);
@@ -911,7 +940,9 @@
   font-size: 0.9rem;
   font-weight: 900;
   letter-spacing: 0.01em;
-  transition: transform 120ms var(--rp-ease), box-shadow 160ms var(--rp-ease);
+  transition:
+    transform 120ms var(--rp-ease),
+    box-shadow 160ms var(--rp-ease);
 }
 
 .request-map-confirm:not([disabled]):active {
@@ -1016,93 +1047,30 @@
   border: 2px solid #b98517 !important;
 }
 
-/* ==========================================================================
-   FIX — el panel "Ofertas destacadas" (rp-request-promotion-panel) y las
-   tarjetas rp-request-trip-card / rp-request-vehicle-card /
-   rp-request-promotion-card / rp-request-panel traen su fondo OSCURO
-   puesto directo por inline style en el JSX (background: #191919/#0d0d0d).
-   Esta regla estaba en el archivo original y se perdió al reescribir el
-   CSS para arreglar los chips — se repone aquí para que el panel de
-   promociones y sus tarjetas queden en modo claro con texto legible,
-   igual que el resto de la pantalla. */
-.rp-request-trip-card,
-.rp-request-vehicle-card,
-.rp-request-promotion-panel,
-.rp-request-promotion-card,
-.rp-request-panel {
-  color: #111827 !important;
-  border-color: rgba(155, 105, 16, 0.28) !important;
-  text-shadow: none !important;
-}
+/* Contraparte de noche del bloque anterior: sin esto, un botón no
+   seleccionado se queda con el crema de día y queda como un bloque blanco
+   deslumbrante dentro de la pantalla oscura.
 
-.rp-request-trip-card:not([aria-pressed="true"]),
-.rp-request-vehicle-card:not([aria-pressed="true"]),
-.rp-request-promotion-card:not([aria-pressed="true"]),
-.rp-request-panel {
-  background: linear-gradient(180deg, #ffffff 0%, #f7ead0 100%) !important;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.10) !important;
-}
+   El estado SELECCIONADO conserva el degradado dorado con texto oscuro en los
+   dos temas: es el par de marca, igual que el botón principal.
 
-.rp-request-promotion-panel {
-  background:
-    radial-gradient(circle at top left, rgba(248, 216, 121, 0.34), transparent 38%),
-    linear-gradient(145deg, #fffdf7 0%, #f7e9c9 52%, #f2e0b8 100%) !important;
-  box-shadow: 0 12px 28px rgba(155, 105, 16, 0.16) !important;
-}
-
-.rp-request-promotion-panel *,
-.rp-request-promotion-card * {
-  color: #111827 !important;
-  text-shadow: none !important;
-}
-
-/* ==========================================================================
-   CONTRAPARTE DE NOCHE de los dos bloques anteriores.
-
-   Los fixes de arriba fuerzan modo claro con !important para ganarle a un
-   fondo oscuro puesto inline en el JSX. El problema: lo forzaban SIEMPRE, así
-   que en modo noche el toggle Ahora/Agendar, las tarjetas de vehículo y el
-   panel de promociones quedaban como bloques blancos deslumbrantes dentro de
-   una pantalla oscura — el único punto donde el modo noche del pasajero se
-   rompía de forma visible.
-
-   Especificidad (0,3,x) contra la (0,2,0) de arriba: gana sin tocar aquellas
-   reglas, que siguen siendo correctas de día. Mismo patrón que ya usa el
-   bloque de .rp-request-panel más abajo.
-
-   El estado SELECCIONADO conserva el degradado dorado con texto oscuro: es el
-   par de marca y vale igual en ambos temas, como el botón principal.
-   ========================================================================== */
+   NOTA — aquí vivían además ~100 líneas que forzaban modo claro con
+   !important sobre .rp-request-trip-card, .rp-request-promotion-panel,
+   .rp-request-promotion-card y .rp-request-vehicle-card, más su contraparte
+   de noche y dos selectores universales `* { color: … !important }`.
+   Existían solo para pisar los fondos oscuros que el JSX ponía por estilo
+   inline. Al mover esos componentes a clases con tokens (bloque v13, al final
+   del archivo) la causa desapareció, así que las reglas se eliminaron en vez
+   de seguir acumulando capas: tres de las cuatro clases que nombraban ya ni
+   siquiera existían en el JSX, y los selectores universales impedían que
+   nada dentro de esos paneles pudiera tener color propio nunca más. */
 [data-rapago-theme="dark"] .rapago-request-page button[aria-pressed="false"],
-[data-rapago-theme="dark"] .rapago-request-page button[role="tab"][aria-selected="false"] {
+[data-rapago-theme="dark"]
+  .rapago-request-page
+  button[role="tab"][aria-selected="false"] {
   background: var(--rp-surface) !important;
   color: var(--rp-text) !important;
   border: 1.5px solid var(--rp-border-c) !important;
-}
-
-[data-rapago-theme="dark"] .rapago-request-page .rp-request-trip-card:not([aria-pressed="true"]),
-[data-rapago-theme="dark"] .rapago-request-page .rp-request-vehicle-card:not([aria-pressed="true"]),
-[data-rapago-theme="dark"] .rapago-request-page .rp-request-promotion-card:not([aria-pressed="true"]) {
-  background: var(--rp-surface) !important;
-  color: var(--rp-text) !important;
-  border-color: var(--rp-border-c) !important;
-  box-shadow: var(--rp-shadow) !important;
-}
-
-[data-rapago-theme="dark"] .rapago-request-page .rp-request-promotion-panel {
-  background:
-    radial-gradient(circle at top left, rgba(214, 166, 64, 0.16), transparent 42%),
-    linear-gradient(180deg, rgba(28, 26, 23, 0.97), rgba(14, 13, 12, 0.98)) !important;
-  color: var(--rp-text) !important;
-  border-color: var(--rp-border-c) !important;
-  box-shadow: var(--rp-shadow-accent) !important;
-}
-
-/* El bloque de día usa el selector universal para pisar los colores inline del
-   JSX; hay que igualarlo aquí o el texto de dentro se queda en #111827. */
-[data-rapago-theme="dark"] .rapago-request-page .rp-request-promotion-panel *,
-[data-rapago-theme="dark"] .rapago-request-page .rp-request-promotion-card * {
-  color: var(--rp-text) !important;
 }
 
 /* ========================================================================== */
@@ -1217,7 +1185,11 @@
    translúcido flotando sobre un mapa cambia de aspecto según lo que tenga
    detrás, y era parte de la sensación de "transparente a ratos". */
 .rapago-request-page .rp-request-search-field {
-  --background: var(--rp-field-bg) !important;
+  /* Pill claro fijo en ambos temas (crema del modo día). Antes usaba
+     var(--rp-field-bg), que en noche es blanco al 6%: sobre el mapa el fondo se
+     volvía transparente y el texto perdía contraste. Un fondo sólido claro
+     —como la referencia tipo Uber— garantiza que el texto oscuro siempre se lea. */
+  --background: #fffaf0 !important;
   --border-radius: 999px !important;
   --padding-start: 16px;
   --inner-padding-end: 12px;
@@ -1241,8 +1213,33 @@
    `.request-map-page`, oscuros en `[data-rapago-theme="dark"]`), igual que el
    icono de lupa de al lado, que ya tomaba `--rp-icon-fg` en línea. */
 .rapago-request-page .rp-request-search-field ion-input {
-  --color: var(--rp-text);
-  --placeholder-color: var(--rp-muted);
+  --color: #2f2418 !important;
+  --placeholder-color: rgba(47, 36, 24, 0.55) !important;
+}
+
+/* Clave del bug: ion-input en Ionic 8 usa encapsulación "scoped", así que el
+   <input> real vive en el light DOM (no en shadow) y ::part(native) no aplica;
+   hay que pintar `ion-input input`. sections.css lo fuerza a --rp-field-fg
+   (blanco en noche) con -webkit-text-fill-color !important, y esa propiedad pisa
+   a `color`: por eso el texto salía blanco al escribir. Estas reglas ganan por
+   especificidad (2 clases + 2 tipos) y dejan el texto oscuro sobre el pill claro. */
+.rapago-request-page .rp-request-search-field ion-input input {
+  color: #2f2418 !important;
+  -webkit-text-fill-color: #2f2418 !important;
+  caret-color: var(--rp-gold) !important;
+}
+
+.rapago-request-page .rp-request-search-field ion-input input::placeholder {
+  color: rgba(47, 36, 24, 0.55) !important;
+  -webkit-text-fill-color: rgba(47, 36, 24, 0.55) !important;
+  opacity: 1 !important;
+}
+
+/* El icono de lupa va inline con color var(--rp-icon-fg) (dorado claro en
+   noche): sobre el pill claro no contrasta. Se fuerza a un tono oscuro; el
+   !important gana al estilo inline, que no lo lleva. */
+.rapago-request-page .rp-request-search-field ion-icon {
+  color: #2f2418 !important;
 }
 
 /* ── Controles flotantes sobre el mapa ───────────────────────────────────── */
@@ -1430,7 +1427,6 @@
   box-shadow: 0 -26px 56px rgba(0, 0, 0, 0.44);
 }
 
-
 /* ESTADO GUARDADO.
    La hoja no desaparece: queda únicamente el tirador visible, como una
    bandeja guardada en la parte inferior. El mapa recupera el espacio real y
@@ -1578,7 +1574,11 @@
      hueco vacío y no sobre él. Un botón principal con el canto lavado se lee
      como deshabilitado. */
   padding-bottom: 30px;
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 24px),
+    transparent
+  );
   mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
   transition: opacity 0.22s ease;
 }
@@ -1612,7 +1612,9 @@
   -webkit-user-select: none;
 }
 
-.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-sheet-head {
+.rapago-request-page
+  .rp-request-map-shell.is-dragging
+  .rp-request-map-sheet-head {
   cursor: grabbing;
 }
 
@@ -1757,7 +1759,9 @@
     background-color 0.2s ease;
 }
 
-.rapago-request-page .rp-request-map-shell.is-dragging .rp-request-map-grip__bar {
+.rapago-request-page
+  .rp-request-map-shell.is-dragging
+  .rp-request-map-grip__bar {
   width: 72px;
   background: var(--rp-accent);
 }
@@ -1781,7 +1785,11 @@
   border-radius: 24px;
   border: 1px solid rgba(185, 133, 23, 0.28);
   background:
-    radial-gradient(circle at 100% 0, rgba(248, 216, 121, 0.22), transparent 34%),
+    radial-gradient(
+      circle at 100% 0,
+      rgba(248, 216, 121, 0.22),
+      transparent 34%
+    ),
     linear-gradient(180deg, #fffdf8 0%, #fff7e5 100%);
   box-shadow: 0 18px 40px rgba(75, 52, 16, 0.14);
 }
@@ -1828,10 +1836,14 @@
 
   --rp-bg: #17130e;
   --rp-bg-elevated: #1e1913;
-  --rp-surface: linear-gradient(180deg, rgba(30, 27, 22, 0.98), rgba(18, 16, 13, 0.99));
+  --rp-surface: linear-gradient(
+    180deg,
+    rgba(30, 27, 22, 0.98),
+    rgba(18, 16, 13, 0.99)
+  );
   --rp-text: #f6f2ec;
   --rp-muted: rgba(246, 242, 236, 0.66);
-  --rp-border-c: rgba(214, 166, 64, 0.40);
+  --rp-border-c: rgba(214, 166, 64, 0.4);
   --rp-field-bg: rgba(255, 255, 255, 0.06);
   --rp-icon-fg: #f8d879;
 
@@ -1845,11 +1857,11 @@
   /* Chips de "destinos frecuentes" en noche. Llevan !important porque el bloque
      claro también los fija con !important (para ganarle a global.css). */
   --rp-chip-bg: rgba(255, 255, 255, 0.06) !important;
-  --rp-chip-bg-hover: rgba(255, 255, 255, 0.10) !important;
-  --rp-chip-border: rgba(214, 166, 64, 0.30) !important;
+  --rp-chip-bg-hover: rgba(255, 255, 255, 0.1) !important;
+  --rp-chip-border: rgba(214, 166, 64, 0.3) !important;
   --rp-chip-text: #f6f2ec !important;
-  --rp-chip-muted: rgba(246, 242, 236, 0.60) !important;
-  --rp-chip-shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.40) !important;
+  --rp-chip-muted: rgba(246, 242, 236, 0.6) !important;
+  --rp-chip-shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.4) !important;
   --rp-chip-icon-bg: rgba(214, 166, 64, 0.18) !important;
   --rp-chip-icon-fg: #f8d879 !important;
 }
@@ -1872,11 +1884,11 @@
 
 /* Estados hover/active que traían cremas fijos fuera de los tokens. */
 .request-map-page[data-rapago-theme="dark"] .request-map-suggestion:active {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .request-map-page[data-rapago-theme="dark"] .request-map-location-button:hover {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* ==========================================================================
@@ -1892,7 +1904,11 @@
    notas se oscurecen desde el TSX con isDark, porque su color activo/!flor no se
    puede distinguir solo con CSS. */
 [data-rapago-theme="dark"] .rapago-request-page .rp-request-panel {
-  background: linear-gradient(180deg, rgba(30, 27, 22, 0.98) 0%, rgba(17, 15, 12, 0.99) 100%) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(30, 27, 22, 0.98) 0%,
+    rgba(17, 15, 12, 0.99) 100%
+  ) !important;
   border: 1px solid rgba(214, 166, 64, 0.34) !important;
   color: var(--rp-text) !important;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5) !important;
@@ -1900,7 +1916,10 @@
 
 /* Título del panel: el bloque V32 lo fijaba en #704b0e (marrón), ilegible en
    noche; vuelve al dorado de etiqueta. */
-[data-rapago-theme="dark"] .rapago-request-page .rp-request-panel .rp-request-label {
+[data-rapago-theme="dark"]
+  .rapago-request-page
+  .rp-request-panel
+  .rp-request-label {
   color: var(--rp-label) !important;
 }
 
@@ -1914,10 +1933,14 @@
      "Ej: LA800" del número de vuelo desaparece; el placeholder es texto y
      necesita 4,5:1. El token queda en ~4,9:1. */
   --placeholder-color: var(--rp-field-ph) !important;
-  border-color: rgba(214, 166, 64, 0.30) !important;
+  border-color: rgba(214, 166, 64, 0.3) !important;
 }
 
-[data-rapago-theme="dark"] .rapago-request-page .rp-request-panel ion-item ion-input {
+[data-rapago-theme="dark"]
+  .rapago-request-page
+  .rp-request-panel
+  ion-item
+  ion-input {
   --color: var(--rp-field-fg) !important;
   color: var(--rp-field-fg) !important;
 }
@@ -1949,7 +1972,9 @@
    que ya tiene contraparte de día y de noche.
    ========================================================================== */
 .rapago-section-page.rapago-request-page ion-content ion-button[fill="clear"],
-.rapago-section-page.rapago-request-page ion-content ion-button[fill="clear"]::part(native) {
+.rapago-section-page.rapago-request-page
+  ion-content
+  ion-button[fill="clear"]::part(native) {
   color: var(--rp-clear-fg, var(--rp-icon-fg)) !important;
 }
 
@@ -1997,12 +2022,1345 @@
 
 /* En noche el rojo oscuro del texto activo quedaría ilegible sobre el coral
    translúcido; sube a un coral claro. */
-.request-map-page[data-rapago-theme="dark"] .request-map-frequent__item--active strong,
-.request-map-page[data-rapago-theme="dark"] .request-map-frequent__item--active small {
+.request-map-page[data-rapago-theme="dark"]
+  .request-map-frequent__item--active
+  strong,
+.request-map-page[data-rapago-theme="dark"]
+  .request-map-frequent__item--active
+  small {
   color: #f3c6b4 !important;
 }
 
 .request-map-page .request-map-frequent__item--active ion-icon {
   background: var(--rp-danger) !important;
   color: #ffffff !important;
+}
+
+/* ==========================================================================
+   SOLICITAR VIAJE — sistema visual de la pantalla (v13)
+
+   POR QUÉ SE REESCRIBIÓ ESTA CAPA
+
+   La versión anterior construía el layout "tipo Uber" a base de !important
+   contra los estilos inline del JSX. Eso arrastraba tres problemas reales,
+   no estéticos:
+
+   1. color-mix() sobre tokens que son GRADIENTES.
+      --rp-surface, --rp-btn-primary y --rp-page-bg se definen en
+      rapago-shell.css como linear-gradient(...). color-mix() exige un
+      <color>; un gradiente es un <image>. Cada declaración que los mezclaba
+      era inválida en tiempo de cómputo y el navegador la descartaba entera.
+      Consecuencia visible: la hoja inferior —que contiene TODO el
+      formulario— se quedaba sin fondo en modo día y dejaba ver el mapa por
+      debajo; los chips del dock quedaban sin borde ni relleno; los iconos de
+      vehículo sin baldosa; y el degradado que funde el mapa con la hoja solo
+      existía de noche.
+      → Aquí se usan tokens PLANOS propios (--rq-*), nunca gradientes, y se
+        evita color-mix() en todo lo que sostiene el layout.
+
+   2. El botón principal quedaba debajo de la barra de navegación.
+      .rapago-role-tabbar es fixed, mide --rp-tabbar-height (60px) y flota a
+      --rp-tabbar-bottom-offset (12px + safe area) con z-index 9999. El dock
+      iba a bottom:0 con z-index 30, así que "SOLICITAR VIAJE" caía dentro de
+      la franja de la barra y no se podía pulsar.
+      → El dock reserva ahora la altura real de la barra usando sus mismos
+        tokens, para que un cambio futuro en la barra no lo vuelva a romper.
+
+   3. Los estilos inline no admiten :hover, :focus-visible ni media queries.
+      React no puede emitir !important ni pseudoclases en style={{}}, así que
+      la pantalla no tenía un solo indicador de foco. Al mover el aspecto a
+      clases, los estados vuelven a ser expresables.
+
+   REGLA DE MANTENIMIENTO: el !important queda reservado a propiedades
+   personalizadas de Ionic y a pisar reglas globales de global.css que están
+   sin scope. En el resto, especificidad normal.
+   ========================================================================== */
+
+/* ── Tokens planos de la pantalla ────────────────────────────────────────── */
+/* Se declaran aparte de los --rp-* globales justo porque estos SÍ son colores
+   sólidos y se pueden mezclar, aclarar y componer sin romperse. */
+.rapago-request-page {
+  --rq-page: #efe7d8;
+  --rq-surface: #fffdf8;
+  --rq-surface-2: #f7efe0;
+  --rq-surface-sunk: #f2e8d6;
+  --rq-line: rgba(88, 62, 22, 0.16);
+  --rq-line-strong: rgba(88, 62, 22, 0.34);
+  --rq-text: #1c1917;
+  --rq-muted: #6b5b45;
+  --rq-accent: #8a641c;
+  --rq-accent-fill: #fdf2d8;
+  --rq-ok: #1f6347;
+  --rq-ok-fill: rgba(46, 125, 91, 0.12);
+  --rq-dest: #b03a1c;
+  --rq-dest-fill: rgba(176, 58, 28, 0.1);
+  --rq-info: #0e5566;
+  --rq-shadow-sm: 0 2px 6px rgba(74, 52, 18, 0.06);
+  --rq-shadow: 0 10px 26px rgba(74, 52, 18, 0.12);
+  --rq-shadow-lg: 0 18px 40px rgba(74, 52, 18, 0.18);
+
+  /* El par dorado de marca vale igual de día y de noche: es la única
+     constante cromática, como el negro del botón de Uber. */
+  --rq-brand: linear-gradient(135deg, #f0c75a 0%, #d6a640 100%);
+  --rq-brand-fg: #241a06;
+  --rq-brand-edge: #b98517;
+
+  /* Escala tipográfica. La anterior tenía 36 tamaños y 7 pesos por encima de
+     700 — y con el font stack del sistema todo lo que pasa de 700 renderiza
+     igual, así que la pantalla creía tener siete niveles y tenía uno. */
+  --rq-fs-micro: 0.72rem;
+  --rq-fs-sub: 0.78rem;
+  --rq-fs-body: 0.88rem;
+  --rq-fs-title: 1rem;
+  --rq-fs-price: 1.35rem;
+  --rq-fw-body: 500;
+  --rq-fw-med: 650;
+  --rq-fw-bold: 800;
+
+  /* Ritmo de espaciado y radios: 4 peldaños, no 16. */
+  --rq-1: 4px;
+  --rq-2: 8px;
+  --rq-3: 12px;
+  --rq-4: 16px;
+  --rq-5: 22px;
+  --rq-r-sm: 12px;
+  --rq-r: 16px;
+  --rq-r-lg: 22px;
+  --rq-r-xl: 28px;
+
+  --rq-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── La barra de navegación se oculta en Solicitar viaje ─────────────────── */
+/* La barra flotante de Inicio / Mis viajes / Wallet / Perfil es fixed, mide
+   60px y va a z-index 9999, así que sobre esta pantalla se comía el espacio
+   útil de la hoja y se superponía al dock de confirmación. Aquí el usuario
+   está en una tarea concreta y tiene la flecha de volver en la cabecera, así
+   que la barra se oculta mientras esta pantalla es la visible.
+
+   :has() con :not(.ion-page-hidden) es importante: Ionic mantiene las páginas
+   anteriores montadas en el DOM y solo las marca como ocultas, así que sin ese
+   filtro la barra desaparecería también en las demás pantallas. */
+ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
+  ion-tab-bar.rapago-role-tabbar {
+  display: none !important;
+}
+
+.rapago-request-page[data-rapago-theme="dark"] {
+  --rq-page: #100f0d;
+  --rq-surface: #1b1917;
+  --rq-surface-2: #232019;
+  --rq-surface-sunk: #131211;
+  --rq-line: rgba(214, 166, 64, 0.28);
+  --rq-line-strong: rgba(214, 166, 64, 0.58);
+  --rq-text: #f6f2ec;
+  --rq-muted: rgba(246, 242, 236, 0.68);
+  --rq-accent: #f1c864;
+  --rq-accent-fill: rgba(214, 166, 64, 0.14);
+  --rq-ok: #6fbf95;
+  --rq-ok-fill: rgba(46, 125, 91, 0.2);
+  --rq-dest: #f0906e;
+  --rq-dest-fill: rgba(184, 79, 46, 0.18);
+  --rq-info: #7fd6e6;
+  --rq-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.3);
+  --rq-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+  --rq-shadow-lg: 0 20px 44px rgba(0, 0, 0, 0.5);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GEOMETRÍA DE LA PANTALLA — cadena de alturas, de la raíz hacia dentro
+
+   La regla es una sola: cada eslabón recibe un alto DEFINIDO de su padre y lo
+   reparte entre sus hijos, sin que ninguno pueda crecer por su contenido. Así
+   el 100% del viewport pertenece a esta pantalla y no puede quedar ninguna
+   franja por la que asome el fondo de la página (que es una foto puesta con
+   !important en .rapago-section-page, rapago-shell.css:452).
+
+   1. ion-page  → exactamente el viewport (100dvh), sin desbordar.
+   2. ion-header→ alto propio, fila fija de la columna del ion-page.
+   3. ion-content→ ocupa el hueco restante (flex:1) y no crece.
+   4. part(scroll)→ se anula el padding de Ionic y pasa a ser la columna.
+   5. shell     → absolute inset:0, así calca el área de contenido exacta.
+   6. mapa / hoja / dock → tres filas que se reparten ese alto.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* 1 — La raíz ES el viewport. dvh y no vh: en móvil, vh mide contra la ventana
+   con la barra del navegador retraída, así que en iOS deja siempre un sobrante
+   del alto de esa barra. */
+.rapago-request-page {
+  height: 100dvh;
+  /* max-height y no min-height: el objetivo es que la pantalla nunca SUPERE el
+     viewport. Un min-height podría forzarla a ser más alta que el contenedor
+     que Ionic le asigna y reintroducir el desbordamiento por abajo, que es
+     justo lo que se quiere evitar. */
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+/* 3 — ion-content toma el hueco que queda tras el header y no crece más. */
+.rapago-request-page .rp-request-main-content {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 4 — El contenedor de scroll de Ionic se convierte en la columna.
+   El padding va a 0 !important porque Ionic lo calcula desde --offset-top /
+   --offset-bottom y, sumado a un height:100%, hacía que el alto declarado y el
+   utilizable no coincidieran: esa diferencia era exactamente la franja de
+   fondo que se veía abajo. Sin `fullscreen` en el JSX esos offsets ya valen 0;
+   esto lo deja garantizado aunque Ionic cambie el cálculo. */
+.rapago-request-page .rp-request-main-content::part(scroll) {
+  position: relative;
+  height: 100%;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+/* 5 — El shell calca el área de contenido en lugar de deducirla.
+   inset:0 sobre el contenedor de scroll evita depender de una cadena de
+   porcentajes a través de shadow DOM, que es donde se rompía antes. */
+.rapago-request-page .rp-request-uber-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 0;
+  overflow: hidden;
+  background: var(--rq-page);
+}
+
+/* ── Cabecera FIJA de la hoja: asa + selector "cuándo" ───────────────────── */
+/* Fila fija de la columna (flex:0 0 auto), fuera del área con scroll. Así el
+   selector AHORA/RESERVAR no se mueve nunca al desplazar el formulario, y el
+   asa queda fuera del scroller, de modo que arrastrarla no puede interpretarse
+   como un desplazamiento. */
+.rapago-request-page .rq-sheet-head {
+  flex: 0 0 auto;
+  z-index: 6;
+  padding: 0 var(--rq-3) var(--rq-2);
+  background: var(--rq-surface);
+  /* TODA la cabecera es la zona de arrastre, igual que en Confirmar recogida.
+     touch-action:none impide que el navegador se quede el gesto vertical antes
+     de que lleguen los pointermove; aquí no estorba porque esta fila no se
+     desplaza. user-select:none evita seleccionar texto al arrastrar. */
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.rapago-request-page .rq-sheet-head:active {
+  cursor: grabbing;
+}
+
+/* Los controles de dentro recuperan el comportamiento táctil normal: detienen
+   la propagación en JS, así que pulsarlos no arrastra. */
+.rapago-request-page .rq-sheet-head .rq-seg__option {
+  touch-action: manipulation;
+}
+
+/* Asa de arrastre. Zona táctil generosa (toda la anchura y 26px de alto) aunque
+   la barra visible sea de 4px: es un gesto que hay que poder coger sin
+   apuntar. touch-action:none para que el navegador no se quede el gesto
+   vertical como scroll antes de que lleguen los pointermove. */
+/* El asa es la señal visual del gesto y el punto de entrada por teclado; el
+   arrastre en sí lo captura la cabecera entera. Es un <button> para que reciba
+   foco y responda a las flechas, igual que el asa del selector de recogida. */
+.rapago-request-page .rq-grip {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 32px;
+  margin: 0 calc(var(--rq-3) * -1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: inherit;
+}
+
+.rapago-request-page .rq-grip__bar {
+  display: block;
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--rq-line-strong);
+  opacity: 0.55;
+  transition: opacity 160ms var(--rq-ease);
+}
+
+/* El realce se dispara desde la cabecera entera, que es la zona de arrastre
+   real: así el asa reacciona aunque el dedo agarre a un lado de la barrita. */
+.rapago-request-page .rq-sheet-head:hover .rq-grip__bar,
+.rapago-request-page .rq-sheet-head:active .rq-grip__bar,
+.rapago-request-page .rq-grip:focus-visible .rq-grip__bar {
+  opacity: 1;
+}
+
+.rapago-request-page .rq-grip:focus-visible {
+  outline: 3px solid var(--rq-accent);
+  outline-offset: -3px;
+  border-radius: var(--rq-r-sm);
+}
+
+.rapago-request-page .rq-seg {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--rq-1);
+  /* Separación real respecto al asa (que ya tiene 26px de alto): antes
+     quedaban prácticamente pegados, así que un intento de agarrar el asa
+     podía aterrizar sobre RESERVAR y cambiar el modo del viaje por error. */
+  margin-top: 8px;
+  padding: var(--rq-1);
+  border: 1px solid var(--rq-line);
+  border-radius: 999px;
+  background: var(--rq-surface);
+  box-shadow: var(--rq-shadow);
+}
+
+/* Mientras se arrastra el asa, el selector queda inerte: ni responde al
+   toque ni se puede activar por accidente si el dedo termina desviándose
+   sobre él al soltar. Se reactiva solo al terminar el gesto. */
+.rapago-request-page .rp-request-uber-shell.is-dragging .rq-seg {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Se gana a global.css:3931-3956, que estampa un relleno marrón oscuro con
+   !important sobre CUALQUIER button[role="tab"] de la app. Esa regla no tiene
+   scope, así que aquí hace falta especificidad + !important; no se toca allí
+   porque la usan las pantallas de conductor y admin. */
+.rapago-request-page .rq-seg .rq-seg__option[role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  /* 44px: el mínimo táctil de WCAG 2.5.8. La versión anterior lo dejaba en
+     34px sobre el control que cambia el modo entero de la pantalla. */
+  min-height: 44px;
+  padding: 0 var(--rq-2);
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: var(--rq-muted) !important;
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.04em;
+  box-shadow: none !important;
+  transition:
+    background-color 180ms var(--rq-ease),
+    color 180ms var(--rq-ease);
+}
+
+.rapago-request-page .rq-seg .rq-seg__option[aria-selected="true"] {
+  background: var(--rq-brand) !important;
+  color: var(--rq-brand-fg) !important;
+  box-shadow: 0 4px 12px rgba(185, 133, 23, 0.28) !important;
+}
+
+.rapago-request-page .rq-seg .rq-seg__option ion-icon {
+  font-size: 1rem;
+}
+
+/* ── Mapa ────────────────────────────────────────────────────────────────── */
+/* El mapa es el FONDO: llena todo el shell y no se mueve. La hoja se desliza
+   por encima como overlay, así que el mapa nunca cambia de tamaño ni de sitio
+   al arrastrar —solo se descubre más o menos según dónde quede la hoja. */
+.rapago-request-page .rp-request-main-map {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  overflow: hidden;
+  background: var(--rq-surface-sunk);
+}
+
+.rapago-request-page .rp-request-main-map > div,
+.rapago-request-page .rp-request-main-map > div > div {
+  height: 100% !important;
+}
+
+/* Funde el borde inferior del mapa con la hoja. Antes se calculaba con
+   color-mix() sobre --rp-page-bg (un gradiente), así que la declaración se
+   descartaba y el corte quedaba a cuchillo en modo día. */
+.rapago-request-page .rp-request-main-map::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 72px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(239, 231, 216, 0) 0%,
+    var(--rq-page) 100%
+  );
+}
+
+.rapago-request-page[data-rapago-theme="dark"] .rp-request-main-map::after {
+  background: linear-gradient(
+    180deg,
+    rgba(16, 15, 13, 0) 0%,
+    var(--rq-page) 100%
+  );
+}
+
+/* ── Hoja inferior: overlay arrastrable sobre el mapa ─────────────────────
+   Es un OVERLAY absoluto (inset:0) que llena el shell y se baja con
+   `translateY(var(--rq-sheet-shift))`. Así el asa controla la posición de TODA
+   la hoja siguiendo al dedo, sin repartir alto con el mapa ni empujar el
+   layout. En su tope superior (shift 0) tapa casi todo el mapa; abajo del todo
+   deja sólo el asa + AHORA/RESERVAR. La transición solo actúa al soltar; durante
+   el arrastre se apaga para que siga al dedo sin retardo. */
+.rapago-request-page .rp-request-bottom-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  padding: var(--rq-4) 0 0;
+  overflow: hidden;
+  background: var(--rq-surface);
+  border: 1px solid var(--rq-line);
+  border-bottom: 0;
+  border-radius: var(--rq-r-xl) var(--rq-r-xl) 0 0;
+  box-shadow: 0 -18px 40px rgba(40, 28, 10, 0.16);
+  transform: translateY(var(--rq-sheet-shift, 52%));
+  transition: transform 240ms var(--rq-ease);
+  will-change: transform;
+}
+
+.rapago-request-page
+  .rp-request-uber-shell.is-dragging
+  .rp-request-bottom-sheet {
+  transition: none;
+}
+
+/* Único scroller de la pantalla. min-height:0 es imprescindible en un hijo
+   flex con overflow: sin él, el mínimo automático de contenido impide que se
+   encoja y el scroll nunca llega a activarse. */
+.rapago-request-page .rq-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 var(--rq-3) var(--rq-5);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.rapago-request-page[data-rapago-theme="dark"] .rp-request-bottom-sheet {
+  box-shadow: 0 -18px 40px rgba(0, 0, 0, 0.44);
+}
+
+/* El asa ya no es un ::before decorativo: ahora es un elemento real y
+   arrastrable dentro de .rq-sheet-head. */
+
+/* ── Etiqueta de sección ─────────────────────────────────────────────────── */
+.rapago-request-page .rq-eyebrow {
+  margin: 0 0 var(--rq-2) 2px;
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* ── El riel de la ruta: origen ── línea ── destino ──────────────────────── */
+/* Las dos filas comparten una sola tarjeta y un raíl vertical que las une, que
+   es lo que las hace legibles como los dos extremos de un mismo viaje. Antes
+   eran dos botones sueltos con notas y otros botones intercalados. */
+.rapago-request-page .rq-route {
+  position: relative;
+  margin: 0 0 var(--rq-3);
+  border: 1px solid var(--rq-line);
+  border-radius: var(--rq-r-lg);
+  background: var(--rq-surface);
+  box-shadow: var(--rq-shadow-sm);
+  overflow: hidden;
+}
+
+.rapago-request-page .rq-place {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--rq-3);
+  width: 100%;
+  /* 56px: cómodo para el control más usado de la pantalla y por encima del
+     mínimo de Material (48dp). */
+  min-height: 56px;
+  margin: 0;
+  padding: var(--rq-2) var(--rq-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--rq-text);
+  text-align: left;
+  box-shadow: none;
+  transition: background-color 160ms var(--rq-ease);
+}
+
+.rapago-request-page .rq-place + .rq-place {
+  border-top: 1px solid var(--rq-line);
+}
+
+/* El punto y el cuadrado del raíl. Se distinguen por FORMA además de por
+   color, para no depender solo del color (WCAG 1.4.1). */
+.rapago-request-page .rq-place__marker {
+  position: relative;
+  display: block;
+  justify-self: center;
+  width: 11px;
+  height: 11px;
+  border: 2.5px solid var(--rq-accent);
+  border-radius: 50%;
+  background: var(--rq-surface);
+}
+
+.rapago-request-page .rp-request-place-row--destination .rq-place__marker {
+  border-radius: 3px;
+  border-color: var(--rq-dest);
+}
+
+/* La línea punteada que une los dos marcadores. */
+.rapago-request-page .rp-request-place-row--origin .rq-place__marker::after {
+  content: "";
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  width: 2px;
+  height: calc(var(--rq-3) * 2 + 6px);
+  transform: translateX(-50%);
+  background-image: linear-gradient(
+    to bottom,
+    var(--rq-line-strong) 0 4px,
+    transparent 4px 8px
+  );
+  background-size: 2px 8px;
+}
+
+.rapago-request-page .rq-place__copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* Esta etiqueta es la que dice cuál es cuál y en qué estado está
+   ("Toca para buscar" / "Confirmado · toca para cambiar"). La capa anterior la
+   ocultaba con display:none, así que la única pista que quedaba era el color
+   del icono — inservible para daltónicos y un fallo de WCAG 1.4.1. */
+.rapago-request-page .rq-place__label {
+  color: var(--rq-muted);
+  font-size: 0.68rem;
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.rapago-request-page .rq-place[data-state="set"] .rq-place__label {
+  color: var(--rq-ok);
+}
+
+.rapago-request-page .rq-place__value {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--rq-text);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sin dirección elegida el valor es un placeholder: se atenúa para que se lea
+   como hueco por rellenar y no como dato ya introducido. */
+.rapago-request-page .rq-place[data-state="empty"] .rq-place__value {
+  color: var(--rq-muted);
+  font-weight: var(--rq-fw-body);
+}
+
+.rapago-request-page .rq-place__action {
+  display: grid;
+  place-items: center;
+  /* Ancho fijo para que el cambio icono ↔ spinner no mueva el layout. */
+  width: 24px;
+  height: 24px;
+  color: var(--rq-accent);
+  font-size: 1.1rem;
+}
+
+.rapago-request-page .rq-place[data-state="set"] .rq-place__action {
+  color: var(--rq-ok);
+}
+
+.rapago-request-page .rq-place[aria-disabled="true"],
+.rapago-request-page .rq-place:disabled {
+  cursor: default;
+}
+
+.rapago-request-page .rq-place[aria-disabled="true"] .rq-place__value,
+.rapago-request-page .rq-place:disabled .rq-place__value {
+  color: var(--rq-muted);
+}
+
+@media (hover: hover) {
+  .rapago-request-page
+    .rq-place:not(:disabled):not([aria-disabled="true"]):hover {
+    background: var(--rq-surface-2);
+  }
+}
+
+.rapago-request-page .rq-place:not(:disabled):active {
+  background: var(--rq-surface-sunk);
+}
+
+/* ── Acciones rápidas bajo el riel ───────────────────────────────────────── */
+.rapago-request-page .rq-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rq-2);
+  margin: 0 0 var(--rq-4);
+}
+
+.rapago-request-page .rq-quick__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 var(--rq-3);
+  border: 1px solid var(--rq-line);
+  border-radius: 999px;
+  background: var(--rq-surface);
+  color: var(--rq-text);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  box-shadow: var(--rq-shadow-sm);
+  transition:
+    background-color 160ms var(--rq-ease),
+    border-color 160ms var(--rq-ease);
+}
+
+.rapago-request-page .rq-quick__btn ion-icon {
+  color: var(--rq-accent);
+  font-size: 1.05rem;
+}
+
+.rapago-request-page .rq-quick__btn--primary {
+  border-color: var(--rq-brand-edge);
+  background: var(--rq-brand);
+  color: var(--rq-brand-fg);
+}
+
+.rapago-request-page .rq-quick__btn--primary ion-icon {
+  color: var(--rq-brand-fg);
+}
+
+@media (hover: hover) {
+  .rapago-request-page .rq-quick__btn:not(:disabled):hover {
+    border-color: var(--rq-line-strong);
+    background: var(--rq-surface-2);
+  }
+
+  .rapago-request-page .rq-quick__btn--primary:not(:disabled):hover {
+    background: var(--rq-brand);
+    filter: brightness(1.04);
+  }
+}
+
+/* global.css fija button:disabled{opacity:1 !important}, así que el estado
+   deshabilitado no puede expresarse con opacidad: se hace con color y filtro. */
+.rapago-request-page .rq-quick__btn:disabled {
+  filter: saturate(0.35);
+  color: var(--rq-muted);
+  cursor: default;
+}
+
+/* ── Nota informativa ────────────────────────────────────────────────────── */
+.rapago-request-page .rp-request-note {
+  margin: 0 0 var(--rq-3);
+  padding: var(--rq-3);
+  border: 1px solid var(--rq-line);
+  border-left: 3px solid var(--rq-accent);
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-accent-fill);
+  color: var(--rq-text);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.45;
+}
+
+.rapago-request-page .rq-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--rq-4);
+  color: var(--rq-accent);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.4;
+}
+
+.rapago-request-page .rq-hint ion-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+/* ── Encabezado del selector de vehículo ─────────────────────────────────── */
+.rapago-request-page .rp-request-vehicle-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--rq-3);
+  margin: 0 0 var(--rq-2);
+}
+
+.rapago-request-page .rp-request-vehicle-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.rapago-request-page .rp-request-vehicle-heading strong {
+  color: var(--rq-text);
+  font-size: var(--rq-fs-title);
+  font-weight: var(--rq-fw-bold);
+  line-height: 1.15;
+}
+
+.rapago-request-page
+  .rp-request-vehicle-heading
+  span:not(.rp-request-route-metric) {
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.2;
+}
+
+/* Píldora km · min. El color anterior salía de --rp-lagoon-dark, un token que
+   no existe fuera de .request-map-page, así que siempre caía al literal
+   #0b7285 en ambos temas (≈2:1 sobre la hoja oscura). */
+.rapago-request-page .rp-request-route-metric {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--rq-line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--rq-surface-2);
+  color: var(--rq-info);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Tarjetas de vehículo ────────────────────────────────────────────────── */
+.rapago-request-page .rp-request-vehicle-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--rq-2);
+  margin: 0 0 var(--rq-4);
+}
+
+.rapago-request-page button.rp-request-vehicle-card,
+.rapago-request-page button.rp-request-vehicle-card[aria-pressed="false"] {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--rq-3);
+  width: 100%;
+  min-height: 72px;
+  padding: var(--rq-2) var(--rq-3);
+  border: 1.5px solid var(--rq-line) !important;
+  border-radius: var(--rq-r) !important;
+  background: var(--rq-surface) !important;
+  color: var(--rq-text) !important;
+  box-shadow: var(--rq-shadow-sm);
+  text-align: left;
+  transition:
+    border-color 160ms var(--rq-ease),
+    background-color 160ms var(--rq-ease),
+    box-shadow 160ms var(--rq-ease);
+}
+
+.rapago-request-page button.rp-request-vehicle-card.is-active,
+.rapago-request-page button.rp-request-vehicle-card[aria-pressed="true"] {
+  border-color: var(--rq-brand-edge) !important;
+  background: var(--rq-accent-fill) !important;
+  color: var(--rq-text) !important;
+  box-shadow: 0 8px 20px rgba(185, 133, 23, 0.18);
+}
+
+@media (hover: hover) {
+  .rapago-request-page
+    button.rp-request-vehicle-card:not([aria-pressed="true"]):hover {
+    border-color: var(--rq-line-strong) !important;
+    background: var(--rq-surface-2) !important;
+  }
+}
+
+.rapago-request-page .rp-request-vehicle-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-accent-fill);
+  color: var(--rq-accent);
+  font-size: 1.3rem;
+}
+
+.rapago-request-page
+  .rp-request-vehicle-card[aria-pressed="true"]
+  .rp-request-vehicle-icon {
+  background: var(--rq-brand);
+  color: var(--rq-brand-fg);
+}
+
+.rapago-request-page .rp-request-vehicle-copy,
+.rapago-request-page .rp-request-vehicle-price {
+  display: grid;
+  min-width: 0;
+}
+
+.rapago-request-page .rp-request-vehicle-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--rq-text);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.2;
+}
+
+.rapago-request-page .rp-request-vehicle-title small {
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+}
+
+.rapago-request-page .rp-request-vehicle-description {
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rapago-request-page .rp-request-vehicle-eta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  color: var(--rq-info);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  line-height: 1;
+}
+
+.rapago-request-page .rp-request-vehicle-eta ion-icon {
+  font-size: 0.8rem;
+}
+
+.rapago-request-page .rp-request-vehicle-price {
+  justify-items: end;
+  gap: 1px;
+  color: var(--rq-text);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* El precio es la variable que decide la elección: tiene que ganarle en peso
+   al nombre del vehículo, no empatarle como antes (0,90rem contra 0,86rem). */
+.rapago-request-page .rp-request-vehicle-price strong {
+  font-size: 1.02rem;
+  font-weight: var(--rq-fw-bold);
+  line-height: 1.1;
+}
+
+.rapago-request-page .rp-request-vehicle-price small {
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+}
+
+/* ── Tipo de viaje (grupo de una sola opción) ────────────────────────────── */
+.rapago-request-page .rq-tripmode {
+  margin: 0 0 var(--rq-4);
+}
+
+.rapago-request-page .rq-tripmode .rq-tripmode__btn[aria-pressed] {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--rq-3);
+  width: 100%;
+  min-height: 52px;
+  padding: var(--rq-2) var(--rq-3);
+  border: 1.5px solid var(--rq-line) !important;
+  border-radius: var(--rq-r) !important;
+  background: var(--rq-surface) !important;
+  color: var(--rq-text) !important;
+  text-align: left;
+  box-shadow: var(--rq-shadow-sm) !important;
+}
+
+.rapago-request-page .rq-tripmode .rq-tripmode__btn[aria-pressed="true"] {
+  border-color: var(--rq-brand-edge) !important;
+  background: var(--rq-accent-fill) !important;
+}
+
+.rapago-request-page .rq-tripmode__btn ion-icon {
+  justify-self: center;
+  color: var(--rq-accent);
+  font-size: 1.15rem;
+}
+
+.rapago-request-page .rq-tripmode__copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.rapago-request-page .rq-tripmode__copy strong {
+  color: var(--rq-text);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-med);
+}
+
+.rapago-request-page .rq-tripmode__copy small {
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.3;
+}
+
+/* ── Paneles genéricos (reserva, promociones, pago) ──────────────────────── */
+.rapago-request-page .rp-request-panel,
+.rapago-request-page .rq-panel {
+  margin: 0 0 var(--rq-4);
+  padding: var(--rq-4);
+  border: 1px solid var(--rq-line);
+  border-radius: var(--rq-r-lg);
+  background: var(--rq-surface);
+  color: var(--rq-text);
+  box-shadow: var(--rq-shadow-sm);
+}
+
+.rapago-request-page .rp-request-label {
+  display: flex;
+  align-items: center;
+  gap: var(--rq-2);
+  margin: 0 0 var(--rq-3);
+  color: var(--rq-text);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-bold);
+}
+
+.rapago-request-page .rp-request-label__tick {
+  display: block;
+  width: 3px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--rq-brand);
+}
+
+/* ── Resumen de tarifa ───────────────────────────────────────────────────── */
+/* Antes era una losa negra fija (linear-gradient #101010→#1E1608→#D2A43A) con
+   dos círculos decorativos, tres baldosas de estadísticas y un titular más
+   grande que el propio precio. En modo día quedaba como un folleto nocturno
+   pegado en medio de un formulario claro. */
+.rapago-request-page .rp-request-fare-summary {
+  position: relative;
+  margin: 0 0 var(--rq-4);
+  border: 1px solid var(--rq-line-strong);
+  border-radius: var(--rq-r-lg);
+  background: var(--rq-surface);
+  color: var(--rq-text);
+  box-shadow: var(--rq-shadow);
+  overflow: hidden;
+}
+
+.rapago-request-page .rq-fare__body {
+  padding: var(--rq-4);
+}
+
+.rapago-request-page .rq-fare__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--rq-3);
+}
+
+.rapago-request-page .rq-fare__copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rapago-request-page .rq-fare__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--rq-3);
+}
+
+.rapago-request-page .rq-fare__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: var(--rq-3);
+}
+
+.rapago-request-page .rq-stat {
+  min-width: 0;
+  padding: var(--rq-2);
+  border: 1px solid var(--rq-line);
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-surface-2);
+}
+
+.rapago-request-page .rq-stat__label {
+  color: var(--rq-muted);
+  font-size: 0.66rem;
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rapago-request-page .rq-stat__value {
+  margin-top: 2px;
+  color: var(--rq-text);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.2;
+}
+
+.rapago-request-page .rq-fare__eyebrow {
+  color: var(--rq-accent);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.rapago-request-page .rq-fare__headline {
+  margin-top: 3px;
+  color: var(--rq-text);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.25;
+}
+
+.rapago-request-page .rq-fare__sub {
+  margin-top: var(--rq-1);
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.4;
+}
+
+.rapago-request-page .rq-fare__total {
+  flex: 0 0 auto;
+  min-width: 104px;
+  padding: var(--rq-2) var(--rq-3);
+  border-radius: var(--rq-r);
+  background: var(--rq-brand);
+  color: var(--rq-brand-fg);
+  text-align: right;
+}
+
+.rapago-request-page .rq-fare__total-label {
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+/* El total es el dato de nivel 1 de esta tarjeta. */
+.rapago-request-page .rq-fare__total-value {
+  margin-top: 1px;
+  font-size: var(--rq-fs-price);
+  font-weight: var(--rq-fw-bold);
+  line-height: 1.05;
+}
+
+.rapago-request-page .rq-fare__total-usd {
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  opacity: 0.78;
+}
+
+/* Avisos dentro de la tarjeta de tarifa (regreso agendado, cargos pendientes).
+   Iban en oro pálido #F8D879, que sobre la superficie clara nueva era texto
+   casi blanco sobre blanco. */
+.rapago-request-page .rq-fare__sched {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--rq-3);
+  padding: var(--rq-2) var(--rq-3);
+  border: 1px solid var(--rq-line-strong);
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-accent-fill);
+  color: var(--rq-accent);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.4;
+}
+
+.rapago-request-page .rq-fare__sched--warn {
+  border-color: var(--rq-dest);
+  background: var(--rq-dest-fill);
+  color: var(--rq-dest);
+}
+
+.rapago-request-page .rq-fare__sched ion-icon {
+  flex-shrink: 0;
+}
+
+/* ── Chips ───────────────────────────────────────────────────────────────── */
+.rapago-request-page .rq-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--rq-line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--rq-surface-2);
+  color: var(--rq-text);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.2;
+}
+
+.rapago-request-page .rq-chip--gold {
+  border-color: var(--rq-line-strong);
+  background: var(--rq-accent-fill);
+  color: var(--rq-accent);
+}
+
+.rapago-request-page .rq-chip--ok {
+  border-color: var(--rq-ok);
+  background: var(--rq-ok-fill);
+  color: var(--rq-ok);
+}
+
+/* ── Dock inferior fijo ──────────────────────────────────────────────────── */
+/* El dock es la última fila de la columna, no un elemento flotante.
+
+   Antes era position:fixed, y ahí venían los dos defectos que se veían en
+   pantalla: quedaba anclado al viewport en lugar de al contenedor, así que por
+   debajo asomaba el fondo de la página; y al no ocupar sitio en el flujo,
+   había que compensarlo con 150px de padding en la hoja, que es justo lo que
+   hacía que el contenido pareciera cortado. Como fila normal siempre queda
+   pegado al final del contenedor y arrastra su propio alto. */
+.rapago-request-page .rp-request-action-dock {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  flex: 0 0 auto;
+  gap: var(--rq-2);
+  width: 100%;
+  margin: 0;
+  /* El área segura vive en el dock porque es el borde real de la pantalla. */
+  padding: var(--rq-2) var(--rq-3)
+    calc(var(--rq-2) + env(safe-area-inset-bottom, 0px));
+  background: var(--rq-surface);
+  border-top: 1px solid var(--rq-line);
+}
+
+.rapago-request-page[data-rapago-theme="dark"] .rp-request-action-dock {
+  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.5);
+}
+
+.rapago-request-page .rp-request-action-dock__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--rq-2);
+  min-width: 0;
+}
+
+.rapago-request-page .rp-request-payment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 44px, mínimo táctil: es un botón, y además la única salida cuando falta
+     elegir forma de pago y el botón principal está deshabilitado. */
+  min-height: 44px;
+  padding: 0 var(--rq-3);
+  border: 1px solid var(--rq-line);
+  border-radius: 999px;
+  background: var(--rq-surface-2);
+  color: var(--rq-text);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+}
+
+.rapago-request-page .rp-request-payment-chip span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rapago-request-page .rp-request-payment-chip strong {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--rq-accent);
+  font-weight: var(--rq-fw-bold);
+}
+
+.rapago-request-page .rp-request-payment-chip ion-icon {
+  flex: 0 0 auto;
+  color: var(--rq-accent);
+  font-size: 1.05rem;
+}
+
+/* Cuando falta la forma de pago, este chip pasa a ser la acción real: el botón
+   principal está deshabilitado y sin esto el usuario queda en un callejón. */
+.rapago-request-page .rp-request-payment-chip[data-required="true"] {
+  border-color: var(--rq-brand-edge);
+  background: var(--rq-accent-fill);
+}
+
+.rapago-request-page .rp-request-fare-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  /* flex 0 1 + ellipsis: el literal "RAPA NUI / RESIDENTE RAPA NUI" mide ~215px
+     y desbordaba la fila entera en pantallas de 320px. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: var(--rq-ok-fill);
+  color: var(--rq-ok);
+  font-size: 0.68rem;
+  font-weight: var(--rq-fw-med);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rapago-request-page .rp-request-fare-chip ion-icon {
+  flex: 0 0 auto;
+}
+
+/* Mensaje de error: vive dentro del dock para que se vea junto al botón que lo
+   provoca. En el flujo normal quedaba a un scroll de distancia. */
+.rapago-request-page .rq-dock-error {
+  margin: 0;
+  padding: var(--rq-2) var(--rq-3);
+  border: 1px solid var(--rq-dest);
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-dest-fill);
+  color: var(--rq-dest);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.35;
+}
+
+.rapago-request-page .rp-request-confirm-sticky {
+  --border-radius: var(--rq-r);
+  margin: 0;
+  height: 52px;
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.03em;
+}
+
+/* El estado deshabilitado tenía la sombra dorada a pleno brillo, así que
+   parecía pulsable. */
+.rapago-request-page .rp-request-confirm-sticky.button-disabled {
+  --background: var(--rq-surface-2);
+  --color: var(--rq-muted);
+  --box-shadow: none;
+  box-shadow: none;
+}
+
+/* ── Foco visible ────────────────────────────────────────────────────────── */
+/* La pantalla no tenía NINGÚN indicador de foco: las nueve reglas
+   :focus-visible del archivo apuntaban todas al modal del mapa. Sin esto, un
+   usuario de teclado o de control por conmutador navega a ciegas (WCAG 2.4.7). */
+.rapago-request-page .rq-place:focus-visible,
+.rapago-request-page .rq-quick__btn:focus-visible,
+.rapago-request-page .rq-seg__option:focus-visible,
+.rapago-request-page .rp-request-vehicle-card:focus-visible,
+.rapago-request-page .rp-request-payment-chip:focus-visible,
+.rapago-request-page .rp-request-confirm-sticky:focus-visible,
+.rapago-request-page .rp-request-payment-cta:focus-visible {
+  outline: 3px solid var(--rq-accent);
+  outline-offset: 2px;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+
+/* Pantallas muy estrechas (iPhone SE de 320px). */
+@media (max-width: 360px) {
+  .rapago-request-page .rp-request-bottom-sheet {
+    padding-left: var(--rq-2);
+    padding-right: var(--rq-2);
+  }
+
+  .rapago-request-page button.rp-request-vehicle-card {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    gap: var(--rq-2);
+  }
+
+  .rapago-request-page .rp-request-vehicle-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+  }
+
+  .rapago-request-page .rp-request-vehicle-description {
+    display: none;
+  }
+
+  .rapago-request-page .rq-seg__option {
+    font-size: 0.68rem;
+  }
+}
+
+/* Tablet y escritorio: la columna crece y el dock se alinea con ella en vez de
+   con el viewport. El alto del mapa NO se toca aquí: lo controla el usuario
+   con el asa. */
+@media (min-width: 720px) {
+  .rapago-request-page .rp-request-uber-shell {
+    max-width: 560px;
+    border-inline: 1px solid var(--rq-line);
+    box-shadow: var(--rq-shadow-lg);
+  }
+
+  .rapago-request-page .rp-request-vehicle-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .rapago-request-page .rp-request-uber-shell {
+    max-width: 640px;
+  }
+}
+
+/* ── Movimiento reducido ─────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .rapago-request-page .rq-place,
+  .rapago-request-page .rq-quick__btn,
+  .rapago-request-page .rq-seg__option,
+  .rapago-request-page button.rp-request-vehicle-card {
+    transition: none;
+  }
 }

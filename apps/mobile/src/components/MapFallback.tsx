@@ -1,9 +1,4 @@
-import {
-  IonCard,
-  IonCardContent,
-  IonIcon,
-  IonNote,
-} from "@ionic/react";
+import { IonCard, IonCardContent, IonIcon, IonNote } from "@ionic/react";
 import { carOutline } from "ionicons/icons";
 import { useEffect, useRef, useState } from "react";
 import { getDistanceBetween, getEstimatedFare } from "@rapa-go/shared";
@@ -56,6 +51,11 @@ declare global {
 
   interface WindowEventMap {
     "rapago:origin-point-moved": CustomEvent<MapPointMovedPayload>;
+    "rapago:origin-point-visibility": CustomEvent<{
+      lat: number;
+      lng: number;
+      screenY: number;
+    }>;
   }
 }
 
@@ -68,9 +68,7 @@ const GOOGLE_MAPS_SCRIPT_ID = "rapa-go-google-maps-script";
 const GOOGLE_MAPS_CALLBACK_NAME = "initRapaGoGoogleMap";
 
 function getGoogleMapsApiKey(): string {
-  const envKey = String(
-    import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? "",
-  ).trim();
+  const envKey = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? "").trim();
 
   if (
     !envKey ||
@@ -86,9 +84,9 @@ function getGoogleMapsApiKey(): string {
 function isGoogleMapsReady(): boolean {
   return Boolean(
     window.google?.maps?.Map &&
-      window.google?.maps?.DirectionsService &&
-      window.google?.maps?.DirectionsRenderer &&
-      window.google?.maps?.Geocoder,
+    window.google?.maps?.DirectionsService &&
+    window.google?.maps?.DirectionsRenderer &&
+    window.google?.maps?.Geocoder,
   );
 }
 
@@ -234,8 +232,7 @@ function OfflineFallback({
         background: "#e8eef4",
         color: "#172033",
         padding: "18px",
-      }}
-    >
+      }}>
       <strong>Mapa no disponible</strong>
 
       <p style={{ fontSize: ".78rem", color: "#6b4700" }}>
@@ -280,7 +277,9 @@ function makeUserCircle(center: LatLng): google.maps.CircleOptions {
   };
 }
 
-async function reverseGeocodeLatLng(point: LatLng): Promise<string | undefined> {
+async function reverseGeocodeLatLng(
+  point: LatLng,
+): Promise<string | undefined> {
   if (!window.google?.maps?.Geocoder) return undefined;
 
   return new Promise((resolve) => {
@@ -334,13 +333,7 @@ function GoogleRapaMap({
 
   useEffect(() => {
     setLocalOrigin(origin);
-  }, [
-    origin.id,
-    origin.text,
-    origin.lat,
-    origin.lng,
-    origin.placeId,
-  ]);
+  }, [origin.id, origin.text, origin.lat, origin.lng, origin.placeId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -367,16 +360,50 @@ function GoogleRapaMap({
              sin necesidad de ilustración. */
           styles: [
             { elementType: "geometry", stylers: [{ color: "#f2e6d3" }] },
-            { elementType: "labels.text.fill", stylers: [{ color: "#4a3b2a" }] },
-            { elementType: "labels.text.stroke", stylers: [{ color: "#f7efe2" }, { weight: 3 }] },
-            { featureType: "water", elementType: "geometry", stylers: [{ color: "#12697e" }] },
-            { featureType: "landscape.natural", elementType: "geometry", stylers: [{ color: "#dcd0b8" }] },
+            {
+              elementType: "labels.text.fill",
+              stylers: [{ color: "#4a3b2a" }],
+            },
+            {
+              elementType: "labels.text.stroke",
+              stylers: [{ color: "#f7efe2" }, { weight: 3 }],
+            },
+            {
+              featureType: "water",
+              elementType: "geometry",
+              stylers: [{ color: "#12697e" }],
+            },
+            {
+              featureType: "landscape.natural",
+              elementType: "geometry",
+              stylers: [{ color: "#dcd0b8" }],
+            },
             /* La isla entera es parque nacional: el verde no es un detalle. */
-            { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#b9c48a" }] },
-            { featureType: "road", elementType: "geometry", stylers: [{ color: "#fffdf9" }] },
-            { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e0cfae" }] },
-            { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#6b5a3e" }] },
-            { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#c89b3c" }] },
+            {
+              featureType: "poi.park",
+              elementType: "geometry",
+              stylers: [{ color: "#b9c48a" }],
+            },
+            {
+              featureType: "road",
+              elementType: "geometry",
+              stylers: [{ color: "#fffdf9" }],
+            },
+            {
+              featureType: "road",
+              elementType: "geometry.stroke",
+              stylers: [{ color: "#e0cfae" }],
+            },
+            {
+              featureType: "road",
+              elementType: "labels.text.fill",
+              stylers: [{ color: "#6b5a3e" }],
+            },
+            {
+              featureType: "administrative",
+              elementType: "geometry.stroke",
+              stylers: [{ color: "#c89b3c" }],
+            },
             { featureType: "poi.business", stylers: [{ visibility: "on" }] },
           ],
         });
@@ -423,6 +450,32 @@ function GoogleRapaMap({
     renderer.set("directions", null);
   }
 
+  function getMapScreenPosition(
+    map: google.maps.Map,
+    point: LatLng,
+  ): { x: number; y: number } | null {
+    const projection = map.getProjection();
+    const center = map.getCenter();
+    const mapElement = map.getDiv();
+
+    if (!projection || !center || !mapElement) return null;
+
+    const centerPoint = projection.fromLatLngToPoint(center);
+    const markerPoint = projection.fromLatLngToPoint(
+      new google.maps.LatLng(point.lat, point.lng),
+    );
+    const zoomScale = Math.pow(2, map.getZoom() ?? 0);
+
+    return {
+      x:
+        (markerPoint.x - centerPoint.x) * zoomScale +
+        mapElement.clientWidth / 2,
+      y:
+        (markerPoint.y - centerPoint.y) * zoomScale +
+        mapElement.clientHeight / 2,
+    };
+  }
+
   async function notifyOriginMoved(point: LatLng) {
     const address = await reverseGeocodeLatLng(point);
     const text = address || "Punto elegido en el mapa";
@@ -442,6 +495,21 @@ function GoogleRapaMap({
         detail: payload,
       }),
     );
+
+    const map = mapRef.current;
+    const markerScreen = map ? getMapScreenPosition(map, point) : null;
+
+    if (markerScreen) {
+      window.dispatchEvent(
+        new CustomEvent("rapago:origin-point-visibility", {
+          detail: {
+            lat: point.lat,
+            lng: point.lng,
+            screenY: markerScreen.y,
+          },
+        }),
+      );
+    }
   }
 
   useEffect(() => {
@@ -672,8 +740,7 @@ function GoogleRapaMap({
         background: "#e8eef4",
         overflow: "hidden",
         position: "relative",
-      }}
-    >
+      }}>
       <div style={{ height, position: "relative" }}>
         <div
           ref={mapElementRef}
@@ -703,8 +770,7 @@ function GoogleRapaMap({
               zIndex: 6,
               textAlign: "center",
               pointerEvents: "none",
-            }}
-          >
+            }}>
             {movingOrigin
               ? "Suelta el punto azul donde quieres partir"
               : "Mantén presionado el punto azul y muévelo"}
@@ -725,8 +791,7 @@ function GoogleRapaMap({
               fontSize: ".76rem",
               border: "1px solid rgba(200,155,60,.35)",
               zIndex: 5,
-            }}
-          >
+            }}>
             {mapError}
           </div>
         )}
@@ -744,8 +809,7 @@ function GoogleRapaMap({
               padding: "10px 12px",
               boxShadow: "0 12px 28px rgba(0,0,0,.30)",
               zIndex: 4,
-            }}
-          >
+            }}>
             <div
               style={{
                 display: "flex",
@@ -753,8 +817,7 @@ function GoogleRapaMap({
                 alignItems: "center",
                 fontWeight: 900,
                 fontSize: ".82rem",
-              }}
-            >
+              }}>
               <IonIcon icon={carOutline} style={{ color: "#C89B3C" }} />
               Ruta del viaje
             </div>
@@ -764,8 +827,7 @@ function GoogleRapaMap({
                 marginTop: "4px",
                 color: "#D9C3A0",
                 fontSize: ".76rem",
-              }}
-            >
+              }}>
               {routeInfo.durationText}
               {routeInfo.durationText && routeInfo.distanceText ? " · " : ""}
               {routeInfo.distanceText}
@@ -826,8 +888,7 @@ export function RouteEstimate({
             gap: "16px",
             flexWrap: "wrap",
             fontSize: "0.82rem",
-          }}
-        >
+          }}>
           <span>
             <strong>📏</strong> {dist.km} km
           </span>
@@ -835,8 +896,8 @@ export function RouteEstimate({
             <strong>⏱</strong> ~{dist.minutes} min
           </span>
           <span>
-            <strong>💰</strong>{" "}
-            ${getEstimatedFare(dist.km).toLocaleString("es-CL")} CLP est.
+            <strong>💰</strong> $
+            {getEstimatedFare(dist.km).toLocaleString("es-CL")} CLP est.
           </span>
         </div>
 
@@ -845,8 +906,7 @@ export function RouteEstimate({
             fontSize: "0.7rem",
             display: "block",
             marginTop: "4px",
-          }}
-        >
+          }}>
           Tarifa estimada — sujeta a confirmación del operador
         </IonNote>
       </IonCardContent>
