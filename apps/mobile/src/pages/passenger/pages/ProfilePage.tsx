@@ -59,6 +59,7 @@ import { LegalAndHelpCard } from "../../../components/legal/LegalAndHelpCard.js"
 import { ROUTE_METADATA } from "../../../navigation/routeConfig";
 import { ROUTES } from "../../../navigation/routes";
 import { authService, useAuth } from "../../../features/auth";
+import { activateDriverMode } from "../../../features/roles/appMode.js";
 import { profileService, type ProfileData } from "../../../features/profile/profile.service";
 import { ROLE_HOME } from "../../../navigation/RouteGuard";
 import { documentsService } from "../../../features/documents/documents.service";
@@ -1445,28 +1446,11 @@ export function ProfileIndexPage(): JSX.Element {
     });
   }
 
+  /* El marcado del modo vive en features/roles/appMode: es el mismo mecanismo
+     que usa el Inicio del pasajero, así que hay un único sitio donde cambia el
+     modo y un único juego de llaves que leer. */
   function handleGoToDriverMode(): void {
-    try {
-      localStorage.setItem("rapago_active_mode", "driver");
-      localStorage.setItem("rapago_active_role", "driver");
-      localStorage.setItem("rapago_selected_role", "driver");
-      localStorage.setItem("rapago_view_mode", "driver");
-
-      const currentRaw = localStorage.getItem("rapago_registration_profile");
-      const current = currentRaw ? JSON.parse(currentRaw) as Record<string, unknown> : {};
-      const currentRoles = Array.isArray(current.roles)
-        ? current.roles.map((item) => String(item))
-        : [];
-      localStorage.setItem("rapago_registration_profile", JSON.stringify({
-        ...current,
-        activeRole: "driver",
-        currentRole: "driver",
-        roles: Array.from(new Set(["passenger", "driver", ...currentRoles])),
-      }));
-    } catch {
-      // No bloquea navegación si el navegador no permite localStorage.
-    }
-
+    activateDriverMode();
     history.push(ROUTES.DRIVER.HOME);
   }
 

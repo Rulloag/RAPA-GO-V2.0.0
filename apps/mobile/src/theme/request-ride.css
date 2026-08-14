@@ -2377,9 +2377,45 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   background: var(--rq-surface-sunk);
 }
 
-.rapago-request-page .rp-request-main-map > div,
-.rapago-request-page .rp-request-main-map > div > div {
+/* `:not()` deja fuera los avisos flotantes que viven sobre el mapa: son hijos
+   directos del contenedor y con el alto al 100% se volvían una capa completa
+   en vez de una píldora. */
+.rapago-request-page .rp-request-main-map > div:not(.rq-map-poi-loading),
+.rapago-request-page
+  .rp-request-main-map
+  > div:not(.rq-map-poi-loading)
+  > div {
   height: 100% !important;
+}
+
+/* Aviso mientras se resuelve un icono de Google tocado en el mapa. Mismo
+   lenguaje que la píldora del selector de punto: pastilla oscura arriba, sin
+   capturar toques para no tapar el mapa. */
+.rapago-request-page .rq-map-poi-loading {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  transform: translateX(-50%);
+  background: #2f2418;
+  color: #fffaf0;
+  border-radius: 999px;
+  box-shadow: 0 8px 20px rgba(47, 36, 24, 0.26);
+  font-size: 0.73rem;
+  font-weight: 750;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.rapago-request-page .rq-map-poi-loading ion-spinner {
+  width: 17px;
+  height: 17px;
+  color: #f0c75a;
 }
 
 /* Funde el borde inferior del mapa con la hoja. Antes se calculaba con
@@ -2471,11 +2507,10 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
 
 /* ── El riel de la ruta: origen ── línea ── destino ──────────────────────── */
 /* Las dos filas comparten una sola tarjeta y un raíl vertical que las une, que
-   es lo que las hace legibles como los dos extremos de un mismo viaje. Antes
-   eran dos botones sueltos con notas y otros botones intercalados. */
+   es lo que las hace legibles como los dos extremos de un mismo viaje. */
 .rapago-request-page .rq-route {
   position: relative;
-  margin: 0 0 var(--rq-3);
+  margin: 0 0 var(--rq-2);
   border: 1px solid var(--rq-line);
   border-radius: var(--rq-r-lg);
   background: var(--rq-surface);
@@ -2483,7 +2518,11 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   overflow: hidden;
 }
 
-.rapago-request-page .rq-place {
+/* Ahora la fila ES el campo de texto: se escribe directamente aquí y no en un
+   buscador aparte, igual que en Uber. Antes era un botón que abría una caja
+   de texto flotante encima; el punto débil era que había dos sitios donde
+   vivía la misma dirección. */
+.rapago-request-page .rq-field {
   position: relative;
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr) auto;
@@ -2493,24 +2532,22 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   /* 56px: cómodo para el control más usado de la pantalla y por encima del
      mínimo de Material (48dp). */
   min-height: 56px;
-  margin: 0;
   padding: var(--rq-2) var(--rq-3);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--rq-text);
-  text-align: left;
-  box-shadow: none;
-  transition: background-color 160ms var(--rq-ease);
 }
 
-.rapago-request-page .rq-place + .rq-place {
+.rapago-request-page .rq-field + .rq-field {
   border-top: 1px solid var(--rq-line);
+}
+
+/* El campo activo se resalta con la superficie hundida: es la misma señal que
+   usaba el buscador flotante para decir "estás escribiendo aquí". */
+.rapago-request-page .rq-field[data-active="true"] {
+  background: var(--rq-surface-sunk);
 }
 
 /* El punto y el cuadrado del raíl. Se distinguen por FORMA además de por
    color, para no depender solo del color (WCAG 1.4.1). */
-.rapago-request-page .rq-place__marker {
+.rapago-request-page .rq-field__marker {
   position: relative;
   display: block;
   justify-self: center;
@@ -2521,13 +2558,13 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   background: var(--rq-surface);
 }
 
-.rapago-request-page .rp-request-place-row--destination .rq-place__marker {
+.rapago-request-page .rq-field--destination .rq-field__marker {
   border-radius: 3px;
   border-color: var(--rq-dest);
 }
 
 /* La línea punteada que une los dos marcadores. */
-.rapago-request-page .rp-request-place-row--origin .rq-place__marker::after {
+.rapago-request-page .rq-field--origin .rq-field__marker::after {
   content: "";
   position: absolute;
   top: calc(100% + 5px);
@@ -2543,79 +2580,211 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   background-size: 2px 8px;
 }
 
-.rapago-request-page .rq-place__copy {
-  display: grid;
-  gap: 1px;
+.rapago-request-page .rq-field__input {
   min-width: 0;
-}
-
-/* Esta etiqueta es la que dice cuál es cuál y en qué estado está
-   ("Toca para buscar" / "Confirmado · toca para cambiar"). La capa anterior la
-   ocultaba con display:none, así que la única pista que quedaba era el color
-   del icono — inservible para daltónicos y un fallo de WCAG 1.4.1. */
-.rapago-request-page .rq-place__label {
-  color: var(--rq-muted);
-  font-size: 0.68rem;
-  font-weight: var(--rq-fw-bold);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.rapago-request-page .rq-place[data-state="set"] .rq-place__label {
-  color: var(--rq-ok);
-}
-
-.rapago-request-page .rq-place__value {
-  overflow: hidden;
-  min-width: 0;
-  color: var(--rq-text);
+  --background: transparent;
+  --color: var(--rq-text);
+  --placeholder-color: var(--rq-muted);
+  --placeholder-opacity: 1;
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
   font-size: var(--rq-fs-body);
   font-weight: var(--rq-fw-med);
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-/* Sin dirección elegida el valor es un placeholder: se atenúa para que se lea
-   como hueco por rellenar y no como dato ya introducido. */
-.rapago-request-page .rq-place[data-state="empty"] .rq-place__value {
-  color: var(--rq-muted);
-  font-weight: var(--rq-fw-body);
+.rapago-request-page .rq-field[data-state="set"] .rq-field__input {
+  color: var(--rq-ok);
+  font-weight: var(--rq-fw-bold);
 }
 
-.rapago-request-page .rq-place__action {
-  display: grid;
-  place-items: center;
-  /* Ancho fijo para que el cambio icono ↔ spinner no mueva el layout. */
-  width: 24px;
+.rapago-request-page .rq-field__action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Ancho fijo para que aparecer/desaparecer el spinner o el botón de borrar
+     no mueva el campo de al lado. */
+  min-width: 24px;
   height: 24px;
   color: var(--rq-accent);
   font-size: 1.1rem;
 }
 
-.rapago-request-page .rq-place[data-state="set"] .rq-place__action {
+.rapago-request-page .rq-field__ok {
   color: var(--rq-ok);
 }
 
-.rapago-request-page .rq-place[aria-disabled="true"],
-.rapago-request-page .rq-place:disabled {
-  cursor: default;
+.rapago-request-page .rq-field__clear {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rq-muted);
+  font-size: 1rem;
+  cursor: pointer;
 }
 
-.rapago-request-page .rq-place[aria-disabled="true"] .rq-place__value,
-.rapago-request-page .rq-place:disabled .rq-place__value {
+.rapago-request-page .rq-field__clear:active {
+  background: var(--rq-surface-2);
+}
+
+.rapago-request-page .rq-field__clear:focus-visible {
+  outline: 2px solid var(--rq-accent);
+  outline-offset: 2px;
+}
+
+.rapago-request-page .rq-field ion-input[disabled] {
+  opacity: 1;
+}
+
+.rapago-request-page .rq-field ion-input[disabled]::part(native) {
   color: var(--rq-muted);
 }
 
-@media (hover: hover) {
-  .rapago-request-page
-    .rq-place:not(:disabled):not([aria-disabled="true"]):hover {
-    background: var(--rq-surface-2);
-  }
+/* ══════════════════════════════════════════════════════════════════════════
+   RESULTADOS BAJO EL CAMPO
+   Se escribe en el campo del riel de arriba (.rq-field) y la respuesta sale
+   aquí debajo, en la misma columna del formulario — como en Uber: un solo
+   sitio donde escribir, un solo sitio donde mirar la respuesta.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.rapago-request-page .rq-results {
+  margin: 0 0 var(--rq-3);
+  border: 1px solid var(--rq-line);
+  border-radius: var(--rq-r-lg);
+  background: var(--rq-surface);
+  box-shadow: var(--rq-shadow-sm);
+  overflow: hidden;
 }
 
-.rapago-request-page .rq-place:not(:disabled):active {
+.rapago-request-page .rq-results__hint {
+  padding: var(--rq-3) var(--rq-3) var(--rq-1);
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Sin tope de alto propio: la lista crece con el cuerpo de la hoja, que es
+   quien ya tiene su propio scroll (rq-sheet-body). Ponerle uno aquí habría
+   sido un scroll dentro de otro scroll. */
+.rapago-request-page .rq-results__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--rq-2);
+}
+
+/* Filas separadas por filete y no por tarjetas: es una lista de direcciones,
+   y el filete deja que el nombre del sitio sea lo único con peso. */
+.rapago-request-page .rq-results__item {
+  display: flex;
+  align-items: center;
+  gap: var(--rq-3);
+  width: 100%;
+  min-height: 54px;
+  padding: var(--rq-2) var(--rq-3);
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rapago-request-page .rq-results__list li + li .rq-results__item {
+  border-top: 1px solid var(--rq-line);
+}
+
+.rapago-request-page .rq-results__item:active {
   background: var(--rq-surface-sunk);
+}
+
+.rapago-request-page .rq-results__item:focus-visible {
+  outline: 2px solid var(--rq-accent);
+  outline-offset: -2px;
+}
+
+/* Disco gris con el pin: la columna de iconos alineada es lo que hace que diez
+   direcciones se lean como una lista y no como diez bloques sueltos. */
+.rapago-request-page .rq-results__pin {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--rq-surface-2);
+  color: var(--rq-muted);
+  font-size: 1rem;
+}
+
+.rapago-request-page .rq-results__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rapago-request-page .rq-results__copy strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--rq-text);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-bold);
+}
+
+.rapago-request-page .rq-results__copy small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-sub);
+  font-weight: var(--rq-fw-body);
+}
+
+.rapago-request-page .rq-results__empty {
+  padding: var(--rq-4) var(--rq-3);
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-sub);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.4;
+}
+/* -- Aviso de orden: origen antes que destino --
+   Ambar y no rojo: el pasajero no ha hecho nada mal, solo ha empezado por el
+   otro extremo. El rojo de esta pantalla esta reservado para lo que impide
+   pedir el viaje. */
+.rapago-request-page .rq-order-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--rq-2);
+  margin: 0 0 var(--rq-3);
+  padding: var(--rq-3);
+  border: 1px solid color-mix(in srgb, var(--rq-accent) 38%, transparent);
+  border-radius: var(--rq-r);
+  background: var(--rq-accent-fill);
+  color: var(--rq-accent);
+  font-size: var(--rq-fs-sub);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.4;
+}
+
+.rapago-request-page .rq-order-hint > ion-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  font-size: 1.15rem;
+}
+
+.rapago-request-page .rq-order-hint strong {
+  font-weight: var(--rq-fw-bold);
+}
+
+.rapago-request-page .rq-order-hint strong::after {
+  content: " ";
 }
 
 /* ── Acciones rápidas bajo el riel ───────────────────────────────────────── */
@@ -3362,5 +3531,268 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   .rapago-request-page .rq-seg__option,
   .rapago-request-page button.rp-request-vehicle-card {
     transition: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   FLUJO POR PASOS
+   El formulario es el mismo de siempre; lo que cambia es cuánto se enseña de
+   golpe. Antes todo vivía en un scroll continuo y el pasajero tenía que
+   recorrerlo entero —y volver— para saber qué le faltaba. Ahora cada grupo de
+   secciones se muestra por turnos y el pie dice cuál es el único siguiente
+   movimiento posible.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Sólo se pinta el paso actual. `display:none` y no desmontar: el estado del
+   formulario vive en el componente, así que quitarlo del árbol no perdería
+   datos, pero sí remontaría inputs y tarjetas en cada salto —perdiendo el
+   foco y provocando un parpadeo— y volvería a montar el resumen de tarifa
+   cada vez que se va y se vuelve. Oculto, el paso conserva todo tal cual. */
+.rapago-request-page .rq-step[data-active="false"] {
+  display: none;
+}
+
+/* ── Indicador de progreso ─────────────────────────────────────────────────
+   Tres etapas con su número, su nombre y la línea que las une. La línea no es
+   decorativa: es lo que hace que se lean como un recorrido con principio y
+   final —"me queda una"— en vez de tres etiquetas sueltas. */
+.rapago-request-page .rq-steps {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--rq-1);
+  margin: var(--rq-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rapago-request-page .rq-steps__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}
+
+/* La línea sale del disco anterior hacia el siguiente. Se dibuja en el propio
+   peldaño (no como elemento aparte) para que herede su estado sin repetirlo. */
+.rapago-request-page .rq-steps__item + .rq-steps__item::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  right: 50%;
+  left: -50%;
+  height: 2px;
+  margin: 0 16px;
+  border-radius: 2px;
+  background: var(--rq-line);
+}
+
+.rapago-request-page .rq-steps__dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 999px;
+  border: 1.5px solid var(--rq-line-strong);
+  background: var(--rq-surface);
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.rapago-request-page .rq-steps__dot ion-icon {
+  font-size: 15px;
+}
+
+.rapago-request-page .rq-steps__label {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  color: var(--rq-muted);
+}
+
+/* Completado: verde y con check. Es el color que la pantalla ya usa para el
+   origen confirmado, así que el pasajero no aprende un código nuevo. */
+.rapago-request-page .rq-steps__item[data-state="done"] .rq-steps__dot {
+  border-color: transparent;
+  background: var(--rq-ok-fill);
+  color: var(--rq-ok);
+}
+
+.rapago-request-page .rq-steps__item[data-state="done"] .rq-steps__label {
+  color: var(--rq-ok);
+}
+
+.rapago-request-page
+  .rq-steps__item[data-state="done"]
+  + .rq-steps__item::before,
+.rapago-request-page
+  .rq-steps__item[data-state="current"]
+  + .rq-steps__item::before {
+  background: color-mix(in srgb, var(--rq-ok) 42%, transparent);
+}
+
+/* Actual: el dorado de marca, el mismo del botón principal. Es el único
+   peldaño relleno, así que salta a la vista sin necesidad de agrandarlo. */
+.rapago-request-page .rq-steps__item[data-state="current"] .rq-steps__dot {
+  border-color: transparent;
+  background: var(--rq-brand);
+  color: var(--rq-brand-fg);
+  box-shadow: var(--rq-shadow-sm);
+}
+
+.rapago-request-page .rq-steps__item[data-state="current"] .rq-steps__label {
+  color: var(--rq-text);
+  font-weight: var(--rq-fw-bold);
+}
+
+/* ── Anterior / Siguiente ──────────────────────────────────────────────────
+   Van en el dock, la única franja que no se va con el scroll del cuerpo: así
+   el pasajero siempre tiene la acción siguiente bajo el pulgar. */
+.rapago-request-page .rq-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--rq-2);
+  width: 100%;
+}
+
+/* "Siguiente" manda: se lleva el ancho sobrante y "Anterior" ocupa lo justo.
+   Cuando es el único botón, se queda con la franja entera. */
+.rapago-request-page .rq-nav__next {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 48px: por encima del mínimo táctil de Android (48) y de iOS (44). */
+  min-height: 48px;
+  padding: 0 var(--rq-4);
+  border: 0;
+  border-radius: var(--rq-r);
+  background: var(--rq-brand);
+  color: var(--rq-brand-fg);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.01em;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--rq-shadow);
+  touch-action: manipulation;
+  transition:
+    transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rapago-request-page .rq-nav__next ion-icon {
+  flex: 0 0 auto;
+  font-size: 1.05rem;
+}
+
+.rapago-request-page .rq-nav__next:active:not(:disabled) {
+  transform: scale(0.985);
+  filter: brightness(1.06);
+}
+
+.rapago-request-page .rq-nav__next:focus-visible {
+  outline: 2px solid var(--rq-brand-edge);
+  outline-offset: 3px;
+}
+
+/* Bloqueado: superficie hundida, sin sombra y sin degradado. La sombra dorada
+   es lo que hace que un botón parezca pulsable, así que dejarla encendida
+   mientras no se puede avanzar es justo lo que confunde. */
+.rapago-request-page .rq-nav__next:disabled {
+  background: var(--rq-surface-sunk);
+  color: var(--rq-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Anterior: acción secundaria. Contorno y nada de relleno, para que no compita
+   con el dorado de al lado. */
+.rapago-request-page .rq-nav__back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: 0 var(--rq-3);
+  border: 1px solid var(--rq-line-strong);
+  border-radius: var(--rq-r);
+  background: transparent;
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-sub);
+  font-weight: var(--rq-fw-med);
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rapago-request-page .rq-nav__back ion-icon {
+  flex: 0 0 auto;
+  font-size: 1rem;
+}
+
+.rapago-request-page .rq-nav__back:active {
+  background: var(--rq-surface-sunk);
+}
+
+.rapago-request-page .rq-nav__back:focus-visible {
+  outline: 2px solid var(--rq-accent);
+  outline-offset: 2px;
+}
+
+/* En el último paso "Anterior" queda solo sobre el botón de confirmar, así
+   que se alinea a la izquierda en vez de estirarse a lo ancho. */
+.rapago-request-page .rq-nav--last {
+  justify-content: flex-start;
+}
+
+/* El chip de pago y el botón de confirmar pertenecen al último paso. Ocultos
+   por CSS y no quitados del árbol: así el chip conserva su estado y el botón
+   no se remonta en cada salto de paso. */
+.rapago-request-page
+  .rp-request-action-dock[data-last="false"]
+  .rp-request-action-dock__meta,
+.rapago-request-page
+  .rp-request-action-dock[data-last="false"]
+  .rp-request-confirm-sticky {
+  display: none;
+}
+
+/* ── Pantallas estrechas ───────────────────────────────────────────────────
+   Por debajo de 360px los tres nombres no caben sin partirse. Se quedan los
+   discos, que son los que dicen dónde está y cuánto falta; el nombre del paso
+   ya lo encabeza el propio contenido. */
+@media (max-width: 359px) {
+  .rapago-request-page .rq-steps__label {
+    display: none;
+  }
+
+  .rapago-request-page .rq-nav__next {
+    font-size: var(--rq-fs-sub);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-request-page .rq-nav__next,
+  .rapago-request-page .rq-nav__back {
+    transition: none;
+  }
+
+  .rapago-request-page .rq-nav__next:active:not(:disabled) {
+    transform: none;
   }
 }

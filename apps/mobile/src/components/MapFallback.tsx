@@ -19,6 +19,24 @@ export interface MapPointMovedPayload {
   address?: string;
 }
 
+/* Un lugar seleccionable que se pinta como marcador tocable en el mapa. Es la
+   misma fuente de datos que alimenta los buscadores de origen y destino. */
+export interface MapPlaceMarker {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
+/* Un icono nativo de Google (restaurante, hotel, atracción…) que el usuario
+   tocó sobre el mapa. Google solo entrega el place_id y la coordenada: el
+   nombre y la dirección los resuelve el padre con Places Details. */
+export interface MapGooglePoi {
+  placeId: string;
+  lat: number;
+  lng: number;
+}
+
 interface MapFallbackProps {
   origin: MapPoint;
   destination: MapPoint;
@@ -26,11 +44,40 @@ interface MapFallbackProps {
   showRoute?: boolean;
 
   /*
-    Permite mover el punto azul de origen.
+    Permite mover el punto VERDE de origen.
     El padre puede usar onOriginChange para actualizar su estado.
   */
   originDraggable?: boolean;
   onOriginChange?: (point: MapPointMovedPayload) => void;
+
+  /*
+    Igual que el origen, pero para el punto DORADO de destino. No todo viaje
+    termina en un lugar con nombre en el mapa —una casa, una obra, un punto de
+    la costa—, así que el destino tiene que poder soltarse en cualquier parte,
+    no solo elegirse de una lista.
+  */
+  destinationDraggable?: boolean;
+  onDestinationChange?: (point: MapPointMovedPayload) => void;
+
+  /* Permite al padre vetar un punto soltado en el mapa —fuera de la zona de
+     servicio, por ejemplo—. Devuelve el motivo a mostrar, o null si el punto
+     vale. Al vetarlo, el marcador vuelve solo a donde estaba: si no, el mapa
+     enseñaría un origen o un destino que la app no llegó a aceptar. */
+  rejectDroppedPoint?: (
+    point: { lat: number; lng: number },
+    kind: "origin" | "destination",
+  ) => string | null;
+
+  /* Lugares tocables del mapa (POIs de Rapa Nui). Al tocar uno, el padre
+     decide si se vuelve origen o destino. */
+  places?: MapPlaceMarker[];
+  onSelectPlace?: (place: MapPlaceMarker) => void;
+
+  /* Toque sobre un icono propio de Google. Al pasar este callback se cancela
+     el globo nativo —el que ofrece "Ver en Google Maps" y saca al pasajero de
+     la app— y el lugar se entrega al padre para usarlo como origen o destino.
+     Sin callback se conserva el comportamiento por defecto de Google. */
+  onSelectGooglePoi?: (poi: MapGooglePoi) => void;
 }
 
 type LatLng = {
@@ -264,6 +311,78 @@ function makeCircleIcon(
   };
 }
 
+/* Mismo color que el punto ya elegido, pero translúcido y sin el punto blanco
+   del centro: se lee como "arrástrame hasta tu sitio" y no como "esto ya está
+   decidido". */
+function makePendingCircleIcon(
+  color: string,
+  scale: number,
+): google.maps.Symbol {
+  return {
+    path: google.maps.SymbolPath.CIRCLE,
+    scale,
+    fillColor: color,
+    fillOpacity: 0.5,
+    strokeColor: "#ffffff",
+    strokeWeight: 3,
+  };
+}
+
+/* Dónde dejar un punto que todavía no se ha fijado: los dos por ENCIMA del
+   centro y separados en horizontal —origen a la izquierda, destino a la
+   derecha—. Arriba porque en la pantalla de solicitud la hoja inferior tapa la
+   mitad de abajo del mapa: un punto colocado ahí nacería escondido. */
+function getPendingSpot(
+  map: google.maps.Map,
+  kind: "origin" | "destination",
+): LatLng | null {
+  const center = map.getCenter();
+  if (!center) return null;
+
+  const bounds = map.getBounds();
+  const latSpan = bounds
+    ? Math.abs(bounds.getNorthEast().lat() - bounds.getSouthWest().lat())
+    : 0.02;
+  const lngSpan = bounds
+    ? Math.abs(bounds.getNorthEast().lng() - bounds.getSouthWest().lng())
+    : 0.02;
+  const sideways = kind === "origin" ? -1 : 1;
+
+  return {
+    lat: center.lat() + latSpan * 0.18,
+    lng: center.lng() + sideways * lngSpan * 0.14,
+  };
+}
+
+/* Instrucción de la píldora superior. Nombra el punto por su color porque es
+   lo único que el pasajero ve en el mapa: verde = de dónde sale, oro = a dónde
+   llega. Antes decía "punto azul" y ningún punto era azul. */
+function getDragHint({
+  movingPoint,
+  originDraggable,
+  destinationDraggable,
+}: {
+  movingPoint: "origin" | "destination" | null;
+  originDraggable: boolean;
+  destinationDraggable: boolean;
+}): string {
+  if (movingPoint === "origin") {
+    return "Suelta el punto verde donde quieres partir";
+  }
+
+  if (movingPoint === "destination") {
+    return "Suelta el punto dorado en tu destino";
+  }
+
+  if (originDraggable && destinationDraggable) {
+    return "Mueve el punto verde (origen) y el dorado (destino)";
+  }
+
+  return originDraggable
+    ? "Mantén presionado el punto verde y muévelo"
+    : "Mantén presionado el punto dorado y muévelo";
+}
+
 function makeUserCircle(center: LatLng): google.maps.CircleOptions {
   return {
     center,
@@ -308,12 +427,27 @@ function GoogleRapaMap({
   height,
   originDraggable = true,
   onOriginChange,
+  destinationDraggable = false,
+  onDestinationChange,
+  rejectDroppedPoint,
+  places,
+  onSelectPlace,
+  onSelectGooglePoi,
 }: {
   origin: MapPoint;
   destination: MapPoint;
   height: number;
   originDraggable?: boolean;
   onOriginChange?: (point: MapPointMovedPayload) => void;
+  destinationDraggable?: boolean;
+  onDestinationChange?: (point: MapPointMovedPayload) => void;
+  rejectDroppedPoint?: (
+    point: LatLng,
+    kind: "origin" | "destination",
+  ) => string | null;
+  places?: MapPlaceMarker[];
+  onSelectPlace?: (place: MapPlaceMarker) => void;
+  onSelectGooglePoi?: (poi: MapGooglePoi) => void;
 }) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -324,11 +458,30 @@ function GoogleRapaMap({
   const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
   const originCircleRef = useRef<google.maps.Circle | null>(null);
   const fallbackLineRef = useRef<google.maps.Polyline | null>(null);
+  const placeMarkersRef = useRef<google.maps.Marker[]>([]);
   const lastRouteKeyRef = useRef<string>("");
+  /* Puntos "sin elegir todavía": el verde y el dorado que se ofrecen sobre el
+     mapa antes de que el pasajero haya fijado origen o destino. */
+  const pendingOriginMarkerRef = useRef<google.maps.Marker | null>(null);
+  const pendingDestinationMarkerRef = useRef<google.maps.Marker | null>(null);
+  /* Los puntos pendientes ya se colocaron con el encuadre real del mapa. */
+  const pendingSettledRef = useRef(false);
+
+  /* El listener del mapa se registra una sola vez, así que lee el callback
+     desde un ref para no quedarse con la versión de la primera renderización. */
+  const googlePoiHandlerRef = useRef<((poi: MapGooglePoi) => void) | undefined>(
+    onSelectGooglePoi,
+  );
+  googlePoiHandlerRef.current = onSelectGooglePoi;
 
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [movingOrigin, setMovingOrigin] = useState(false);
+  /* Qué punto se está arrastrando ahora mismo, para que el aviso de arriba
+     hable del punto correcto en vez de dar una instrucción genérica. */
+  const [movingPoint, setMovingPoint] = useState<
+    "origin" | "destination" | null
+  >(null);
+  const [mapReady, setMapReady] = useState(false);
   const [localOrigin, setLocalOrigin] = useState<MapPoint>(origin);
 
   useEffect(() => {
@@ -422,8 +575,30 @@ function GoogleRapaMap({
           },
         });
 
+        /* Icono propio de Google tocado. `event.placeId` solo viene cuando el
+           toque cayó sobre un POI de Google; `event.stop()` cancela el globo
+           nativo que ofrece abrir Google Maps, que es justo lo que sacaba al
+           pasajero de la app. Sin `onSelectGooglePoi` no se intercepta nada. */
+        map.addListener("click", (event: google.maps.MapMouseEvent) => {
+          const placeId = (event as google.maps.IconMouseEvent).placeId;
+          const position = event.latLng;
+
+          if (!placeId || !googlePoiHandlerRef.current) return;
+
+          event.stop();
+
+          if (!position) return;
+
+          googlePoiHandlerRef.current({
+            placeId,
+            lat: position.lat(),
+            lng: position.lng(),
+          });
+        });
+
         mapRef.current = map;
         directionsRendererRef.current = renderer;
+        setMapReady(true);
       })
       .catch((err) => {
         setMapError(
@@ -512,6 +687,63 @@ function GoogleRapaMap({
     }
   }
 
+  /* El destino no emite evento de ventana: solo lo escucha el padre que pasó
+     el callback. El del origen existe porque hay pantallas que lo escuchan
+     sin ser el padre directo del mapa. */
+  /* Los marcadores se crean una vez y sobreviven a las re-renderizaciones, así
+     que sus listeners leen la versión actual del aviso desde estos refs en vez
+     de quedarse con la del render en que nacieron. */
+  const notifyOriginMovedRef = useRef(notifyOriginMoved);
+  notifyOriginMovedRef.current = notifyOriginMoved;
+
+  async function notifyDestinationMoved(point: LatLng) {
+    const address = await reverseGeocodeLatLng(point);
+
+    onDestinationChange?.({
+      point: "destination",
+      lat: point.lat,
+      lng: point.lng,
+      text: address || "Punto elegido en el mapa",
+      address,
+    });
+  }
+
+  const notifyDestinationMovedRef = useRef(notifyDestinationMoved);
+  notifyDestinationMovedRef.current = notifyDestinationMoved;
+
+  /* Solo la PRESENCIA del callback entra en las dependencias: los padres pasan
+     funciones nuevas en cada render y los marcadores ya leen la versión actual
+     desde los refs de arriba, así que la identidad no debe rehacer nada. */
+  const canReportOrigin = Boolean(onOriginChange);
+  const canReportDestination = Boolean(onDestinationChange);
+
+  const rejectDroppedPointRef = useRef(rejectDroppedPoint);
+  rejectDroppedPointRef.current = rejectDroppedPoint;
+  /* Dónde estaba el marcador al empezar a arrastrarlo, para devolverlo ahí si
+     el padre rechaza el punto. Solo se arrastra uno a la vez. */
+  const dragStartPositionRef = useRef<google.maps.LatLng | null>(null);
+
+  /* true si el punto se puede usar. Si no, el marcador vuelve a su sitio y el
+     motivo se muestra en el aviso del mapa. */
+  function acceptDroppedPoint(
+    marker: google.maps.Marker,
+    point: LatLng,
+    kind: "origin" | "destination",
+  ): boolean {
+    const reason = rejectDroppedPointRef.current?.(point, kind) ?? null;
+
+    if (!reason) {
+      setMapError(null);
+      return true;
+    }
+
+    const previous = dragStartPositionRef.current;
+    if (previous) marker.setPosition(previous);
+
+    setMapError(reason);
+    return false;
+  }
+
   useEffect(() => {
     const map = mapRef.current;
     const renderer = directionsRendererRef.current;
@@ -529,6 +761,7 @@ function GoogleRapaMap({
       destinationLat: destinationPoint?.lat ?? null,
       destinationLng: destinationPoint?.lng ?? null,
       originDraggable,
+      destinationDraggable,
     });
 
     if (lastRouteKeyRef.current === routeKey) {
@@ -577,7 +810,9 @@ function GoogleRapaMap({
 
       if (originDraggable) {
         originMarkerRef.current.addListener("dragstart", () => {
-          setMovingOrigin(true);
+          dragStartPositionRef.current =
+            originMarkerRef.current?.getPosition() ?? null;
+          setMovingPoint("origin");
           map.setOptions({ draggableCursor: "grabbing" });
         });
 
@@ -593,7 +828,7 @@ function GoogleRapaMap({
 
         originMarkerRef.current.addListener("dragend", () => {
           const position = originMarkerRef.current?.getPosition();
-          setMovingOrigin(false);
+          setMovingPoint(null);
           map.setOptions({ draggableCursor: undefined });
 
           if (!position) return;
@@ -603,6 +838,15 @@ function GoogleRapaMap({
             lng: position.lng(),
           };
 
+          const marker = originMarkerRef.current;
+
+          if (marker && !acceptDroppedPoint(marker, movedPoint, "origin")) {
+            /* El círculo siguió al marcador durante el arrastre: vuelve con él. */
+            const previous = dragStartPositionRef.current;
+            if (previous) originCircleRef.current?.setCenter(previous);
+            return;
+          }
+
           setLocalOrigin((current) => ({
             ...current,
             text: "Punto elegido en el mapa",
@@ -611,7 +855,7 @@ function GoogleRapaMap({
             placeId: null,
           }));
 
-          void notifyOriginMoved(movedPoint);
+          void notifyOriginMovedRef.current(movedPoint);
         });
       }
 
@@ -622,7 +866,11 @@ function GoogleRapaMap({
       destinationMarkerRef.current = new google.maps.Marker({
         map,
         position: destinationPoint,
-        title: destination.text || "Destino",
+        title: destinationDraggable
+          ? "Mantén presionado y mueve tu destino"
+          : destination.text || "Destino",
+        draggable: destinationDraggable,
+        cursor: destinationDraggable ? "grab" : undefined,
         label: {
           text: "●",
           color: "#ffffff",
@@ -634,6 +882,33 @@ function GoogleRapaMap({
         icon: makeCircleIcon("#c89b3c", 12),
         zIndex: 19,
       });
+
+      if (destinationDraggable) {
+        destinationMarkerRef.current.addListener("dragstart", () => {
+          dragStartPositionRef.current =
+            destinationMarkerRef.current?.getPosition() ?? null;
+          setMovingPoint("destination");
+          map.setOptions({ draggableCursor: "grabbing" });
+        });
+
+        destinationMarkerRef.current.addListener("dragend", () => {
+          const marker = destinationMarkerRef.current;
+          const position = marker?.getPosition();
+          setMovingPoint(null);
+          map.setOptions({ draggableCursor: undefined });
+
+          if (!marker || !position) return;
+
+          const movedPoint = {
+            lat: position.lat(),
+            lng: position.lng(),
+          };
+
+          if (!acceptDroppedPoint(marker, movedPoint, "destination")) return;
+
+          void notifyDestinationMovedRef.current(movedPoint);
+        });
+      }
 
       bounds.extend(destinationPoint);
     }
@@ -732,6 +1007,218 @@ function GoogleRapaMap({
     destination.placeId,
     originDraggable,
     onOriginChange,
+    destinationDraggable,
+    onDestinationChange,
+  ]);
+
+  /* Puntos SIEMPRE disponibles. Antes el verde solo existía después de haber
+     elegido un origen, así que quien no salía ni llegaba a un lugar con nombre
+     en el mapa —una casa, un portón, un tramo de costa— no tenía forma de
+     marcarlo: primero había que buscar algo parecido y recién ahí aparecía el
+     punto para corregirlo. Ahora el verde (origen) y el dorado (destino) están
+     sobre el mapa desde el principio y basta arrastrarlos hasta el sitio real.
+     Se ofrecen solo si el padre puede recibirlos, así que las pantallas que
+     únicamente muestran un viaje ya hecho siguen sin puntos sueltos. */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map || !window.google?.maps) return;
+
+    const needsOrigin =
+      originDraggable &&
+      canReportOrigin &&
+      !getPointFromMapPoint(localOrigin);
+    const needsDestination =
+      destinationDraggable &&
+      canReportDestination &&
+      !getPointFromMapPoint(destination);
+
+    if (!needsOrigin && pendingOriginMarkerRef.current) {
+      pendingOriginMarkerRef.current.setMap(null);
+      pendingOriginMarkerRef.current = null;
+    }
+
+    if (!needsDestination && pendingDestinationMarkerRef.current) {
+      pendingDestinationMarkerRef.current.setMap(null);
+      pendingDestinationMarkerRef.current = null;
+    }
+
+    if (!needsOrigin && !needsDestination) return;
+
+    const createPendingMarker = (
+      kind: "origin" | "destination",
+    ): google.maps.Marker | null => {
+      const spot = getPendingSpot(map, kind);
+      if (!spot) return null;
+
+      const isOrigin = kind === "origin";
+      const marker = new google.maps.Marker({
+        map,
+        position: spot,
+        draggable: true,
+        cursor: "grab",
+        title: isOrigin
+          ? "Arrastra este punto verde hasta dónde te recogemos"
+          : "Arrastra este punto dorado hasta dónde quieres llegar",
+        icon: isOrigin
+          ? makePendingCircleIcon("#2e7d5b", 13)
+          : makePendingCircleIcon("#c89b3c", 12),
+        zIndex: isOrigin ? 29 : 18,
+      });
+
+      marker.addListener("dragstart", () => {
+        dragStartPositionRef.current = marker.getPosition() ?? null;
+        setMovingPoint(kind);
+        map.setOptions({ draggableCursor: "grabbing" });
+      });
+
+      marker.addListener("dragend", () => {
+        const position = marker.getPosition();
+        setMovingPoint(null);
+        map.setOptions({ draggableCursor: undefined });
+
+        if (!position) return;
+
+        const moved = {
+          lat: position.lat(),
+          lng: position.lng(),
+        };
+
+        if (!acceptDroppedPoint(marker, moved, kind)) return;
+
+        /* Aceptado: el punto pasa a ser real de inmediato para que el mapa no
+           parpadee mientras se resuelve la dirección. Al confirmarse, este
+           efecto retira el marcador pendiente y el definitivo toma su sitio. */
+        if (isOrigin) {
+          setLocalOrigin((current) => ({
+            ...current,
+            text: "Punto elegido en el mapa",
+            lat: moved.lat,
+            lng: moved.lng,
+            placeId: null,
+          }));
+
+          void notifyOriginMovedRef.current(moved);
+          return;
+        }
+
+        void notifyDestinationMovedRef.current(moved);
+      });
+
+      return marker;
+    };
+
+    if (needsOrigin && !pendingOriginMarkerRef.current) {
+      pendingOriginMarkerRef.current = createPendingMarker("origin");
+      pendingSettledRef.current = false;
+    }
+
+    if (needsDestination && !pendingDestinationMarkerRef.current) {
+      pendingDestinationMarkerRef.current = createPendingMarker("destination");
+      pendingSettledRef.current = false;
+    }
+
+    /* Dos motivos para recolocar en cada parada del mapa:
+       1) El primer marcador nace antes de que Google conozca el encuadre, así
+          que se reparte con una medida supuesta; en cuanto hay encuadre real
+          se coloca bien (una sola vez, para no perseguir al usuario después).
+       2) Si el pasajero navega lejos, el punto pendiente dejaría de estar
+          "siempre disponible": vuelve a la vista si se quedó fuera. */
+    const keepPendingInView = (): void => {
+      const bounds = map.getBounds();
+      if (!bounds) return;
+
+      const settling = !pendingSettledRef.current;
+
+      const reposition = (
+        marker: google.maps.Marker | null,
+        kind: "origin" | "destination",
+      ): void => {
+        const position = marker?.getPosition();
+        if (!marker || !position) return;
+        if (!settling && bounds.contains(position)) return;
+
+        const spot = getPendingSpot(map, kind);
+        if (spot) marker.setPosition(spot);
+      };
+
+      reposition(pendingOriginMarkerRef.current, "origin");
+      reposition(pendingDestinationMarkerRef.current, "destination");
+      pendingSettledRef.current = true;
+    };
+
+    const idleListener = map.addListener("idle", keepPendingInView);
+
+    return () => {
+      google.maps.event.removeListener(idleListener);
+    };
+  }, [
+    mapReady,
+    originDraggable,
+    canReportOrigin,
+    destinationDraggable,
+    canReportDestination,
+    localOrigin.lat,
+    localOrigin.lng,
+    destination.lat,
+    destination.lng,
+  ]);
+
+  /* Marcadores de POIs tocables. Van en su propio efecto para no reconstruir la
+     ruta al seleccionarlos. Se omite el POI que ya es origen o destino: ese
+     punto lo dibuja el efecto de la ruta con su color propio. */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map || !window.google?.maps) return;
+
+    for (const marker of placeMarkersRef.current) {
+      marker.setMap(null);
+    }
+    placeMarkersRef.current = [];
+
+    if (!places || places.length === 0) return;
+
+    const originPoint = getPointFromMapPoint(localOrigin);
+    const destinationPoint = getPointFromMapPoint(destination);
+
+    const sameSpot = (spot: LatLng | null, lat: number, lng: number): boolean =>
+      spot != null &&
+      Math.abs(spot.lat - lat) < 1e-4 &&
+      Math.abs(spot.lng - lng) < 1e-4;
+
+    for (const place of places) {
+      if (!Number.isFinite(place.lat) || !Number.isFinite(place.lng)) continue;
+      if (
+        sameSpot(originPoint, place.lat, place.lng) ||
+        sameSpot(destinationPoint, place.lat, place.lng)
+      ) {
+        continue;
+      }
+
+      const marker = new google.maps.Marker({
+        map,
+        position: { lat: place.lat, lng: place.lng },
+        title: place.name,
+        cursor: "pointer",
+        /* Punto disponible: oro claro con borde tostado, más pequeño que el
+           origen (verde) y el destino (oro fuerte), para leerse como "tócame". */
+        icon: makeCircleIcon("#f6c945", 7, "#7a4f12"),
+        zIndex: 8,
+      });
+
+      marker.addListener("click", () => {
+        onSelectPlace?.(place);
+      });
+
+      placeMarkersRef.current.push(marker);
+    }
+  }, [
+    mapReady,
+    places,
+    onSelectPlace,
+    localOrigin.lat,
+    localOrigin.lng,
+    destination.lat,
+    destination.lng,
   ]);
 
   return (
@@ -751,16 +1238,21 @@ function GoogleRapaMap({
           }}
         />
 
-        {originDraggable && (
+        {(originDraggable || destinationDraggable) && (
           <div
             style={{
               position: "absolute",
               left: "12px",
               right: "12px",
               top: "12px",
-              background: movingOrigin
-                ? "rgba(37,99,235,.96)"
-                : "rgba(17,17,17,.90)",
+              /* El aviso se tiñe del color del punto que se está moviendo:
+                 verde para el origen, oro para el destino. */
+              background:
+                movingPoint === "origin"
+                  ? "rgba(46,125,91,.96)"
+                  : movingPoint === "destination"
+                    ? "rgba(200,155,60,.96)"
+                    : "rgba(17,17,17,.90)",
               color: "#F6F2EC",
               borderRadius: "999px",
               padding: "8px 12px",
@@ -771,9 +1263,11 @@ function GoogleRapaMap({
               textAlign: "center",
               pointerEvents: "none",
             }}>
-            {movingOrigin
-              ? "Suelta el punto azul donde quieres partir"
-              : "Mantén presionado el punto azul y muévelo"}
+            {getDragHint({
+              movingPoint,
+              originDraggable,
+              destinationDraggable,
+            })}
           </div>
         )}
 
@@ -783,7 +1277,7 @@ function GoogleRapaMap({
               position: "absolute",
               left: "16px",
               right: "16px",
-              top: originDraggable ? "58px" : "16px",
+              top: originDraggable || destinationDraggable ? "58px" : "16px",
               background: "rgba(17,17,17,.94)",
               color: "#F6F2EC",
               borderRadius: "14px",
@@ -846,6 +1340,12 @@ export function MapFallback({
   showRoute = true,
   originDraggable = true,
   onOriginChange,
+  destinationDraggable = false,
+  onDestinationChange,
+  rejectDroppedPoint,
+  places,
+  onSelectPlace,
+  onSelectGooglePoi,
 }: MapFallbackProps): JSX.Element {
   if (!showRoute) {
     return (
@@ -864,6 +1364,12 @@ export function MapFallback({
       height={height}
       originDraggable={originDraggable}
       onOriginChange={onOriginChange}
+      destinationDraggable={destinationDraggable}
+      onDestinationChange={onDestinationChange}
+      rejectDroppedPoint={rejectDroppedPoint}
+      places={places}
+      onSelectPlace={onSelectPlace}
+      onSelectGooglePoi={onSelectGooglePoi}
     />
   );
 }

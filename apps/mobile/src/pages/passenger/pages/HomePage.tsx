@@ -29,6 +29,10 @@ import {
 import { useConnectivity } from "../../../hooks/useConnectivity.js";
 import { ROUTES } from "../../../navigation/routes.js";
 import { useAuth } from "../../../features/auth/index.js";
+import {
+  activateDriverMode,
+  isRegisteredDriver,
+} from "../../../features/roles/appMode.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 
 import rapaNuiMain from "../../../theme/img/rapanui.jpg";
@@ -109,8 +113,19 @@ export default function HomePage(): JSX.Element {
   const hasPhone = !!profile?.phone;
   const activeImage = HOME_CAROUSEL_IMAGES[carouselIndex];
 
+  /* Rol REGISTRADO de la cuenta, no el modo en uso: aquí se está navegando
+     como pasajero por definición (es el Inicio del pasajero). */
+  const isDriverAccount = isRegisteredDriver(session?.user);
+
   const goToProfile = () => {
     history.push(ROUTES.PASSENGER.PROFILE);
+  };
+
+  /* Único camino para pasar a modo conductor: marca el modo con las mismas
+     llaves que lee el resto de la app y navega al inicio del conductor. */
+  const goToDriverMode = () => {
+    activateDriverMode();
+    history.push(ROUTES.DRIVER.HOME);
   };
 
   const openWallet = () => {
@@ -347,56 +362,90 @@ export default function HomePage(): JSX.Element {
             />
           </button>
 
-          {/* ── Únete a Rapa Go ────────────────────────────────────────── */}
-          <section className="rapago-home-join">
-            <div className="rapago-home-join-head">
-              <span className="rapago-home-join-icon">
-                <IonIcon icon={peopleOutline} />
-              </span>
-              <div>
-                <h2 className="rapago-home-join-title">
-                  ¿Quieres unirte a Rapa Go?
-                </h2>
-                <p className="rapago-home-join-sub">
-                  Postula como conductor o guía turístico de la isla.
-                </p>
+          {/* ── Únete a Rapa Go / Modo conductor ───────────────────────── */}
+          {/* Quien YA es conductor no tiene nada que postular: invitarlo a
+              inscribirse le dice que la app no reconoce su cuenta. En su lugar
+              ve la puerta a su propio modo. Depende del ROL de la cuenta —lo
+              que el usuario es—, no del modo en que esté navegando ahora. */}
+          {isDriverAccount ? (
+            <section className="rapago-home-join">
+              <div className="rapago-home-join-head">
+                <span className="rapago-home-join-icon">
+                  <IonIcon icon={carSportOutline} />
+                </span>
+                <div>
+                  <h2 className="rapago-home-join-title">
+                    Ya eres conductor de Rapa Go
+                  </h2>
+                  <p className="rapago-home-join-sub">
+                    Estás usando la app como pasajero. Cambia de modo cuando
+                    quieras salir a conducir.
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="rapago-home-join-actions">
-              <IonButton
-                expand="block"
-                className="rapago-home-btn-primary"
-                routerLink="/apply/driver"
-              >
-                <IonIcon icon={carOutline} slot="start" />
-                Inscríbete como conductor
-              </IonButton>
+              <div className="rapago-home-join-actions">
+                <IonButton
+                  expand="block"
+                  className="rapago-home-btn-primary"
+                  onClick={goToDriverMode}
+                >
+                  <IonIcon icon={carOutline} slot="start" />
+                  Cambiar a modo conductor
+                </IonButton>
+              </div>
+            </section>
+          ) : (
+            <section className="rapago-home-join">
+              <div className="rapago-home-join-head">
+                <span className="rapago-home-join-icon">
+                  <IonIcon icon={peopleOutline} />
+                </span>
+                <div>
+                  <h2 className="rapago-home-join-title">
+                    ¿Quieres unirte a Rapa Go?
+                  </h2>
+                  <p className="rapago-home-join-sub">
+                    Postula como conductor o guía turístico de la isla.
+                  </p>
+                </div>
+              </div>
 
-              {/* Deshabilitado a propósito: las postulaciones de guía todavía
-                  no están abiertas. Sin routerLink no navega a ningún lado, y
-                  el estilo ámbar-transparente (en vez del gris genérico que
-                  usa el resto de la app para "deshabilitado") deja claro que
-                  es un "todavía no", no un error. */}
-              <IonButton
-                expand="block"
-                className="rapago-home-btn-disabled"
-                disabled
-                aria-label="Inscríbete como guía — Próximamente"
-              >
-                <IonIcon icon={mapOutline} slot="start" />
-                Inscríbete como guía · Próximamente
-              </IonButton>
+              <div className="rapago-home-join-actions">
+                <IonButton
+                  expand="block"
+                  className="rapago-home-btn-primary"
+                  routerLink="/apply/driver"
+                >
+                  <IonIcon icon={carOutline} slot="start" />
+                  Inscríbete como conductor
+                </IonButton>
 
-              <IonButton
-                expand="block"
-                className="rapago-home-btn-outline"
-                routerLink="/apply/status"
-              >
-                Estado de mi postulación
-              </IonButton>
-            </div>
-          </section>
+                {/* Deshabilitado a propósito: las postulaciones de guía todavía
+                    no están abiertas. Sin routerLink no navega a ningún lado, y
+                    el estilo ámbar-transparente (en vez del gris genérico que
+                    usa el resto de la app para "deshabilitado") deja claro que
+                    es un "todavía no", no un error. */}
+                <IonButton
+                  expand="block"
+                  className="rapago-home-btn-disabled"
+                  disabled
+                  aria-label="Inscríbete como guía — Próximamente"
+                >
+                  <IonIcon icon={mapOutline} slot="start" />
+                  Inscríbete como guía · Próximamente
+                </IonButton>
+
+                <IonButton
+                  expand="block"
+                  className="rapago-home-btn-outline"
+                  routerLink="/apply/status"
+                >
+                  Estado de mi postulación
+                </IonButton>
+              </div>
+            </section>
+          )}
         </div>
       </IonContent>
 

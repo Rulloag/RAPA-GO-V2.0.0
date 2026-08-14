@@ -18,6 +18,7 @@ import {
 import {
   addOutline,
   airplaneOutline,
+  arrowBackOutline,
   arrowForwardOutline,
   flashOutline,
   briefcaseOutline,
@@ -27,14 +28,13 @@ import {
   cardOutline,
   cashOutline,
   checkmarkCircleOutline,
+  closeOutline,
   compassOutline,
   createOutline,
-  flagOutline,
   flowerOutline,
   leafOutline,
   locationOutline,
   locateOutline,
-  navigateOutline,
   removeOutline,
   searchOutline,
   sunnyOutline,
@@ -57,6 +57,8 @@ import { ROUTES } from "../../../navigation/routes.js";
 import {
   MapFallback,
   loadRapaGoGoogleMaps,
+  type MapGooglePoi,
+  type MapPlaceMarker,
 } from "../../../components/MapFallback.js";
 import { useAuth } from "../../../features/auth/index.js";
 import {
@@ -2049,6 +2051,17 @@ const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace
       placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
     },
   ] as const;
+
+/* Fuente ÚNICA de lugares tocables del mapa: los mismos POIs locales que
+   alimentan los buscadores de origen y destino. Identidad estable a nivel de
+   módulo para no reconstruir los marcadores en cada render. */
+const REQUEST_MAP_PLACES: MapPlaceMarker[] =
+  RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.map((place) => ({
+    id: place.id,
+    name: place.name,
+    lat: place.lat,
+    lng: place.lng,
+  }));
 
 function normalizeRapaNuiAutocompleteText(value: unknown): string {
   return String(value ?? "")
@@ -5743,6 +5756,9 @@ function MapPointPicker({
   const geocodeTimerRef = useRef<number | null>(null);
   const requestSequenceRef = useRef(0);
   const pickerSearchSequenceRef = useRef(0);
+  /* El listener de iconos de Google se registra al crear el mapa, así que lee
+     el manejador desde un ref para no trabajar con estado viejo. */
+  const pickPlaceIdRef = useRef<(placeId: string) => void>(() => {});
   const lastResolvedCenterRef = useRef<{ lat: number; lng: number } | null>(
     null,
   );
@@ -6502,6 +6518,19 @@ function MapPointPicker({
           mapTypeId: google.maps.MapTypeId.ROADMAP,
         });
 
+        /* Icono propio de Google tocado (restaurante, hotel, moái…). Google
+           abriría su globo con el enlace a Google Maps, que saca al pasajero
+           de la app en mitad de la elección: `event.stop()` lo cancela y el
+           lugar se toma como el punto que se está eligiendo —origen o
+           destino según el modo del selector. */
+        map.addListener("click", (event: google.maps.MapMouseEvent) => {
+          const placeId = (event as google.maps.IconMouseEvent).placeId;
+          if (!placeId) return;
+
+          event.stop();
+          pickPlaceIdRef.current(placeId);
+        });
+
         mapRef.current = map;
 
         if (typeof ResizeObserver !== "undefined" && mapElementRef.current) {
@@ -6613,10 +6642,21 @@ function MapPointPicker({
   }, [isOpen, searchText]);
 
   async function pickSuggestion(suggestion: GoogleSuggestion): Promise<void> {
+    await pickPlaceId(suggestion.placeId);
+  }
+
+  pickPlaceIdRef.current = (placeId: string): void => {
+    void pickPlaceId(placeId);
+  };
+
+  /* Un lugar de Google elegido dentro del selector, venga del buscador o de un
+     icono tocado sobre el mapa: en ambos casos lo único que hay es un
+     place_id, así que comparten el mismo camino. */
+  async function pickPlaceId(placeId: string): Promise<void> {
     setLoadingAddress(true);
 
     try {
-      const exact = await getPlaceDetailsExact(suggestion.placeId);
+      const exact = await getPlaceDetailsExact(placeId);
       if (!exact || !mapRef.current) {
         setPickerSuggestions([]);
         setScopeMessage(
@@ -7885,15 +7925,31 @@ export default function RequestRidePage(): JSX.Element {
   );
   const [searchingOrigin, setSearchingOrigin] = useState(false);
   const [searchingDest, setSearchingDest] = useState(false);
+  /* Un icono de Google tocado en el mapa se está resolviendo con Places. Sin
+     este aviso el toque parecería no haber hecho nada durante el segundo que
+     tarda la ficha del lugar. */
+  const [mapPoiLoading, setMapPoiLoading] = useState(false);
 
   const originSearchSeq = useRef(0);
   const destSearchSeq = useRef(0);
+  const mapPoiSequenceRef = useRef(0);
   /* Evita que el mapa se reabra solo al devolver el foco al input justo
      después de confirmar un punto (decisión de producto: tocar el campo abre
      el mapa al instante, así que hace falta este freno de 900ms). */
   const suppressPickerOpenRef = useRef(false);
 
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
+  /* Qué campo tiene abierto el buscador inline (reemplaza al modal en el flujo
+     principal). */
+  const [activeSearchField, setActiveSearchField] =
+    useState<PickerTarget | null>(null);
+  /* Aviso de orden en el riel: el destino no se puede elegir antes que el
+     origen. No es una validación nueva —el viaje siempre necesitó los dos
+     puntos— sino decirlo en el momento en que el pasajero lo intenta, en vez
+     de dejarle rellenar el destino y descubrir al final que faltaba lo otro.
+     La razón es del mapa: la búsqueda y la ruta se calculan desde el origen,
+     así que empezar por el destino deja media pantalla sin referencia. */
+  const [routeOrderHint, setRouteOrderHint] = useState(false);
   const [pickerAutoFocusSearch, setPickerAutoFocusSearch] = useState(false);
 
   const [notesInput, setNotesInput] = useState("");
@@ -8310,6 +8366,8 @@ export default function RequestRidePage(): JSX.Element {
     setOriginPoint(confirmed);
     setOriginInput(confirmed.text);
     setOriginSuggestions([]);
+    /* Ya hay origen: el aviso de orden pierde sentido y se retira solo. */
+    setRouteOrderHint(false);
     /* Baja la hoja al reposo para que el pin quede visible en el mapa. */
   }
 
@@ -8319,6 +8377,16 @@ export default function RequestRidePage(): JSX.Element {
     if (payload.point !== "origin") return;
 
     setSubmitError(null);
+
+    /* El punto verde se puede soltar en cualquier parte del mapa, también en
+       el mar o fuera de la isla: ahí no hay viaje posible, así que se avisa y
+       el origen anterior se conserva. */
+    if (!isPointInsideRapaNuiServiceArea({ lat: payload.lat, lng: payload.lng })) {
+      setSubmitError(
+        "Ese punto está fuera de Rapa Nui. Mueve el punto verde dentro de la isla.",
+      );
+      return;
+    }
 
     try {
       const moved = await resolveMovedOriginPoint({
@@ -8343,6 +8411,50 @@ export default function RequestRidePage(): JSX.Element {
       };
 
       applyOrigin(fallbackPoint);
+    }
+  }
+
+  /* El punto dorado soltado en el mapa. No todo destino tiene nombre —una
+     casa, una parcela, un tramo de costa—, así que aquí no se busca ningún
+     lugar: se toma la coordenada tal cual y solo se le pone la dirección más
+     cercana como etiqueta. */
+  async function applyMovedDestinationFromMap(
+    payload: MapPointMovedPayload,
+  ): Promise<void> {
+    if (payload.point !== "destination") return;
+
+    setSubmitError(null);
+
+    const point = { lat: payload.lat, lng: payload.lng };
+
+    if (!isPointInsideRapaNuiServiceArea(point)) {
+      setSubmitError(
+        "Ese punto está fuera de Rapa Nui. Mueve el punto dorado dentro de la isla.",
+      );
+      return;
+    }
+
+    const fallback: PickerResult = {
+      text: payload.text || "Punto elegido en el mapa",
+      address: payload.address || "Ubicación seleccionada manualmente",
+      lat: payload.lat,
+      lng: payload.lng,
+      placeId: null,
+      originalLat: null,
+      originalLng: null,
+      walkMeters: 0,
+      isAccessiblePickup: false,
+    };
+
+    try {
+      const resolved = await reverseGeocodeExact({
+        ...point,
+        placeId: null,
+      });
+
+      applyDestination(resolved);
+    } catch {
+      applyDestination(fallback);
     }
   }
 
@@ -8406,6 +8518,198 @@ export default function RequestRidePage(): JSX.Element {
     if (!details) return;
 
     applyDestination(details);
+  }
+
+  function clearOriginSelection(): void {
+    setOriginPoint(null);
+    setOriginInput("");
+    setOriginSuggestions([]);
+    setSearchingOrigin(false);
+    setSubmitError(null);
+  }
+
+  function clearDestinationSelection(): void {
+    setDestinationPoint(null);
+    setDestInput("");
+    setDestSuggestions([]);
+    setSearchingDest(false);
+    setSubmitError(null);
+  }
+
+  /* Selección de un POI tocado en el mapa. Secuencial estilo Uber: primer toque
+     = origen, segundo = destino. Se usa un ref para exponer un callback estable
+     a MapFallback (evita redibujar los marcadores en cada render) mientras se
+     ejecuta siempre la lógica con el estado más reciente. */
+  const selectMapPlaceRef = useRef<(place: MapPlaceMarker) => void>(() => {});
+  selectMapPlaceRef.current = (place: MapPlaceMarker): void => {
+    const full = RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.find(
+      (item) => item.id === place.id,
+    );
+    if (!full) return;
+
+    const picker = localRapaNuiPlaceToPickerResult(full);
+    setSubmitError(null);
+    setActiveSearchField(null);
+
+    if (canChooseOrigin && !originPoint) {
+      applyOrigin(picker);
+      return;
+    }
+
+    applyDestination(picker);
+  };
+  const handleSelectMapPlace = useCallback((place: MapPlaceMarker): void => {
+    selectMapPlaceRef.current(place);
+  }, []);
+
+  /* Iconos propios de Google (restaurantes, hoteles, moáis…). MapFallback ya
+     canceló el globo nativo que ofrecía abrir Google Maps: ese aviso sacaba al
+     pasajero de la app justo cuando estaba eligiendo su viaje. Ahora el toque
+     entra a la MISMA regla secuencial que los POIs propios —primer toque
+     origen, segundo destino— resolviendo el lugar con Places Details, que es
+     lo único que Google entrega en el evento (place_id y coordenada). */
+  async function applyGooglePoiFromMap(poi: MapGooglePoi): Promise<void> {
+    const asOrigin = canChooseOrigin && !originPoint;
+    const sequence = ++mapPoiSequenceRef.current;
+
+    setSubmitError(null);
+    setActiveSearchField(null);
+    setMapPoiLoading(true);
+
+    try {
+      /* Origen usa getPlaceDetails (acerca el punto a una vía por la que
+         pueda entrar el vehículo); destino usa la coordenada exacta del
+         lugar, igual que al elegirlo desde el buscador. */
+      const details = asOrigin
+        ? await getPlaceDetails(poi.placeId)
+        : await getPlaceDetailsExact(poi.placeId);
+
+      if (sequence !== mapPoiSequenceRef.current) return;
+
+      if (details) {
+        if (asOrigin) applyOrigin(details);
+        else applyDestination(details);
+        return;
+      }
+
+      /* Sin ficha de Google: si el toque cayó dentro de la isla todavía sirve
+         la coordenada, así que se resuelve por dirección en vez de perder la
+         selección. Fuera de la isla se avisa y no se toca nada. */
+      if (!isPointInsideRapaNuiServiceArea(poi)) {
+        setSubmitError(
+          "Ese lugar está fuera de Rapa Nui. Elige un punto dentro de la isla.",
+        );
+        return;
+      }
+
+      const point: Coords = {
+        lat: poi.lat,
+        lng: poi.lng,
+        placeId: poi.placeId,
+      };
+      const fallback = asOrigin
+        ? await reverseGeocode(point)
+        : await reverseGeocodeExact(point);
+
+      if (sequence !== mapPoiSequenceRef.current) return;
+
+      if (asOrigin) applyOrigin(fallback);
+      else applyDestination(fallback);
+    } catch {
+      if (sequence !== mapPoiSequenceRef.current) return;
+
+      setSubmitError(
+        "No pudimos leer ese lugar del mapa. Inténtalo de nuevo o búscalo por su nombre.",
+      );
+    } finally {
+      if (sequence === mapPoiSequenceRef.current) setMapPoiLoading(false);
+    }
+  }
+
+  const selectGooglePoiRef = useRef<(poi: MapGooglePoi) => void>(() => {});
+  selectGooglePoiRef.current = (poi: MapGooglePoi): void => {
+    void applyGooglePoiFromMap(poi);
+  };
+  const handleSelectGooglePoi = useCallback((poi: MapGooglePoi): void => {
+    selectGooglePoiRef.current(poi);
+  }, []);
+
+  /* Resultados de origen/destino. Usa la MISMA fuente de lugares y los MISMOS
+     handlers de selección de siempre — sólo cambia dónde vive el campo de
+     texto: antes este bloque traía su propia caja y el pasajero escribía ahí,
+     separado de la fila; ahora el campo real es el de arriba (rq-field) y
+     esto es sólo la respuesta que aparece debajo mientras se escribe, como en
+     Uber. Sin texto, lista los lugares disponibles; desde 2 caracteres,
+     muestra los resultados (locales + Google) que ya calculan los efectos
+     existentes. */
+  function renderRouteResults(target: PickerTarget): JSX.Element {
+    const isOrigin = target === "origin";
+    const value = isOrigin ? originInput : destInput;
+    const suggestions = isOrigin ? originSuggestions : destSuggestions;
+    const searching = isOrigin ? searchingOrigin : searchingDest;
+    const showBaseList = normalizeRapaNuiAutocompleteText(value).length < 2;
+
+    return (
+      <div
+        className="rq-results"
+        role="group"
+        aria-label={isOrigin ? "Resultados de origen" : "Resultados de destino"}>
+        <div className="rq-results__hint">
+          {showBaseList ? "Lugares disponibles" : "Resultados"}
+        </div>
+
+        <ul className="rq-results__list">
+          {showBaseList ? (
+            RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.map((place) => (
+              <li key={place.id}>
+                <button
+                  type="button"
+                  className="rq-results__item"
+                  onClick={() => {
+                    const picker = localRapaNuiPlaceToPickerResult(place);
+                    if (isOrigin) applyOrigin(picker);
+                    else applyDestination(picker);
+                    setActiveSearchField(null);
+                  }}>
+                  <span className="rq-results__pin" aria-hidden="true">
+                    <IonIcon icon={locationOutline} />
+                  </span>
+                  <span className="rq-results__copy">
+                    <strong>{place.name}</strong>
+                    <small>{place.subtitle}</small>
+                  </span>
+                </button>
+              </li>
+            ))
+          ) : suggestions.length > 0 ? (
+            suggestions.map((suggestion) => (
+              <li key={suggestion.placeId}>
+                <button
+                  type="button"
+                  className="rq-results__item"
+                  onClick={() => {
+                    if (isOrigin) void pickOrigin(suggestion);
+                    else void pickDestination(suggestion);
+                    setActiveSearchField(null);
+                  }}>
+                  <span className="rq-results__pin" aria-hidden="true">
+                    <IonIcon icon={locationOutline} />
+                  </span>
+                  <span className="rq-results__copy">
+                    <strong>{suggestion.mainText}</strong>
+                    <small>{suggestion.secondaryText}</small>
+                  </span>
+                </button>
+              </li>
+            ))
+          ) : searching ? null : (
+            <li className="rq-results__empty">
+              Sin resultados. Prueba otro nombre o toca un punto del mapa.
+            </li>
+          )}
+        </ul>
+      </div>
+    );
   }
 
   async function handleSelectRoundTripPromotion(
@@ -10108,6 +10412,60 @@ export default function RequestRidePage(): JSX.Element {
     !submitting &&
     paymentMethod !== null;
 
+  /* ── Flujo por pasos ──────────────────────────────────────────────────────
+     El formulario no cambia: se reparte. Antes vivía entero en un solo scroll
+     y había que recorrerlo de arriba abajo para saber qué faltaba; ahora cada
+     grupo de secciones que YA existía se muestra por turnos y el pie dice
+     siempre cuál es el único paso siguiente.
+
+     Es estado de presentación y nada más: no valida de forma nueva, no toca
+     coordenadas, tarifas ni el envío. Las dos condiciones de abajo son
+     literalmente los sumandos de `canRequest` de aquí arriba, partidos por el
+     paso donde el pasajero puede resolverlos; `canRequest` sigue siendo quien
+     manda en el botón final, intacto y con la misma expresión completa. */
+  const [wizardStep, setWizardStep] = useState(0);
+  const wizardBodyRef = useRef<HTMLDivElement | null>(null);
+
+  /* Origen y destino: mismos sumandos que en `canRequest`. */
+  const wizardRouteReady =
+    (!!originPoint || !!originInput.trim()) &&
+    (!!destinationPoint || !!destInput.trim());
+
+  /* Cuándo se viaja. En "ahora" no hay nada que rellenar, así que el paso
+     queda resuelto de entrada; al reservar hacen falta la fecha de ida y,
+     si es ida y vuelta, también la de regreso. */
+  const wizardDetailsReady =
+    rideMode === "now" ||
+    (!!scheduledAt && (!requireReturnScheduledAt || !!returnScheduledAt));
+
+  const WIZARD_STEPS = [
+    { label: "Ruta", ready: wizardRouteReady },
+    { label: "Viaje", ready: wizardDetailsReady },
+    { label: "Confirmar", ready: canRequest },
+  ];
+
+  const wizardCanAdvance = WIZARD_STEPS[wizardStep]?.ready ?? false;
+  const wizardIsLastStep = wizardStep === WIZARD_STEPS.length - 1;
+
+  /* Al cambiar de paso el cuerpo vuelve arriba: el scroll del paso anterior
+     no significa nada en el nuevo y dejarlo a media altura hace que el
+     contenido parezca empezar por el medio. `smooth` sólo si el usuario no ha
+     pedido reducir el movimiento. */
+  function goToWizardStep(next: number): void {
+    const target = Math.min(WIZARD_STEPS.length - 1, Math.max(0, next));
+    setWizardStep(target);
+
+    const body = wizardBodyRef.current;
+    if (!body) return;
+
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    body.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  }
+
   const mapOrigin = useMemo(() => {
     if (isAirportScheduledRide) {
       return {
@@ -10209,8 +10567,40 @@ export default function RequestRidePage(): JSX.Element {
               onOriginChange={(payload) => {
                 void applyMovedOriginFromMap(payload);
               }}
+              /* El destino solo queda fijo cuando lo impone una experiencia de
+                 ida y regreso; en cualquier otro caso se puede mover. */
+              destinationDraggable={!selectedRoundTripPromotion}
+              onDestinationChange={(payload) => {
+                void applyMovedDestinationFromMap(payload);
+              }}
+              /* Los puntos se pueden soltar en cualquier parte, también en el
+                 mar o fuera de la isla. Ahí no hay viaje posible: el mapa
+                 devuelve el punto a su sitio y explica por qué, en vez de
+                 aceptar una recogida a la que nadie puede llegar. */
+              rejectDroppedPoint={(point, kind) =>
+                isPointInsideRapaNuiServiceArea(point)
+                  ? null
+                  : kind === "origin"
+                    ? "Ese punto está fuera de Rapa Nui. Mueve el punto verde dentro de la isla."
+                    : "Ese punto está fuera de Rapa Nui. Mueve el punto dorado dentro de la isla."
+              }
+              places={REQUEST_MAP_PLACES}
+              onSelectPlace={handleSelectMapPlace}
+              onSelectGooglePoi={handleSelectGooglePoi}
             />
+
+            {mapPoiLoading && (
+              <div className="rq-map-poi-loading" aria-live="polite">
+                <IonSpinner name="crescent" />
+                <span>
+                  {canChooseOrigin && !originPoint
+                    ? "Tomando ese lugar como origen..."
+                    : "Tomando ese lugar como destino..."}
+                </span>
+              </div>
+            )}
           </div>
+
 
           {/* Sin padding inline: el del CSS reserva además la altura del dock
               fijo, y un padding aquí lo pisaba y dejaba la última tarjeta
@@ -10246,34 +10636,73 @@ export default function RequestRidePage(): JSX.Element {
               {/* El selector "cuándo" vive DENTRO de la hoja, no flotando sobre
                   el mapa: allí tapaba parte del mapa justo cuando el pasajero
                   lo agranda para ubicarse. */}
-              <div
-                className="rq-seg"
-                role="tablist"
-                aria-label="Cuándo quieres viajar">
-                <button
-                  type="button"
-                  role="tab"
-                  className="rq-seg__option"
-                  aria-selected={rideMode === "now"}
-                  onPointerDown={stopSheetDragPropagation}
-                  onPointerUp={stopSheetDragPropagation}
-                  onClick={selectRideModeNow}>
-                  <IonIcon icon={flashOutline} aria-hidden="true" />
-                  AHORA
-                </button>
+              {wizardStep === 0 && (
+                <div
+                  className="rq-seg"
+                  role="tablist"
+                  aria-label="Cuándo quieres viajar">
+                  <button
+                    type="button"
+                    role="tab"
+                    className="rq-seg__option"
+                    aria-selected={rideMode === "now"}
+                    onPointerDown={stopSheetDragPropagation}
+                    onPointerUp={stopSheetDragPropagation}
+                    onClick={selectRideModeNow}>
+                    <IonIcon icon={flashOutline} aria-hidden="true" />
+                    AHORA
+                  </button>
 
-                <button
-                  type="button"
-                  role="tab"
-                  className="rq-seg__option"
-                  aria-selected={rideMode === "scheduled"}
-                  onPointerDown={stopSheetDragPropagation}
-                  onPointerUp={stopSheetDragPropagation}
-                  onClick={selectRideModeScheduled}>
-                  <IonIcon icon={calendarOutline} aria-hidden="true" />
-                  RESERVAR
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    role="tab"
+                    className="rq-seg__option"
+                    aria-selected={rideMode === "scheduled"}
+                    onPointerDown={stopSheetDragPropagation}
+                    onPointerUp={stopSheetDragPropagation}
+                    onClick={selectRideModeScheduled}>
+                    <IonIcon icon={calendarOutline} aria-hidden="true" />
+                    RESERVAR
+                  </button>
+                </div>
+              )}
+
+              {/* Indicador de progreso. Va en la cabecera fija y no en el
+                  cuerpo porque su utilidad es justamente no perderse: dentro
+                  del scroll se iría de vista en cuanto el pasajero empieza a
+                  rellenar, que es cuando hace falta.
+
+                  No es interactivo a propósito. Saltar a un paso suelto
+                  llevaría a pantallas cuyos requisitos previos aún no están
+                  resueltos; además la cabecera entera es zona de arrastre y un
+                  control pulsable aquí competiría con el gesto de la hoja. */}
+              <ol className="rq-steps" aria-label="Progreso de la solicitud">
+                {WIZARD_STEPS.map((paso, indice) => {
+                  const estado =
+                    indice < wizardStep
+                      ? "done"
+                      : indice === wizardStep
+                        ? "current"
+                        : "todo";
+
+                  return (
+                    <li
+                      key={paso.label}
+                      className="rq-steps__item"
+                      data-state={estado}
+                      aria-current={estado === "current" ? "step" : undefined}>
+                      <span className="rq-steps__dot" aria-hidden="true">
+                        {estado === "done" ? (
+                          <IonIcon icon={checkmarkCircleOutline} />
+                        ) : (
+                          indice + 1
+                        )}
+                      </span>
+                      <span className="rq-steps__label">{paso.label}</span>
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
 
             {/* Cuerpo desplazable. Es el ÚNICO elemento con scroll de la hoja:
@@ -10282,1293 +10711,1548 @@ export default function RequestRidePage(): JSX.Element {
                 scroll. Antes la cabecera iba con position:sticky dentro del
                 propio scroll, que es más frágil: cualquier ancestro con
                 overflow o transform la despega. */}
-            <div className="rq-sheet-body">
-              <div className="rp-request-route-eyebrow rq-eyebrow">Tu ruta</div>
-
-              {/* Origen y destino viven en un mismo bloque "riel": punto, línea
+            <div className="rq-sheet-body" ref={wizardBodyRef}>
+              {/* Los tres envoltorios `rq-step` agrupan secciones que YA
+                  estaban aquí, en el mismo orden y sin tocar su contenido: el
+                  CSS oculta las que no son del paso actual. Se dejan sin
+                  reindentar a propósito —el diff cambia 6 líneas en vez de
+                  1800— porque este archivo lo estamos editando varias
+                  personas a la vez y una sangría masiva provocaría conflictos
+                  en todo el formulario. */}
+              {/* ── Paso 1 · Ruta ── */}
+              <div className="rq-step" data-active={wizardStep === 0}>
+                {/* Origen y destino viven en un mismo bloque "riel": punto, línea
                 punteada y cuadrado, como en cualquier app de movilidad. Antes
                 eran dos tarjetas sueltas separadas por notas y por dos botones
                 de 66px, así que no se leían como los dos extremos de un mismo
                 viaje. data-state permite al CSS distinguir vacío de confirmado
                 sin depender solo del color. */}
-              <div className="rq-route">
-                <button
-                  type="button"
-                  className="rp-request-place-row rp-request-place-row--origin rq-place"
-                  data-state={originPoint ? "set" : "empty"}
-                  aria-label={
-                    canChooseOrigin
-                      ? "Abrir búsqueda y mapa para elegir el origen"
-                      : "Origen fijo en Aeropuerto Internacional Mataveri"
-                  }
-                  disabled={!canChooseOrigin}
-                  onClick={() => {
-                    if (!canChooseOrigin || suppressPickerOpenRef.current)
-                      return;
-                    setPickerAutoFocusSearch(true);
-                    setPickerTarget("origin");
-                  }}>
-                  <span className="rq-place__marker" aria-hidden="true" />
+                {/* Los dos extremos del viaje SON los campos de texto: se
+                    escribe directamente en ellos y la lista de resultados sale
+                    debajo, como en Uber. Antes eran botones que abrían un
+                    buscador aparte con su propia caja de texto, así que había
+                    dos sitios donde escribir la misma dirección y el campo que
+                    se estaba rellenando desaparecía al abrirse el buscador
+                    encima.
 
-                  <span className="rq-place__copy">
-                    <small className="rq-place__label">
-                      {!canChooseOrigin
-                        ? "Origen fijo"
-                        : originPoint
-                          ? "Confirmado \u00B7 toca para cambiar"
-                          : "Toca para buscar"}
-                    </small>
-                    <span className="rq-place__value">
-                      {originInput.trim() || "Buscar direcci\u00F3n de origen"}
-                    </span>
-                  </span>
+                    El riel —punto, línea punteada y cuadrado— se conserva: es
+                    lo que hace que las dos filas se lean como los extremos de
+                    un mismo viaje y no como dos formularios sueltos. */}
+                <div className="rq-route" data-focus={activeSearchField ?? ""}>
+                  <div
+                    className="rq-field rq-field--origin"
+                    data-state={originPoint ? "set" : "empty"}
+                    data-active={activeSearchField === "origin"}>
+                    <span className="rq-field__marker" aria-hidden="true" />
 
-                  <span className="rq-place__action" aria-hidden="true">
-                    {searchingOrigin ? (
-                      <IonSpinner name="dots" />
-                    ) : (
-                      <IonIcon
-                        icon={
-                          originPoint ? checkmarkCircleOutline : searchOutline
-                        }
-                      />
-                    )}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="rp-request-place-row rp-request-place-row--destination rq-place"
-                  data-state={destinationPoint ? "set" : "empty"}
-                  aria-label={
-                    selectedRoundTripPromotion
-                      ? `Destino fijo: ${selectedRoundTripPromotion.destinationName}`
-                      : "Abrir búsqueda y mapa para elegir el destino"
-                  }
-                  disabled={Boolean(selectedRoundTripPromotion)}
-                  onClick={() => {
-                    if (
-                      selectedRoundTripPromotion ||
-                      suppressPickerOpenRef.current
-                    )
-                      return;
-                    setPickerAutoFocusSearch(true);
-                    setPickerTarget("destination");
-                  }}>
-                  <span className="rq-place__marker" aria-hidden="true" />
-
-                  <span className="rq-place__copy">
-                    <small className="rq-place__label">
-                      {selectedRoundTripPromotion
-                        ? "Destino fijo"
-                        : destinationPoint
-                          ? "Confirmado \u00B7 toca para cambiar"
-                          : "Toca para buscar"}
-                    </small>
-                    <span className="rq-place__value">
-                      {destInput.trim() || "Buscar direcci\u00F3n de destino"}
-                    </span>
-                  </span>
-
-                  <span className="rq-place__action" aria-hidden="true">
-                    {searchingDest ? (
-                      <IonSpinner name="dots" />
-                    ) : (
-                      <IonIcon
-                        icon={
-                          destinationPoint
-                            ? checkmarkCircleOutline
-                            : searchOutline
-                        }
-                      />
-                    )}
-                  </span>
-                </button>
-              </div>
-
-              {/* Los atajos van DESPUÉS del riel, no intercalados entre origen y
-                destino, que es lo que antes rompía la lectura de la ruta. Y
-                son píldoras de 40px en vez de dos tarjetas de 66px: hacen lo
-                mismo que tocar la fila, así que no deben competir con ella. */}
-              {(canChooseOrigin && !originPoint) || !destinationPoint ? (
-                <div className="rq-quick">
-                  {canChooseOrigin && !originPoint && (
-                    <>
-                      <button
-                        type="button"
-                        className="rq-quick__btn"
-                        onClick={() => {
-                          if (suppressPickerOpenRef.current) return;
-                          setPickerAutoFocusSearch(false);
-                          setPickerTarget("origin");
-                        }}>
-                        <IonIcon icon={navigateOutline} aria-hidden="true" />
-                        Elegir en mapa
-                      </button>
-
-                      <button
-                        type="button"
-                        className="rq-quick__btn rq-quick__btn--primary"
-                        onClick={handleUseCurrentLocation}
-                        disabled={locating}
-                        aria-label="Mi ubicación · Detectar con GPS">
-                        {locating ? (
-                          <IonSpinner name="dots" />
-                        ) : (
-                          <>
-                            <IonIcon icon={locateOutline} aria-hidden="true" />
-                            Mi ubicación
-                          </>
-                        )}
-                      </button>
-                    </>
-                  )}
-
-                  {!destinationPoint && (
-                    <button
-                      type="button"
-                      className="rq-quick__btn"
-                      onClick={() => {
-                        if (
-                          selectedRoundTripPromotion ||
-                          suppressPickerOpenRef.current
-                        )
-                          return;
-                        setPickerAutoFocusSearch(false);
-                        setPickerTarget("destination");
+                    <IonInput
+                      className="rq-field__input"
+                      value={originInput}
+                      disabled={!canChooseOrigin}
+                      placeholder={
+                        canChooseOrigin
+                          ? "¿Dónde te recogemos?"
+                          : "Aeropuerto Internacional Mataveri"
+                      }
+                      aria-label="Origen del viaje"
+                      onIonFocus={() => {
+                        if (!canChooseOrigin) return;
+                        setRouteOrderHint(false);
+                        setActiveSearchField("origin");
                       }}
-                      disabled={Boolean(selectedRoundTripPromotion)}>
-                      <IonIcon icon={flagOutline} aria-hidden="true" />
-                      {selectedRoundTripPromotion
-                        ? `Destino fijo: ${selectedRoundTripPromotion.destinationName}`
-                        : "Elegir destino en mapa"}
-                    </button>
-                  )}
-                </div>
-              ) : null}
+                      /* El toque en un resultado dispara blur ANTES que su
+                         propio click, así que cerrar de inmediato se comería
+                         la selección. El margen deja que el click del
+                         resultado corra primero; si en cambio se tocó fuera de
+                         la lista, cierra igual. */
+                      onIonBlur={() => {
+                        window.setTimeout(() => {
+                          setActiveSearchField((current) =>
+                            current === "origin" ? null : current,
+                          );
+                        }, 180);
+                      }}
+                      onIonInput={(event) =>
+                        setOriginInput(String(event.detail.value ?? ""))
+                      }
+                    />
 
-              {originPoint?.walkMeters != null &&
-                originPoint.walkMeters > 8 && (
-                  <div className="rp-request-note">
-                    <strong>Punto accesible recomendado:</strong> el conductor
-                    te recoge en {originPoint.text}. Camina aprox.{" "}
-                    {originPoint.walkMeters} m hasta la calle. En el mapa verás
-                    tu punto real en azul y la recogida accesible con el icono
-                    de coche.
+                    <span className="rq-field__action">
+                      {searchingOrigin ? (
+                        <IonSpinner name="dots" />
+                      ) : originPoint ? (
+                        <IonIcon
+                          className="rq-field__ok"
+                          icon={checkmarkCircleOutline}
+                          aria-hidden="true"
+                        />
+                      ) : null}
+
+                      {originInput.trim() ? (
+                        <button
+                          type="button"
+                          className="rq-field__clear"
+                          aria-label="Borrar origen"
+                          onClick={() => {
+                            clearOriginSelection();
+                            setActiveSearchField("origin");
+                          }}>
+                          <IonIcon icon={closeOutline} aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </span>
+                  </div>
+
+                  <div
+                    className="rq-field rq-field--destination"
+                    data-state={destinationPoint ? "set" : "empty"}
+                    data-active={activeSearchField === "destination"}>
+                    <span className="rq-field__marker" aria-hidden="true" />
+
+                    <IonInput
+                      className="rq-field__input"
+                      value={destInput}
+                      disabled={Boolean(selectedRoundTripPromotion)}
+                      placeholder={
+                        selectedRoundTripPromotion
+                          ? selectedRoundTripPromotion.destinationName
+                          : "¿A dónde vas?"
+                      }
+                      aria-label="Destino del viaje"
+                      onIonFocus={() => {
+                        if (selectedRoundTripPromotion) return;
+
+                        /* Sin origen no se escribe el destino: la búsqueda y
+                           la ruta se calculan desde el origen, así que
+                           empezar por el otro extremo deja media pantalla sin
+                           referencia. Se avisa y el foco vuelve al que falta. */
+                        if (canChooseOrigin && !originPoint) {
+                          setRouteOrderHint(true);
+                          setActiveSearchField("origin");
+                          return;
+                        }
+
+                        setRouteOrderHint(false);
+                        setActiveSearchField("destination");
+                      }}
+                      onIonBlur={() => {
+                        window.setTimeout(() => {
+                          setActiveSearchField((current) =>
+                            current === "destination" ? null : current,
+                          );
+                        }, 180);
+                      }}
+                      onIonInput={(event) =>
+                        setDestInput(String(event.detail.value ?? ""))
+                      }
+                    />
+
+                    <span className="rq-field__action">
+                      {searchingDest ? (
+                        <IonSpinner name="dots" />
+                      ) : destinationPoint ? (
+                        <IonIcon
+                          className="rq-field__ok"
+                          icon={checkmarkCircleOutline}
+                          aria-hidden="true"
+                        />
+                      ) : null}
+
+                      {destInput.trim() ? (
+                        <button
+                          type="button"
+                          className="rq-field__clear"
+                          aria-label="Borrar destino"
+                          onClick={() => {
+                            clearDestinationSelection();
+                            setActiveSearchField("destination");
+                          }}>
+                          <IonIcon icon={closeOutline} aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Resultados justo debajo de los campos y en la misma columna:
+                    lo que se escribe arriba se responde abajo, sin tapar el
+                    campo que se está rellenando. Misma fuente de lugares y
+                    mismos handlers de selección que ya existían. */}
+                {wizardStep === 0 && activeSearchField
+                  ? renderRouteResults(activeSearchField)
+                  : null}
+
+                {/* Aviso de orden. Sale sólo cuando el pasajero intenta
+                    empezar por el destino; se apaga solo en cuanto confirma el
+                    origen, así que no hay que cerrarlo a mano. */}
+                {routeOrderHint && canChooseOrigin && !originPoint && (
+                  <div className="rq-order-hint" role="alert">
+                    <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+                    <span>
+                      <strong>Debes seleccionar el origen primero</strong>
+                      para empezar tu viaje.
+                    </span>
                   </div>
                 )}
 
-              {!canChooseOrigin && (
-                <div className="rq-hint">
-                  <IonIcon icon={airplaneOutline} aria-hidden="true" />
-                  Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el
-                  destino.
-                </div>
-              )}
+                {/* "Buscar lugar" ya no está: hacía exactamente lo mismo que
+                    tocar la fila de arriba, y con el buscador sobre el mapa la
+                    fila ya es evidente. Queda el único atajo que hace algo que
+                    la fila no hace: rellenar el origen con el GPS. */}
+                {canChooseOrigin && !originPoint ? (
+                  <div className="rq-quick">
+                    <button
+                      type="button"
+                      className="rq-quick__btn rq-quick__btn--primary"
+                      onClick={handleUseCurrentLocation}
+                      disabled={locating}
+                      aria-label="Mi ubicación · Detectar con GPS">
+                      {locating ? (
+                        <IonSpinner name="dots" />
+                      ) : (
+                        <>
+                          <IonIcon icon={locateOutline} aria-hidden="true" />
+                          Usar mi ubicación actual
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : null}
 
-              {/* Este grupo tiene UNA sola opción, y en modo "ahora" está
+                {originPoint?.walkMeters != null &&
+                  originPoint.walkMeters > 8 && (
+                    <div className="rp-request-note">
+                      <strong>Punto accesible recomendado:</strong> el conductor
+                      te recoge en {originPoint.text}. Camina aprox.{" "}
+                      {originPoint.walkMeters} m hasta la calle. En el mapa
+                      verás tu punto real en azul y la recogida accesible con el
+                      icono de coche.
+                    </div>
+                  )}
+
+                {!canChooseOrigin && (
+                  <div className="rq-hint">
+                    <IonIcon icon={airplaneOutline} aria-hidden="true" />
+                    Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el
+                    destino.
+                  </div>
+                )}
+
+                {/* Navegación del paso 1 */}
+                {wizardStep === 0 && (
+                  <div className="rq-nav" style={{ marginTop: "16px" }}>
+                    <button
+                      type="button"
+                      className="rq-nav__next"
+                      disabled={!wizardCanAdvance}
+                      onClick={() => goToWizardStep(wizardStep + 1)}>
+                      Siguiente
+                      <IonIcon icon={arrowForwardOutline} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Paso 2 · Viaje ── */}
+              <div className="rq-step" data-active={wizardStep === 1}>
+                {/* Navegación del paso 2 */}
+                {wizardStep === 1 && (
+                  <div className="rq-nav" style={{ marginBottom: "16px" }}>
+                    <button
+                      type="button"
+                      className="rq-nav__back"
+                      onClick={() => goToWizardStep(wizardStep - 1)}>
+                      <IonIcon icon={arrowBackOutline} aria-hidden="true" />
+                      Anterior
+                    </button>
+
+                    <button
+                      type="button"
+                      className="rq-nav__next"
+                      disabled={!wizardCanAdvance}
+                      onClick={() => goToWizardStep(wizardStep + 1)}>
+                      Siguiente
+                      <IonIcon icon={arrowForwardOutline} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+                {/* Este grupo tiene UNA sola opción, y en modo "ahora" está
                 siempre seleccionada, así que como "elección" no elige nada: su
                 único uso real es volver a solo-ida cuando hay una experiencia
                 de ida y vuelta activa. Se conserva el botón y su handler tal
                 cual —sigue haciendo falta en ese caso— pero baja de tarjeta de
                 72px centrada a una fila discreta, para que deje de competir
                 con el selector de vehículo, que es la decisión de verdad. */}
-              {rideMode === "now" && (
-                <>
-                  <div className="rq-eyebrow">Tipo de viaje</div>
-
-                  <div className="rq-tripmode">
-                    <button
-                      type="button"
-                      className="rq-tripmode__btn"
-                      aria-pressed={!selectedRoundTripPromotion}
-                      onClick={() => {
-                        clearRoundTripPromotion();
-                      }}>
-                      <IonIcon icon={arrowForwardOutline} aria-hidden="true" />
-                      <span className="rq-tripmode__copy">
-                        <strong>Solo ida</strong>
-                        <small>
-                          Viaje inmediato para moverte ahora por Rapa Nui.
-                        </small>
-                      </span>
-                    </button>
-                  </div>
-                </>
-              )}
-
-              <div className="rp-request-vehicle-heading">
-                <div>
-                  <strong>Elige tu vehículo</strong>
-                  <span>Precio final, sin sorpresas</span>
-                </div>
-                <span className="rp-request-route-metric">
-                  {fareQuote
-                    ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min`
-                    : fareLoading
-                      ? "Calculando ruta"
-                      : "Ruta pendiente"}
-                </span>
-              </div>
-
-              <div className="rp-request-vehicle-list">
-                {(["standard", "xl", "luggage"] as VehicleCategory[]).map(
-                  (category) => {
-                    const active = vehicleCategory === category;
-                    const categoryFareAmount =
-                      getVehicleCategoryDisplayFare(category);
-                    const categoryUsdLabel =
-                      categoryFareAmount != null
-                        ? formatUSDFromCLP(
-                            categoryFareAmount,
-                            selectedRoundTripPromotion?.usdLabel
-                              ? fareRules.usdRate
-                              : fareQuote?.usdRate,
-                          )
-                        : "USD --";
-                    const capacityLabel = category === "xl" ? "6" : "4";
-
-                    return (
+                {rideMode === "now" && (
+                  <>
+                    <div className="rq-tripmode">
                       <button
-                        key={category}
                         type="button"
-                        className={`rp-request-vehicle-card ${active ? "is-active" : ""}`}
-                        aria-pressed={active}
+                        className="rq-tripmode__btn"
+                        aria-pressed={!selectedRoundTripPromotion}
                         onClick={() => {
-                          setVehicleCategory(category);
-                          setSubmitError(null);
+                          clearRoundTripPromotion();
                         }}>
-                        <span
-                          className="rp-request-vehicle-icon"
-                          aria-hidden="true">
-                          <IonIcon icon={vehicleCategoryIcon(category)} />
-                        </span>
-
-                        <span className="rp-request-vehicle-copy">
-                          <span className="rp-request-vehicle-title">
-                            {vehicleCategoryTitle(category)}
-                            <small>{capacityLabel}</small>
-                          </span>
-                          <span className="rp-request-vehicle-description">
-                            {vehicleCategoryDescription(category)}
-                          </span>
-                          <span className="rp-request-vehicle-eta">
-                            <IonIcon icon={timeOutline} aria-hidden="true" />
-                            {getVehicleCategoryEtaLabel(category)}
-                          </span>
-                        </span>
-
-                        <span className="rp-request-vehicle-price">
-                          <strong>
-                            {categoryFareAmount != null
-                              ? formatCLP(categoryFareAmount)
-                              : "Calculando"}
-                          </strong>
-                          <small>{categoryUsdLabel}</small>
+                        <IonIcon
+                          icon={arrowForwardOutline}
+                          aria-hidden="true"
+                        />
+                        <span className="rq-tripmode__copy">
+                          <strong>Solo ida</strong>
+                          <small>
+                            Viaje inmediato para moverte ahora por Rapa Nui.
+                          </small>
                         </span>
                       </button>
-                    );
-                  },
-                )}
-              </div>
-
-              {rideMode === "scheduled" && (
-                <>
-                  <div className="rq-eyebrow">Experiencias con reserva</div>
-
-                  <div
-                    style={{
-                      margin: "0 0 18px",
-                      border: "1.5px solid rgba(248,216,121,.32)",
-                      borderRadius: "24px",
-                      background:
-                        "radial-gradient(circle at top left, rgba(248,216,121,.20), transparent 34%), linear-gradient(145deg,#191919 0%,#0d0d0d 72%)",
-                      padding: "14px",
-                      boxShadow: "0 18px 42px rgba(0,0,0,.34)",
-                      overflow: "hidden",
-                      position: "relative",
-                    }}>
-                    <div
-                      style={{
-                        position: "absolute",
-                        right: -28,
-                        top: -34,
-                        width: 120,
-                        height: 120,
-                        borderRadius: "50%",
-                        background: "rgba(248,216,121,.12)",
-                        filter: "blur(2px)",
-                        pointerEvents: "none",
-                      }}
-                    />
-
-                    <div
-                      style={{
-                        position: "relative",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        alignItems: "flex-start",
-                        marginBottom: 12,
-                      }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            color: "#F8D879",
-                            fontSize: ".72rem",
-                            fontWeight: 950,
-                            letterSpacing: ".06em",
-                            textTransform: "uppercase",
-                          }}>
-                          Descubre Rapa Nui
-                        </div>
-                        <div
-                          style={{
-                            color: "#F6F2EC",
-                            fontSize: "1.08rem",
-                            fontWeight: 950,
-                            lineHeight: 1.1,
-                            marginTop: 4,
-                          }}>
-                          Experiencias con ida y regreso
-                        </div>
-                        <div
-                          style={{
-                            color: "rgba(246,242,236,.70)",
-                            fontSize: ".73rem",
-                            lineHeight: 1.35,
-                            fontWeight: 800,
-                            marginTop: 6,
-                          }}>
-                          Reserva con anticipación para{" "}
-                          {passengerFareTypeLabel(passengerFareType)}. El
-                          destino queda confirmado y tú eliges dónde pasamos a
-                          buscarte.
-                        </div>
-                      </div>
-
-                      <span
-                        style={{
-                          flex: "0 0 auto",
-                          borderRadius: 999,
-                          padding: "6px 10px",
-                          background:
-                            "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)",
-                          color: "#111111",
-                          fontSize: ".66rem",
-                          fontWeight: 950,
-                          boxShadow: "0 8px 18px rgba(210,164,58,.28)",
-                          whiteSpace: "nowrap",
-                        }}>
-                        Tarifa fija
-                      </span>
                     </div>
+                  </>
+                )}
 
-                    {roundTripPromotions.length === 0 ? (
+                <div className="rp-request-vehicle-heading">
+                  <div>
+                    <strong>Elige tu vehículo</strong>
+                    <span>Precio final, sin sorpresas</span>
+                  </div>
+                  <span className="rp-request-route-metric">
+                    {fareQuote
+                      ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min`
+                      : fareLoading
+                        ? "Calculando ruta"
+                        : "Ruta pendiente"}
+                  </span>
+                </div>
+
+                <div className="rp-request-vehicle-list">
+                  {(["standard", "xl", "luggage"] as VehicleCategory[]).map(
+                    (category) => {
+                      const active = vehicleCategory === category;
+                      const categoryFareAmount =
+                        getVehicleCategoryDisplayFare(category);
+                      const categoryUsdLabel =
+                        categoryFareAmount != null
+                          ? formatUSDFromCLP(
+                              categoryFareAmount,
+                              selectedRoundTripPromotion?.usdLabel
+                                ? fareRules.usdRate
+                                : fareQuote?.usdRate,
+                            )
+                          : "USD --";
+                      const capacityLabel = category === "xl" ? "6" : "4";
+
+                      return (
+                        <button
+                          key={category}
+                          type="button"
+                          className={`rp-request-vehicle-card ${active ? "is-active" : ""}`}
+                          aria-pressed={active}
+                          onClick={() => {
+                            setVehicleCategory(category);
+                            setSubmitError(null);
+                          }}>
+                          <span
+                            className="rp-request-vehicle-icon"
+                            aria-hidden="true">
+                            <IonIcon icon={vehicleCategoryIcon(category)} />
+                          </span>
+
+                          <span className="rp-request-vehicle-copy">
+                            <span className="rp-request-vehicle-title">
+                              {vehicleCategoryTitle(category)}
+                              <small>{capacityLabel}</small>
+                            </span>
+                            <span className="rp-request-vehicle-description">
+                              {vehicleCategoryDescription(category)}
+                            </span>
+                            <span className="rp-request-vehicle-eta">
+                              <IonIcon icon={timeOutline} aria-hidden="true" />
+                              {getVehicleCategoryEtaLabel(category)}
+                            </span>
+                          </span>
+
+                          <span className="rp-request-vehicle-price">
+                            <strong>
+                              {categoryFareAmount != null
+                                ? formatCLP(categoryFareAmount)
+                                : "Calculando"}
+                            </strong>
+                            <small>{categoryUsdLabel}</small>
+                          </span>
+                        </button>
+                      );
+                    },
+                  )}
+                </div>
+
+                {rideMode === "scheduled" && (
+                  <>
+                    <div
+                      style={{
+                        margin: "0 0 18px",
+                        border: "1.5px solid rgba(248,216,121,.32)",
+                        borderRadius: "24px",
+                        background:
+                          "radial-gradient(circle at top left, rgba(248,216,121,.20), transparent 34%), linear-gradient(145deg,#191919 0%,#0d0d0d 72%)",
+                        padding: "14px",
+                        boxShadow: "0 18px 42px rgba(0,0,0,.34)",
+                        overflow: "hidden",
+                        position: "relative",
+                      }}>
+                      <div
+                        style={{
+                          position: "absolute",
+                          right: -28,
+                          top: -34,
+                          width: 120,
+                          height: 120,
+                          borderRadius: "50%",
+                          background: "rgba(248,216,121,.12)",
+                          filter: "blur(2px)",
+                          pointerEvents: "none",
+                        }}
+                      />
+
                       <div
                         style={{
                           position: "relative",
-                          border: "1px dashed rgba(248,216,121,.28)",
-                          borderRadius: "18px",
-                          padding: "14px",
-                          color: "rgba(246,242,236,.72)",
-                          fontSize: ".76rem",
-                          lineHeight: 1.35,
-                          fontWeight: 850,
-                          background: "rgba(255,255,255,.035)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          alignItems: "flex-start",
+                          marginBottom: 12,
                         }}>
-                        Por ahora no hay experiencias con reserva disponibles
-                        para tu perfil.
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              color: "#F8D879",
+                              fontSize: ".72rem",
+                              fontWeight: 950,
+                              letterSpacing: ".06em",
+                              textTransform: "uppercase",
+                            }}>
+                            Descubre Rapa Nui
+                          </div>
+                          <div
+                            style={{
+                              color: "#F6F2EC",
+                              fontSize: "1.08rem",
+                              fontWeight: 950,
+                              lineHeight: 1.1,
+                              marginTop: 4,
+                            }}>
+                            Experiencias con ida y regreso
+                          </div>
+                          <div
+                            style={{
+                              color: "rgba(246,242,236,.70)",
+                              fontSize: ".73rem",
+                              lineHeight: 1.35,
+                              fontWeight: 800,
+                              marginTop: 6,
+                            }}>
+                            Reserva con anticipación para{" "}
+                            {passengerFareTypeLabel(passengerFareType)}. El
+                            destino queda confirmado y tú eliges dónde pasamos a
+                            buscarte.
+                          </div>
+                        </div>
+
+                        <span
+                          style={{
+                            flex: "0 0 auto",
+                            borderRadius: 999,
+                            padding: "6px 10px",
+                            background:
+                              "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)",
+                            color: "#111111",
+                            fontSize: ".66rem",
+                            fontWeight: 950,
+                            boxShadow: "0 8px 18px rgba(210,164,58,.28)",
+                            whiteSpace: "nowrap",
+                          }}>
+                          Tarifa fija
+                        </span>
                       </div>
-                    ) : (
-                      <div
-                        style={{
-                          position: "relative",
-                          display: "grid",
-                          gridTemplateColumns: "1fr",
-                          gap: 11,
-                        }}>
-                        {roundTripPromotions.map((promotion) => {
-                          const active =
-                            selectedRoundTripPromotion?.id === promotion.id;
-                          const destinationKey = String(
-                            promotion.destinationName ?? "",
-                          ).toLowerCase();
-                          const promoIconRef = destinationKey.includes(
-                            "anakena",
-                          )
-                            ? sunnyOutline
-                            : destinationKey.includes("terevaka")
-                              ? compassOutline
-                              : carOutline;
-                          const promoTitle = destinationKey.includes("anakena")
-                            ? "Escapada a Anakena"
-                            : destinationKey.includes("terevaka")
-                              ? "Subida a Terevaka"
-                              : promotion.destinationName;
-                          const experienceFareClp =
-                            calculateRoundTripExperienceFare(
-                              promotion,
-                              vehicleCategory,
-                              fareRules,
+
+                      {roundTripPromotions.length === 0 ? (
+                        <div
+                          style={{
+                            position: "relative",
+                            border: "1px dashed rgba(248,216,121,.28)",
+                            borderRadius: "18px",
+                            padding: "14px",
+                            color: "rgba(246,242,236,.72)",
+                            fontSize: ".76rem",
+                            lineHeight: 1.35,
+                            fontWeight: 850,
+                            background: "rgba(255,255,255,.035)",
+                          }}>
+                          Por ahora no hay experiencias con reserva disponibles
+                          para tu perfil.
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            position: "relative",
+                            display: "grid",
+                            gridTemplateColumns: "1fr",
+                            gap: 11,
+                          }}>
+                          {roundTripPromotions.map((promotion) => {
+                            const active =
+                              selectedRoundTripPromotion?.id === promotion.id;
+                            const destinationKey = String(
+                              promotion.destinationName ?? "",
+                            ).toLowerCase();
+                            const promoIconRef = destinationKey.includes(
+                              "anakena",
+                            )
+                              ? sunnyOutline
+                              : destinationKey.includes("terevaka")
+                                ? compassOutline
+                                : carOutline;
+                            const promoTitle = destinationKey.includes(
+                              "anakena",
+                            )
+                              ? "Escapada a Anakena"
+                              : destinationKey.includes("terevaka")
+                                ? "Subida a Terevaka"
+                                : promotion.destinationName;
+                            const experienceFareClp =
+                              calculateRoundTripExperienceFare(
+                                promotion,
+                                vehicleCategory,
+                                fareRules,
+                              );
+                            const experienceUsdLabel = formatUSDFromCLP(
+                              experienceFareClp,
+                              fareRules.usdRate,
                             );
-                          const experienceUsdLabel = formatUSDFromCLP(
-                            experienceFareClp,
-                            fareRules.usdRate,
-                          );
-                          const priceChanged = vehicleCategory !== "standard";
+                            const priceChanged = vehicleCategory !== "standard";
 
-                          return (
-                            <button
-                              key={promotion.id}
-                              type="button"
-                              onClick={() =>
-                                setPendingRoundTripPromotion(promotion)
-                              }
-                              style={{
-                                width: "100%",
-                                border: active
-                                  ? "2.5px solid #F8D879"
-                                  : "1.5px solid rgba(248,216,121,.28)",
-                                borderRadius: "22px",
-                                background: active
-                                  ? "linear-gradient(135deg,#F8D879 0%,#E7BC50 55%,#C99320 100%)"
-                                  : "linear-gradient(135deg,rgba(255,255,255,.08) 0%,rgba(255,255,255,.035) 100%)",
-                                color: active ? "#111111" : "#F6F2EC",
-                                padding: "14px",
-                                textAlign: "left",
-                                boxShadow: active
-                                  ? "0 18px 34px rgba(210,164,58,.36)"
-                                  : "0 10px 24px rgba(0,0,0,.24)",
-                                fontWeight: 900,
-                                overflow: "hidden",
-                                position: "relative",
-                              }}>
-                              <div
+                            return (
+                              <button
+                                key={promotion.id}
+                                type="button"
+                                onClick={() =>
+                                  setPendingRoundTripPromotion(promotion)
+                                }
                                 style={{
-                                  position: "absolute",
-                                  right: -18,
-                                  bottom: -24,
-                                  fontSize: "4.8rem",
-                                  opacity: active ? 0.16 : 0.1,
-                                  transform: "rotate(-8deg)",
-                                  pointerEvents: "none",
-                                }}>
-                                <IonIcon icon={promoIconRef} />
-                              </div>
-
-                              <div
-                                style={{
+                                  width: "100%",
+                                  border: active
+                                    ? "2.5px solid #F8D879"
+                                    : "1.5px solid rgba(248,216,121,.28)",
+                                  borderRadius: "22px",
+                                  background: active
+                                    ? "linear-gradient(135deg,#F8D879 0%,#E7BC50 55%,#C99320 100%)"
+                                    : "linear-gradient(135deg,rgba(255,255,255,.08) 0%,rgba(255,255,255,.035) 100%)",
+                                  color: active ? "#111111" : "#F6F2EC",
+                                  padding: "14px",
+                                  textAlign: "left",
+                                  boxShadow: active
+                                    ? "0 18px 34px rgba(210,164,58,.36)"
+                                    : "0 10px 24px rgba(0,0,0,.24)",
+                                  fontWeight: 900,
+                                  overflow: "hidden",
                                   position: "relative",
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  gap: 12,
-                                  alignItems: "flex-start",
                                 }}>
                                 <div
                                   style={{
+                                    position: "absolute",
+                                    right: -18,
+                                    bottom: -24,
+                                    fontSize: "4.8rem",
+                                    opacity: active ? 0.16 : 0.1,
+                                    transform: "rotate(-8deg)",
+                                    pointerEvents: "none",
+                                  }}>
+                                  <IonIcon icon={promoIconRef} />
+                                </div>
+
+                                <div
+                                  style={{
+                                    position: "relative",
                                     display: "flex",
-                                    gap: 10,
-                                    minWidth: 0,
+                                    justifyContent: "space-between",
+                                    gap: 12,
+                                    alignItems: "flex-start",
                                   }}>
                                   <div
                                     style={{
-                                      width: 42,
-                                      height: 42,
-                                      borderRadius: 16,
-                                      background: active
-                                        ? "rgba(17,17,17,.12)"
-                                        : "rgba(248,216,121,.12)",
                                       display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontSize: "1.35rem",
-                                      flex: "0 0 auto",
+                                      gap: 10,
+                                      minWidth: 0,
                                     }}>
-                                    <IonIcon icon={promoIconRef} />
+                                    <div
+                                      style={{
+                                        width: 42,
+                                        height: 42,
+                                        borderRadius: 16,
+                                        background: active
+                                          ? "rgba(17,17,17,.12)"
+                                          : "rgba(248,216,121,.12)",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontSize: "1.35rem",
+                                        flex: "0 0 auto",
+                                      }}>
+                                      <IonIcon icon={promoIconRef} />
+                                    </div>
+
+                                    <div style={{ minWidth: 0 }}>
+                                      <div
+                                        style={{
+                                          fontSize: "1.02rem",
+                                          lineHeight: 1.05,
+                                          fontWeight: 950,
+                                        }}>
+                                        {promoTitle}
+                                      </div>
+                                      <div
+                                        style={{
+                                          marginTop: 5,
+                                          fontSize: ".72rem",
+                                          lineHeight: 1.25,
+                                          fontWeight: 850,
+                                          opacity: active ? 0.82 : 0.7,
+                                        }}>
+                                        {promotion.destinationName} · Ida y
+                                        vuelta
+                                      </div>
+                                      <div
+                                        style={{
+                                          marginTop: 4,
+                                          fontSize: ".68rem",
+                                          lineHeight: 1.2,
+                                          fontWeight: 850,
+                                          opacity: active ? 0.76 : 0.58,
+                                        }}>
+                                        Especial para {promotion.passengerLabel}
+                                      </div>
+                                    </div>
                                   </div>
 
-                                  <div style={{ minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      textAlign: "right",
+                                      flex: "0 0 auto",
+                                      padding: "4px 0 0",
+                                    }}>
                                     <div
                                       style={{
-                                        fontSize: "1.02rem",
-                                        lineHeight: 1.05,
+                                        fontSize: "1.15rem",
                                         fontWeight: 950,
+                                        lineHeight: 1,
                                       }}>
-                                      {promoTitle}
+                                      {formatCLP(experienceFareClp)}
                                     </div>
                                     <div
                                       style={{
-                                        marginTop: 5,
-                                        fontSize: ".72rem",
-                                        lineHeight: 1.25,
-                                        fontWeight: 850,
-                                        opacity: active ? 0.82 : 0.7,
+                                        fontSize: ".70rem",
+                                        fontWeight: 900,
+                                        opacity: 0.78,
+                                        marginTop: 3,
                                       }}>
-                                      {promotion.destinationName} · Ida y vuelta
-                                    </div>
-                                    <div
-                                      style={{
-                                        marginTop: 4,
-                                        fontSize: ".68rem",
-                                        lineHeight: 1.2,
-                                        fontWeight: 850,
-                                        opacity: active ? 0.76 : 0.58,
-                                      }}>
-                                      Especial para {promotion.passengerLabel}
+                                      {experienceUsdLabel}
                                     </div>
                                   </div>
                                 </div>
 
                                 <div
                                   style={{
-                                    textAlign: "right",
-                                    flex: "0 0 auto",
-                                    padding: "4px 0 0",
+                                    position: "relative",
+                                    marginTop: 12,
+                                    display: "flex",
+                                    gap: 7,
+                                    flexWrap: "wrap",
+                                    alignItems: "center",
                                   }}>
-                                  <div
-                                    style={{
-                                      fontSize: "1.15rem",
-                                      fontWeight: 950,
-                                      lineHeight: 1,
-                                    }}>
-                                    {formatCLP(experienceFareClp)}
-                                  </div>
-                                  <div
-                                    style={{
-                                      fontSize: ".70rem",
-                                      fontWeight: 900,
-                                      opacity: 0.78,
-                                      marginTop: 3,
-                                    }}>
-                                    {experienceUsdLabel}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div
-                                style={{
-                                  position: "relative",
-                                  marginTop: 12,
-                                  display: "flex",
-                                  gap: 7,
-                                  flexWrap: "wrap",
-                                  alignItems: "center",
-                                }}>
-                                <span
-                                  style={{
-                                    borderRadius: 999,
-                                    padding: "5px 8px",
-                                    fontSize: ".63rem",
-                                    background: active
-                                      ? "rgba(17,17,17,.14)"
-                                      : "rgba(34,197,94,.14)",
-                                    color: active ? "#111111" : "#86efac",
-                                    fontWeight: 950,
-                                  }}>
-                                  Destino automático
-                                </span>
-                                <span
-                                  style={{
-                                    borderRadius: 999,
-                                    padding: "5px 8px",
-                                    fontSize: ".63rem",
-                                    background: active
-                                      ? "rgba(17,17,17,.12)"
-                                      : "rgba(248,216,121,.12)",
-                                    color: active ? "#111111" : "#F8D879",
-                                    fontWeight: 950,
-                                  }}>
-                                  Recogida a elección · ida y regreso
-                                  programados
-                                </span>
-                                {priceChanged && (
                                   <span
                                     style={{
                                       borderRadius: 999,
                                       padding: "5px 8px",
                                       fontSize: ".63rem",
                                       background: active
-                                        ? "rgba(17,17,17,.10)"
-                                        : "rgba(255,255,255,.06)",
-                                      color: active
-                                        ? "#111111"
-                                        : "rgba(246,242,236,.75)",
+                                        ? "rgba(17,17,17,.14)"
+                                        : "rgba(34,197,94,.14)",
+                                      color: active ? "#111111" : "#86efac",
                                       fontWeight: 950,
                                     }}>
-                                    Tarifa ajustada por vehículo
+                                    Destino automático
                                   </span>
-                                )}
-                              </div>
+                                  <span
+                                    style={{
+                                      borderRadius: 999,
+                                      padding: "5px 8px",
+                                      fontSize: ".63rem",
+                                      background: active
+                                        ? "rgba(17,17,17,.12)"
+                                        : "rgba(248,216,121,.12)",
+                                      color: active ? "#111111" : "#F8D879",
+                                      fontWeight: 950,
+                                    }}>
+                                    Recogida a elección · ida y regreso
+                                    programados
+                                  </span>
+                                  {priceChanged && (
+                                    <span
+                                      style={{
+                                        borderRadius: 999,
+                                        padding: "5px 8px",
+                                        fontSize: ".63rem",
+                                        background: active
+                                          ? "rgba(17,17,17,.10)"
+                                          : "rgba(255,255,255,.06)",
+                                        color: active
+                                          ? "#111111"
+                                          : "rgba(246,242,236,.75)",
+                                        fontWeight: 950,
+                                      }}>
+                                      Tarifa ajustada por vehículo
+                                    </span>
+                                  )}
+                                </div>
 
-                              <div
-                                style={{
-                                  position: "relative",
-                                  marginTop: 12,
-                                  borderTop: active
-                                    ? "1px solid rgba(17,17,17,.16)"
-                                    : "1px solid rgba(255,255,255,.08)",
-                                  paddingTop: 10,
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  gap: 10,
-                                  alignItems: "center",
-                                  fontSize: ".72rem",
-                                  fontWeight: 950,
-                                  opacity: active ? 0.86 : 0.72,
-                                }}>
-                                <span>
-                                  {active
-                                    ? "Experiencia seleccionada"
-                                    : "Toca para reservar esta experiencia"}
-                                </span>
-                                <span aria-hidden="true">→</span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                                <div
+                                  style={{
+                                    position: "relative",
+                                    marginTop: 12,
+                                    borderTop: active
+                                      ? "1px solid rgba(17,17,17,.16)"
+                                      : "1px solid rgba(255,255,255,.08)",
+                                    paddingTop: 10,
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                    alignItems: "center",
+                                    fontSize: ".72rem",
+                                    fontWeight: 950,
+                                    opacity: active ? 0.86 : 0.72,
+                                  }}>
+                                  <span>
+                                    {active
+                                      ? "Experiencia seleccionada"
+                                      : "Toca para reservar esta experiencia"}
+                                  </span>
+                                  <span aria-hidden="true">→</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
 
-                    {selectedRoundTripPromotion && (
-                      <IonButton
-                        expand="block"
-                        fill="clear"
-                        onClick={clearRoundTripPromotion}
-                        style={
-                          {
-                            /* Este botón vive DENTRO del panel de experiencias, que
+                      {selectedRoundTripPromotion && (
+                        <IonButton
+                          expand="block"
+                          fill="clear"
+                          onClick={clearRoundTripPromotion}
+                          style={
+                            {
+                              /* Este botón vive DENTRO del panel de experiencias, que
                          es oscuro en los dos temas por su degradado literal.
                          Por eso no toma el oro de icono (de día sería #7d5a17
                          sobre #191919: 2,80:1) sino la constante de marca, que
                          vale igual en día y en noche. */
-                            "--rp-clear-fg": "var(--rp-gold-light)",
-                            marginTop: "12px",
-                            fontWeight: 950,
-                          } as CSSProperties
-                        }>
-                        Volver a recogida reservada en Mataveri
-                      </IonButton>
-                    )}
-                  </div>
-                </>
-              )}
+                              "--rp-clear-fg": "var(--rp-gold-light)",
+                              marginTop: "12px",
+                              fontWeight: 950,
+                            } as CSSProperties
+                          }>
+                          Volver a recogida reservada en Mataveri
+                        </IonButton>
+                      )}
+                    </div>
+                  </>
+                )}
 
-              {(rideMode === "scheduled" || selectedRoundTripPromotion) && (
-                <div className="rp-request-panel">
-                  <div className="rp-request-label">
-                    <span aria-hidden className="rp-request-label__tick" />
-                    {selectedRoundTripPromotion
-                      ? "Programa la ida y el regreso"
-                      : "Reserva tu recogida en Mataveri"}
-                  </div>
+                {(rideMode === "scheduled" || selectedRoundTripPromotion) && (
+                  <div className="rp-request-panel">
+                    <div className="rp-request-label">
+                      <span aria-hidden className="rp-request-label__tick" />
+                      {selectedRoundTripPromotion
+                        ? "Programa la ida y el regreso"
+                        : "Reserva tu recogida en Mataveri"}
+                    </div>
 
-                  <div className="rq-eyebrow">
-                    {selectedRoundTripPromotion
-                      ? "Fecha y hora de ida"
-                      : "Fecha y hora de recogida"}
-                  </div>
+                    <div className="rq-eyebrow">
+                      {selectedRoundTripPromotion
+                        ? "Fecha y hora de ida"
+                        : "Fecha y hora de recogida"}
+                    </div>
 
-                  <IonItem
-                    lines="none"
-                    style={inputItemStyle({ marginBottom: "10px" })}>
-                    <IonIcon
-                      icon={calendarOutline}
-                      slot="end"
-                      style={{ color: "var(--rp-icon-fg)" }}
-                    />
-                    <IonInput
-                      type="datetime-local"
-                      value={scheduledAt}
-                      min={scheduleMinInput}
-                      max={scheduleMaxInput}
-                      onIonInput={(event) =>
-                        setScheduledAt(String(event.detail.value ?? ""))
-                      }
-                    />
-                  </IonItem>
+                    <IonItem
+                      lines="none"
+                      style={inputItemStyle({ marginBottom: "10px" })}>
+                      <IonIcon
+                        icon={calendarOutline}
+                        slot="end"
+                        style={{ color: "var(--rp-icon-fg)" }}
+                      />
+                      <IonInput
+                        type="datetime-local"
+                        value={scheduledAt}
+                        min={scheduleMinInput}
+                        max={scheduleMaxInput}
+                        onIonInput={(event) =>
+                          setScheduledAt(String(event.detail.value ?? ""))
+                        }
+                      />
+                    </IonItem>
 
-                  <IonNote
-                    style={{
-                      fontSize: "0.72rem",
-                      display: "block",
-                      marginBottom: "14px",
-                      color: "var(--rp-label)",
-                      lineHeight: 1.45,
-                    }}>
-                    {selectedRoundTripPromotion ? (
+                    <IonNote
+                      style={{
+                        fontSize: "0.72rem",
+                        display: "block",
+                        marginBottom: "14px",
+                        color: "var(--rp-label)",
+                        lineHeight: 1.45,
+                      }}>
+                      {selectedRoundTripPromotion ? (
+                        <>
+                          Elige dónde pasamos a buscarte y programa ambos
+                          horarios. La reserva queda congelada para conductores
+                          y se habilita {SCHEDULE_ACTIVATION_MINUTES} minutos
+                          antes de la ida.
+                          <br />
+                          <strong>Pago obligatorio con tarjeta:</strong> la
+                          tarifa incluye ida y regreso. Sin conductor asignado
+                          la cancelación es gratuita; con conductor asignado
+                          tienes 1 minuto gratis y luego corresponde 30% con
+                          tope $3.000.
+                        </>
+                      ) : (
+                        <>
+                          El origen queda automático en Aeropuerto Internacional
+                          Mataveri de Rapa Nui. Tú eliges el destino final y el
+                          tipo de recibimiento. La reserva se habilita{" "}
+                          {SCHEDULE_ACTIVATION_MINUTES} minutos antes.
+                          <br />
+                          <strong>Pago obligatorio con tarjeta:</strong> sin
+                          conductor asignado la cancelación es gratuita; con
+                          conductor asignado tienes 1 minuto gratis y luego
+                          corresponde 30% con tope $3.000.
+                        </>
+                      )}
+                    </IonNote>
+
+                    {requireReturnScheduledAt && (
                       <>
-                        Elige dónde pasamos a buscarte y programa ambos
-                        horarios. La reserva queda congelada para conductores y
-                        se habilita {SCHEDULE_ACTIVATION_MINUTES} minutos antes
-                        de la ida.
-                        <br />
-                        <strong>Pago obligatorio con tarjeta:</strong> la tarifa
-                        incluye ida y regreso. Sin conductor asignado la
-                        cancelación es gratuita; con conductor asignado tienes 1
-                        minuto gratis y luego corresponde 30% con tope $3.000.
-                      </>
-                    ) : (
-                      <>
-                        El origen queda automático en Aeropuerto Internacional
-                        Mataveri de Rapa Nui. Tú eliges el destino final y el
-                        tipo de recibimiento. La reserva se habilita{" "}
-                        {SCHEDULE_ACTIVATION_MINUTES} minutos antes.
-                        <br />
-                        <strong>Pago obligatorio con tarjeta:</strong> sin
-                        conductor asignado la cancelación es gratuita; con
-                        conductor asignado tienes 1 minuto gratis y luego
-                        corresponde 30% con tope $3.000.
+                        <div className="rq-eyebrow">Hora de regreso</div>
+
+                        <IonItem
+                          lines="none"
+                          style={inputItemStyle({ marginBottom: "14px" })}>
+                          <IonIcon
+                            icon={calendarOutline}
+                            slot="end"
+                            style={{ color: "var(--rp-icon-fg)" }}
+                          />
+                          <IonInput
+                            type="datetime-local"
+                            value={returnScheduledAt}
+                            min={scheduledAt || scheduleMinInput}
+                            max={scheduleMaxInput}
+                            onIonInput={(event) =>
+                              setReturnScheduledAt(
+                                String(event.detail.value ?? ""),
+                              )
+                            }
+                          />
+                        </IonItem>
                       </>
                     )}
-                  </IonNote>
 
-                  {requireReturnScheduledAt && (
-                    <>
-                      <div className="rq-eyebrow">Hora de regreso</div>
+                    {!selectedRoundTripPromotion && (
+                      <>
+                        <div className="rq-eyebrow">
+                          Número de vuelo (opcional)
+                        </div>
 
-                      <IonItem
-                        lines="none"
-                        style={inputItemStyle({ marginBottom: "14px" })}>
-                        <IonIcon
-                          icon={calendarOutline}
-                          slot="end"
-                          style={{ color: "var(--rp-icon-fg)" }}
-                        />
-                        <IonInput
-                          type="datetime-local"
-                          value={returnScheduledAt}
-                          min={scheduledAt || scheduleMinInput}
-                          max={scheduleMaxInput}
-                          onIonInput={(event) =>
-                            setReturnScheduledAt(
-                              String(event.detail.value ?? ""),
-                            )
-                          }
-                        />
-                      </IonItem>
-                    </>
-                  )}
+                        <IonItem
+                          lines="none"
+                          style={inputItemStyle({ marginBottom: "12px" })}>
+                          <IonIcon
+                            icon={timeOutline}
+                            slot="start"
+                            style={{ color: "var(--rp-icon-fg)" }}
+                          />
+                          <IonInput
+                            value={flightNumber}
+                            placeholder="Ej: LA800"
+                            onIonInput={(event) =>
+                              setFlightNumber(String(event.detail.value ?? ""))
+                            }
+                          />
+                        </IonItem>
 
-                  {!selectedRoundTripPromotion && (
-                    <>
-                      <div className="rq-eyebrow">
-                        Número de vuelo (opcional)
-                      </div>
+                        <div className="rq-eyebrow">
+                          Recibimiento (opcional)
+                        </div>
 
-                      <IonItem
-                        lines="none"
-                        style={inputItemStyle({ marginBottom: "12px" })}>
-                        <IonIcon
-                          icon={timeOutline}
-                          slot="start"
-                          style={{ color: "var(--rp-icon-fg)" }}
-                        />
-                        <IonInput
-                          value={flightNumber}
-                          placeholder="Ej: LA800"
-                          onIonInput={(event) =>
-                            setFlightNumber(String(event.detail.value ?? ""))
-                          }
-                        />
-                      </IonItem>
-
-                      <div className="rq-eyebrow">Recibimiento (opcional)</div>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                          gap: "8px",
-                          marginBottom: "12px",
-                        }}>
-                        {[
-                          {
-                            id: "none" as AirportWelcomeOption,
-                            icon: carOutline,
-                            title: "Solo recogida",
-                            text: "El conductor te espera y te lleva directo.",
-                          },
-                          {
-                            id: "flower_lei" as AirportWelcomeOption,
-                            icon: flowerOutline,
-                            title: "Collar de flores",
-                            text: `Bienvenida Rapa Nui al llegar · +${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}`,
-                          },
-                        ].map((option) => {
-                          const active = airportWelcomeOption === option.id;
-
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              onClick={() => setAirportWelcomeOption(option.id)}
-                              style={{
-                                border: active
-                                  ? "2px solid #D2A43A"
-                                  : isDark
-                                    ? "1px solid rgba(214,166,64,.34)"
-                                    : "1px solid rgba(210,164,58,.32)",
-                                borderRadius: "14px",
-                                minHeight: "82px",
-                                padding: "10px 8px",
-                                background: active
-                                  ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
-                                  : isDark
-                                    ? "rgba(255,255,255,.055)"
-                                    : "#ffffff",
-                                color: active
-                                  ? "#111111"
-                                  : isDark
-                                    ? "#f6f2ec"
-                                    : "#111111",
-                                boxShadow: active
-                                  ? "0 10px 22px rgba(210,164,58,.28)"
-                                  : isDark
-                                    ? "0 6px 14px rgba(0,0,0,.34)"
-                                    : "0 6px 14px rgba(0,0,0,.08)",
-                                textAlign: "left",
-                                fontWeight: 950,
-                              }}>
-                              <div
-                                style={{ fontSize: "1.5rem", lineHeight: 1 }}>
-                                <IonIcon icon={option.icon} />
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 5,
-                                  fontSize: ".78rem",
-                                  lineHeight: 1.15,
-                                }}>
-                                {option.title}
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 4,
-                                  color: active
-                                    ? "rgba(17,17,17,.62)"
-                                    : isDark
-                                      ? "rgba(246,242,236,.62)"
-                                      : "rgba(17,17,17,.62)",
-                                  fontSize: ".64rem",
-                                  lineHeight: 1.22,
-                                  fontWeight: 850,
-                                }}>
-                                {option.text}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {airportWelcomeOption === "flower_lei" && (
                         <div
                           style={{
-                            background: isDark
-                              ? "linear-gradient(135deg,rgba(214,166,64,.16),rgba(214,166,64,.10))"
-                              : "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
-                            border: isDark
-                              ? "1px solid rgba(214,166,64,.42)"
-                              : "1px solid rgba(210,164,58,.42)",
-                            color: isDark ? "#f1c864" : "#4F350D",
-                            borderRadius: "14px",
-                            padding: "10px 12px",
-                            fontSize: "0.74rem",
-                            lineHeight: 1.35,
-                            fontWeight: 900,
+                            display: "grid",
+                            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                            gap: "8px",
                             marginBottom: "12px",
-                            boxShadow: isDark
-                              ? "0 10px 22px rgba(0,0,0,.30)"
-                              : "0 10px 22px rgba(210,164,58,.14)",
                           }}>
-                          <div
-                    style={{
-                      background: isDark
-                        ? "linear-gradient(135deg,rgba(214,166,64,.16),rgba(214,166,64,.10))"
-                        : "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
-                      border: isDark
-                        ? "1px solid rgba(214,166,64,.42)"
-                        : "1px solid rgba(210,164,58,.42)",
-                      color: isDark ? "#f1c864" : "#4F350D",
-                      borderRadius: "14px",
-                      padding: "12px",
-                      fontSize: "0.74rem",
-                      lineHeight: 1.35,
-                      fontWeight: 900,
-                      marginBottom: "12px",
-                      boxShadow: isDark
-                        ? "0 10px 22px rgba(0,0,0,.30)"
-                        : "0 10px 22px rgba(210,164,58,.14)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <IonIcon icon={flowerOutline} style={{ fontSize: "1rem" }} />
-                      <strong>¿Para cuántas personas?</strong>
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 10,
-                        display: "grid",
-                        gridTemplateColumns: "44px minmax(72px,1fr) 44px",
-                        gap: 8,
-                        alignItems: "center",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        aria-label="Quitar un collar de flores"
-                        disabled={normalizedFlowerLeiQuantity <= 1}
-                        onClick={() =>
-                          setFlowerLeiQuantity((current) =>
-                            Math.max(1, Math.round(Number(current) || 1) - 1),
-                          )
-                        }
-                        style={{
-                          height: 40,
-                          borderRadius: 12,
-                          border: "1px solid rgba(210,164,58,.55)",
-                          background: isDark ? "rgba(255,255,255,.08)" : "#fff",
-                          color: isDark ? "#F8D879" : "#4F350D",
-                          fontWeight: 950,
-                          opacity: normalizedFlowerLeiQuantity <= 1 ? 0.45 : 1,
-                        }}
-                      >
-                        <IonIcon icon={removeOutline} />
-                      </button>
-                      <div
-                        aria-live="polite"
-                        style={{
-                          minHeight: 40,
-                          display: "grid",
-                          placeItems: "center",
-                          borderRadius: 12,
-                          background: isDark ? "rgba(0,0,0,.22)" : "rgba(255,255,255,.72)",
-                          border: "1px solid rgba(210,164,58,.35)",
-                          fontSize: "1rem",
-                          fontWeight: 950,
-                        }}
-                      >
-                        {normalizedFlowerLeiQuantity}
-                      </div>
-                      <button
-                        type="button"
-                        aria-label="Agregar un collar de flores"
-                        disabled={normalizedFlowerLeiQuantity >= AIRPORT_FLOWER_LEI_MAX_QUANTITY}
-                        onClick={() =>
-                          setFlowerLeiQuantity((current) =>
-                            Math.min(
-                              AIRPORT_FLOWER_LEI_MAX_QUANTITY,
-                              Math.max(1, Math.round(Number(current) || 1) + 1),
-                            ),
-                          )
-                        }
-                        style={{
-                          height: 40,
-                          borderRadius: 12,
-                          border: "1px solid rgba(210,164,58,.55)",
-                          background: "linear-gradient(135deg,#D2A43A,#F8D879)",
-                          color: "#111",
-                          fontWeight: 950,
-                          opacity: normalizedFlowerLeiQuantity >= AIRPORT_FLOWER_LEI_MAX_QUANTITY ? 0.5 : 1,
-                        }}
-                      >
-                        <IonIcon icon={addOutline} />
-                      </button>
-                    </div>
-                    <div style={{ marginTop: 9 }}>
-                      {normalizedFlowerLeiQuantity} {normalizedFlowerLeiQuantity === 1 ? "collar" : "collares"} · {formatCLP(airportWelcomeSurchargeClp)} en total
-                    </div>
-                    <div style={{ marginTop: 3, opacity: 0.78, fontSize: ".66rem" }}>
-                      {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)} por persona.
-                    </div>
-                  </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+                          {[
+                            {
+                              id: "none" as AirportWelcomeOption,
+                              icon: carOutline,
+                              title: "Solo recogida",
+                              text: "El conductor te espera y te lleva directo.",
+                            },
+                            {
+                              id: "flower_lei" as AirportWelcomeOption,
+                              icon: flowerOutline,
+                              title: "Collar de flores",
+                              text: `Bienvenida Rapa Nui al llegar · +${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}`,
+                            },
+                          ].map((option) => {
+                            const active = airportWelcomeOption === option.id;
 
-                  <div
-                    style={{
-                      background: isDark
-                        ? "linear-gradient(135deg,rgba(214,166,64,.14) 0%,rgba(214,166,64,.08) 100%)"
-                        : "linear-gradient(135deg,#fff7d6 0%,#ffe39a 100%)",
-                      color: isDark ? "#f0e6d4" : "#111",
-                      borderRadius: "14px",
-                      padding: "13px 14px",
-                      fontSize: "0.8rem",
-                      lineHeight: 1.45,
-                      border: isDark
-                        ? "1px solid rgba(214,166,64,.34)"
-                        : "1px solid rgba(210,164,58,.36)",
-                      boxShadow: isDark
-                        ? "0 12px 24px rgba(0,0,0,.32)"
-                        : "0 12px 24px rgba(210,164,58,.16)",
-                    }}>
-                    {selectedRoundTripPromotion ? (
-                      <>
-                        <>
-                          <IonIcon
-                            icon={leafOutline}
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() =>
+                                  setAirportWelcomeOption(option.id)
+                                }
+                                style={{
+                                  border: active
+                                    ? "2px solid #D2A43A"
+                                    : isDark
+                                      ? "1px solid rgba(214,166,64,.34)"
+                                      : "1px solid rgba(210,164,58,.32)",
+                                  borderRadius: "14px",
+                                  minHeight: "82px",
+                                  padding: "10px 8px",
+                                  background: active
+                                    ? "linear-gradient(135deg,#D2A43A 0%,#F8D879 100%)"
+                                    : isDark
+                                      ? "rgba(255,255,255,.055)"
+                                      : "#ffffff",
+                                  color: active
+                                    ? "#111111"
+                                    : isDark
+                                      ? "#f6f2ec"
+                                      : "#111111",
+                                  boxShadow: active
+                                    ? "0 10px 22px rgba(210,164,58,.28)"
+                                    : isDark
+                                      ? "0 6px 14px rgba(0,0,0,.34)"
+                                      : "0 6px 14px rgba(0,0,0,.08)",
+                                  textAlign: "left",
+                                  fontWeight: 950,
+                                }}>
+                                <div
+                                  style={{ fontSize: "1.5rem", lineHeight: 1 }}>
+                                  <IonIcon icon={option.icon} />
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 5,
+                                    fontSize: ".78rem",
+                                    lineHeight: 1.15,
+                                  }}>
+                                  {option.title}
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    color: active
+                                      ? "rgba(17,17,17,.62)"
+                                      : isDark
+                                        ? "rgba(246,242,236,.62)"
+                                        : "rgba(17,17,17,.62)",
+                                    fontSize: ".64rem",
+                                    lineHeight: 1.22,
+                                    fontWeight: 850,
+                                  }}>
+                                  {option.text}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {airportWelcomeOption === "flower_lei" && (
+                          <div
                             style={{
-                              verticalAlign: "middle",
-                              marginRight: 4,
-                              fontSize: "1rem",
-                            }}
-                          />{" "}
-                          <strong>Experiencia ida y vuelta reservada.</strong>{" "}
-                          Ambos horarios quedarán programados y vinculados a la
-                          misma reserva.
-                        </>
-                      </>
-                    ) : (
-                      <>
-                        <>
-                          <IonIcon
-                            icon={airplaneOutline}
-                            style={{
-                              verticalAlign: "middle",
-                              marginRight: 4,
-                              fontSize: "1rem",
-                            }}
-                          />{" "}
-                          <strong>Recogida programada desde Mataveri.</strong>{" "}
-                          Tú eliges el destino, la hora y el recibimiento.
-                          Prepararemos tu viaje y te avisaremos cuando tu RapaGo
-                          esté listo para ir por ti.
-                        </>
+                              background: isDark
+                                ? "linear-gradient(135deg,rgba(214,166,64,.16),rgba(214,166,64,.10))"
+                                : "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
+                              border: isDark
+                                ? "1px solid rgba(214,166,64,.42)"
+                                : "1px solid rgba(210,164,58,.42)",
+                              color: isDark ? "#f1c864" : "#4F350D",
+                              borderRadius: "14px",
+                              padding: "10px 12px",
+                              fontSize: "0.74rem",
+                              lineHeight: 1.35,
+                              fontWeight: 900,
+                              marginBottom: "12px",
+                              boxShadow: isDark
+                                ? "0 10px 22px rgba(0,0,0,.30)"
+                                : "0 10px 22px rgba(210,164,58,.14)",
+                            }}>
+                            <div
+                              style={{
+                                background: isDark
+                                  ? "linear-gradient(135deg,rgba(214,166,64,.16),rgba(214,166,64,.10))"
+                                  : "linear-gradient(135deg,rgba(255,246,214,.98),rgba(255,232,166,.98))",
+                                border: isDark
+                                  ? "1px solid rgba(214,166,64,.42)"
+                                  : "1px solid rgba(210,164,58,.42)",
+                                color: isDark ? "#f1c864" : "#4F350D",
+                                borderRadius: "14px",
+                                padding: "12px",
+                                fontSize: "0.74rem",
+                                lineHeight: 1.35,
+                                fontWeight: 900,
+                                marginBottom: "12px",
+                                boxShadow: isDark
+                                  ? "0 10px 22px rgba(0,0,0,.30)"
+                                  : "0 10px 22px rgba(210,164,58,.14)",
+                              }}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}>
+                                <IonIcon
+                                  icon={flowerOutline}
+                                  style={{ fontSize: "1rem" }}
+                                />
+                                <strong>¿Para cuántas personas?</strong>
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 10,
+                                  display: "grid",
+                                  gridTemplateColumns:
+                                    "44px minmax(72px,1fr) 44px",
+                                  gap: 8,
+                                  alignItems: "center",
+                                }}>
+                                <button
+                                  type="button"
+                                  aria-label="Quitar un collar de flores"
+                                  disabled={normalizedFlowerLeiQuantity <= 1}
+                                  onClick={() =>
+                                    setFlowerLeiQuantity((current) =>
+                                      Math.max(
+                                        1,
+                                        Math.round(Number(current) || 1) - 1,
+                                      ),
+                                    )
+                                  }
+                                  style={{
+                                    height: 40,
+                                    borderRadius: 12,
+                                    border: "1px solid rgba(210,164,58,.55)",
+                                    background: isDark
+                                      ? "rgba(255,255,255,.08)"
+                                      : "#fff",
+                                    color: isDark ? "#F8D879" : "#4F350D",
+                                    fontWeight: 950,
+                                    opacity:
+                                      normalizedFlowerLeiQuantity <= 1
+                                        ? 0.45
+                                        : 1,
+                                  }}>
+                                  <IonIcon icon={removeOutline} />
+                                </button>
+                                <div
+                                  aria-live="polite"
+                                  style={{
+                                    minHeight: 40,
+                                    display: "grid",
+                                    placeItems: "center",
+                                    borderRadius: 12,
+                                    background: isDark
+                                      ? "rgba(0,0,0,.22)"
+                                      : "rgba(255,255,255,.72)",
+                                    border: "1px solid rgba(210,164,58,.35)",
+                                    fontSize: "1rem",
+                                    fontWeight: 950,
+                                  }}>
+                                  {normalizedFlowerLeiQuantity}
+                                </div>
+                                <button
+                                  type="button"
+                                  aria-label="Agregar un collar de flores"
+                                  disabled={
+                                    normalizedFlowerLeiQuantity >=
+                                    AIRPORT_FLOWER_LEI_MAX_QUANTITY
+                                  }
+                                  onClick={() =>
+                                    setFlowerLeiQuantity((current) =>
+                                      Math.min(
+                                        AIRPORT_FLOWER_LEI_MAX_QUANTITY,
+                                        Math.max(
+                                          1,
+                                          Math.round(Number(current) || 1) + 1,
+                                        ),
+                                      ),
+                                    )
+                                  }
+                                  style={{
+                                    height: 40,
+                                    borderRadius: 12,
+                                    border: "1px solid rgba(210,164,58,.55)",
+                                    background:
+                                      "linear-gradient(135deg,#D2A43A,#F8D879)",
+                                    color: "#111",
+                                    fontWeight: 950,
+                                    opacity:
+                                      normalizedFlowerLeiQuantity >=
+                                      AIRPORT_FLOWER_LEI_MAX_QUANTITY
+                                        ? 0.5
+                                        : 1,
+                                  }}>
+                                  <IonIcon icon={addOutline} />
+                                </button>
+                              </div>
+                              <div style={{ marginTop: 9 }}>
+                                {normalizedFlowerLeiQuantity}{" "}
+                                {normalizedFlowerLeiQuantity === 1
+                                  ? "collar"
+                                  : "collares"}{" "}
+                                · {formatCLP(airportWelcomeSurchargeClp)} en
+                                total
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 3,
+                                  opacity: 0.78,
+                                  fontSize: ".66rem",
+                                }}>
+                                {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}{" "}
+                                por persona.
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </>
                     )}
+
+                    <div
+                      style={{
+                        background: isDark
+                          ? "linear-gradient(135deg,rgba(214,166,64,.14) 0%,rgba(214,166,64,.08) 100%)"
+                          : "linear-gradient(135deg,#fff7d6 0%,#ffe39a 100%)",
+                        color: isDark ? "#f0e6d4" : "#111",
+                        borderRadius: "14px",
+                        padding: "13px 14px",
+                        fontSize: "0.8rem",
+                        lineHeight: 1.45,
+                        border: isDark
+                          ? "1px solid rgba(214,166,64,.34)"
+                          : "1px solid rgba(210,164,58,.36)",
+                        boxShadow: isDark
+                          ? "0 12px 24px rgba(0,0,0,.32)"
+                          : "0 12px 24px rgba(210,164,58,.16)",
+                      }}>
+                      {selectedRoundTripPromotion ? (
+                        <>
+                          <>
+                            <IonIcon
+                              icon={leafOutline}
+                              style={{
+                                verticalAlign: "middle",
+                                marginRight: 4,
+                                fontSize: "1rem",
+                              }}
+                            />{" "}
+                            <strong>Experiencia ida y vuelta reservada.</strong>{" "}
+                            Ambos horarios quedarán programados y vinculados a
+                            la misma reserva.
+                          </>
+                        </>
+                      ) : (
+                        <>
+                          <>
+                            <IonIcon
+                              icon={airplaneOutline}
+                              style={{
+                                verticalAlign: "middle",
+                                marginRight: 4,
+                                fontSize: "1rem",
+                              }}
+                            />{" "}
+                            <strong>Recogida programada desde Mataveri.</strong>{" "}
+                            Tú eliges el destino, la hora y el recibimiento.
+                            Prepararemos tu viaje y te avisaremos cuando tu
+                            RapaGo esté listo para ir por ti.
+                          </>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="rq-eyebrow">Notas (opcional)</div>
+                <div className="rq-eyebrow">Notas (opcional)</div>
 
-              <IonItem
-                lines="none"
-                style={inputItemStyle({ marginBottom: "18px" })}>
-                <IonTextarea
-                  value={notesInput}
-                  placeholder="Ej: Maletas grandes"
-                  rows={3}
-                  maxlength={RAPAGO_PASSENGER_NOTE_MAX_LENGTH}
-                  onIonInput={(event) =>
-                    setNotesInput(String(event.detail.value ?? ""))
-                  }
-                />
-              </IonItem>
+                <IonItem
+                  lines="none"
+                  style={inputItemStyle({ marginBottom: "18px" })}>
+                  <IonTextarea
+                    value={notesInput}
+                    placeholder="Ej: Maletas grandes"
+                    rows={3}
+                    maxlength={RAPAGO_PASSENGER_NOTE_MAX_LENGTH}
+                    onIonInput={(event) =>
+                      setNotesInput(String(event.detail.value ?? ""))
+                    }
+                  />
+                </IonItem>
+              </div>
 
-              {/* Resumen de tarifa. Antes era una losa negra fija
+              {/* ── Paso 3 · Confirmar ── */}
+              <div className="rq-step" data-active={wizardStep === 2}>
+                {/* Navegación del paso 3 */}
+                {wizardStep === 2 && (
+                  <div
+                    className="rq-nav rq-nav--last"
+                    style={{ marginBottom: "16px" }}>
+                    <button
+                      type="button"
+                      className="rq-nav__back"
+                      onClick={() => goToWizardStep(wizardStep - 1)}>
+                      <IonIcon icon={arrowBackOutline} aria-hidden="true" />
+                      Anterior
+                    </button>
+                  </div>
+                )}
+                {/* Resumen de tarifa. Antes era una losa negra fija
                 (linear-gradient #101010→#1E1608→#D2A43A) con dos círculos
                 decorativos, y en modo día quedaba como un folleto nocturno
                 pegado en medio de un formulario claro. Ahora usa la superficie
                 del tema, y el TOTAL —que es el dato por el que existe la
                 tarjeta— pasa a ser el elemento más grande: antes el titular de
                 marketing iba a 1,22rem y el precio a 1,02rem. */}
-              <div className="rp-request-fare-summary">
-                <div className="rq-fare__body">
-                  <div className="rq-fare__head">
-                    <div className="rq-fare__copy">
-                      <div className="rq-fare__eyebrow">
-                        {selectedRoundTripPromotion
-                          ? "Experiencia RAPA GO"
-                          : "Tu viaje RAPA GO"}
+                <div className="rp-request-fare-summary">
+                  <div className="rq-fare__body">
+                    <div className="rq-fare__head">
+                      <div className="rq-fare__copy">
+                        <div className="rq-fare__eyebrow">
+                          {selectedRoundTripPromotion
+                            ? "Experiencia RAPA GO"
+                            : "Tu viaje RAPA GO"}
+                        </div>
+                        <div className="rq-fare__headline">
+                          {selectedRoundTripPromotion
+                            ? `${selectedRoundTripPromotion.destinationName} · ida y regreso reservados`
+                            : paymentMethod === "cash"
+                              ? "Listo para solicitar"
+                              : "Elige tu forma de pago"}
+                        </div>
+                        <div className="rq-fare__sub">
+                          {selectedRoundTripPromotion
+                            ? "Tarifa confirmada, destino definido y horarios de ida y regreso programados."
+                            : fareQuote
+                              ? "Precio estimado transparente para moverte por Rapa Nui."
+                              : "El precio aparecerá cuando selecciones origen y destino."}
+                        </div>
                       </div>
-                      <div className="rq-fare__headline">
-                        {selectedRoundTripPromotion
-                          ? `${selectedRoundTripPromotion.destinationName} · ida y regreso reservados`
-                          : paymentMethod === "cash"
-                            ? "Listo para solicitar"
-                            : "Elige tu forma de pago"}
-                      </div>
-                      <div className="rq-fare__sub">
-                        {selectedRoundTripPromotion
-                          ? "Tarifa confirmada, destino definido y horarios de ida y regreso programados."
-                          : fareQuote
-                            ? "Precio estimado transparente para moverte por Rapa Nui."
-                            : "El precio aparecerá cuando selecciones origen y destino."}
+
+                      <div className="rq-fare__total">
+                        <div className="rq-fare__total-label">Total</div>
+                        <div className="rq-fare__total-value">
+                          {cashPaymentLabel}
+                        </div>
+                        <div className="rq-fare__total-usd">
+                          {cashPaymentUsdLabel}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="rq-fare__total">
-                      <div className="rq-fare__total-label">Total</div>
-                      <div className="rq-fare__total-value">
-                        {cashPaymentLabel}
-                      </div>
-                      <div className="rq-fare__total-usd">
-                        {cashPaymentUsdLabel}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 7,
-                      marginTop: 14,
-                    }}>
-                    <span
+                    <div
                       style={{
-                        borderRadius: 999,
-                        padding: "6px 9px",
-                        background: "rgba(248,216,121,.16)",
-                        border: "1px solid rgba(248,216,121,.24)",
-                        color: "#F8D879",
-                        fontSize: ".66rem",
-                        fontWeight: 950,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 7,
+                        marginTop: 14,
                       }}>
-                      {selectedRoundTripPromotion
-                        ? "Tarifa confirmada"
-                        : "Precio claro"}
-                    </span>
-                    <span
-                      style={{
-                        borderRadius: 999,
-                        padding: "6px 9px",
-                        background: "rgba(255,255,255,.08)",
-                        border: "1px solid rgba(255,255,255,.10)",
-                        color: "#F6F2EC",
-                        fontSize: ".66rem",
-                        fontWeight: 900,
-                      }}>
-                      {fareQuote
-                        ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min`
-                        : "Calculando ruta"}
-                    </span>
-                    <span
-                      style={{
-                        borderRadius: 999,
-                        padding: "6px 9px",
-                        background: "rgba(255,255,255,.08)",
-                        border: "1px solid rgba(255,255,255,.10)",
-                        color: "#F6F2EC",
-                        fontSize: ".66rem",
-                        fontWeight: 900,
-                      }}>
-                      {vehicleCategoryTitle(vehicleCategory)}
-                    </span>
-                    {hasAirportFlowerLei && (
                       <span
                         style={{
                           borderRadius: 999,
                           padding: "6px 9px",
                           background: "rgba(248,216,121,.16)",
-                          border: "1px solid rgba(248,216,121,.28)",
+                          border: "1px solid rgba(248,216,121,.24)",
                           color: "#F8D879",
                           fontSize: ".66rem",
                           fontWeight: 950,
                         }}>
-                        <IonIcon
-                          icon={flowerOutline}
-                          style={{
-                            verticalAlign: "middle",
-                            fontSize: "0.8rem",
-                          }}
-                        />{" "}
-                        Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="rq-fare__stats">
-                    <div className="rq-stat">
-                      <div className="rq-stat__label">Pasajero</div>
-                      <div className="rq-stat__value">
-                        {passengerFareTypeLabel(effectivePassengerFareType)}
-                      </div>
-                    </div>
-                    <div className="rq-stat">
-                      <div className="rq-stat__label">Viaje</div>
-                      <div className="rq-stat__value">
                         {selectedRoundTripPromotion
-                          ? "Experiencia ida y vuelta"
-                          : tripFareModeLabel(tripFareMode)}
+                          ? "Tarifa confirmada"
+                          : "Precio claro"}
+                      </span>
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 9px",
+                          background: "rgba(255,255,255,.08)",
+                          border: "1px solid rgba(255,255,255,.10)",
+                          color: "#F6F2EC",
+                          fontSize: ".66rem",
+                          fontWeight: 900,
+                        }}>
+                        {fareQuote
+                          ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min`
+                          : "Calculando ruta"}
+                      </span>
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 9px",
+                          background: "rgba(255,255,255,.08)",
+                          border: "1px solid rgba(255,255,255,.10)",
+                          color: "#F6F2EC",
+                          fontSize: ".66rem",
+                          fontWeight: 900,
+                        }}>
+                        {vehicleCategoryTitle(vehicleCategory)}
+                      </span>
+                      {hasAirportFlowerLei && (
+                        <span
+                          style={{
+                            borderRadius: 999,
+                            padding: "6px 9px",
+                            background: "rgba(248,216,121,.16)",
+                            border: "1px solid rgba(248,216,121,.28)",
+                            color: "#F8D879",
+                            fontSize: ".66rem",
+                            fontWeight: 950,
+                          }}>
+                          <IonIcon
+                            icon={flowerOutline}
+                            style={{
+                              verticalAlign: "middle",
+                              fontSize: "0.8rem",
+                            }}
+                          />{" "}
+                          Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="rq-fare__stats">
+                      <div className="rq-stat">
+                        <div className="rq-stat__label">Pasajero</div>
+                        <div className="rq-stat__value">
+                          {passengerFareTypeLabel(effectivePassengerFareType)}
+                        </div>
+                      </div>
+                      <div className="rq-stat">
+                        <div className="rq-stat__label">Viaje</div>
+                        <div className="rq-stat__value">
+                          {selectedRoundTripPromotion
+                            ? "Experiencia ida y vuelta"
+                            : tripFareModeLabel(tripFareMode)}
+                        </div>
+                      </div>
+                      <div className="rq-stat">
+                        <div className="rq-stat__label">Pago</div>
+                        <div className="rq-stat__value">
+                          {paymentMethod === "cash"
+                            ? "Efectivo listo"
+                            : paymentMethod === "card"
+                              ? "Tarjeta lista"
+                              : "Pendiente"}
+                        </div>
                       </div>
                     </div>
-                    <div className="rq-stat">
-                      <div className="rq-stat__label">Pago</div>
-                      <div className="rq-stat__value">
-                        {paymentMethod === "cash"
-                          ? "Efectivo listo"
-                          : paymentMethod === "card"
-                            ? "Tarjeta lista"
-                            : "Pendiente"}
+
+                    {selectedRoundTripPromotion && returnScheduledAt ? (
+                      <div className="rq-fare__sched">
+                        <IonIcon
+                          icon={calendarOutline}
+                          aria-hidden="true"
+                          style={{ verticalAlign: "-2px", marginRight: 4 }}
+                        />
+                        Regreso agendado para{" "}
+                        {formatScheduleDateTime(returnScheduledAt)}
                       </div>
-                    </div>
+                    ) : rideMode === "scheduled" && scheduledAt ? (
+                      <div className="rq-fare__sched">
+                        <IonIcon
+                          icon={calendarOutline}
+                          aria-hidden="true"
+                          style={{ verticalAlign: "-2px", marginRight: 4 }}
+                        />
+                        Agendado para {formatScheduleDateTime(scheduledAt)}
+                        {requireReturnScheduledAt && returnScheduledAt
+                          ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}`
+                          : ""}
+                      </div>
+                    ) : null}
+
+                    {pendingPassengerChargeTotalClp > 0 && (
+                      <div className="rq-fare__sched rq-fare__sched--warn">
+                        <IonIcon
+                          icon={alertCircleOutline}
+                          aria-hidden="true"
+                          style={{ verticalAlign: "-2px", marginRight: 4 }}
+                        />
+                        Cargos aprobados que se sumarán a este viaje:{" "}
+                        <strong>
+                          {formatCLP(pendingPassengerChargeTotalClp)}
+                        </strong>
+                        .
+                        {pendingCancellationChargeTotalClp > 0 && (
+                          <>
+                            <br />
+                            Cancelación después de 1 minuto desde la asignación:{" "}
+                            <strong>
+                              {formatCLP(pendingCancellationChargeTotalClp)}
+                            </strong>
+                            .
+                          </>
+                        )}
+                        {pendingNoShowChargeTotalClp > 0 && (
+                          <>
+                            <br />
+                            No Show aprobado:{" "}
+                            <strong>
+                              {formatCLP(pendingNoShowChargeTotalClp)}
+                            </strong>
+                            .
+                          </>
+                        )}
+                        <br />
+                        Se aplican exclusivamente a esta cuenta y quedarán
+                        asociados a este nuevo viaje.
+                      </div>
+                    )}
+
+                    {fareQuote && (
+                      <div
+                        style={{
+                          marginTop: 13,
+                          borderRadius: "20px",
+                          padding: "12px",
+                          background: "rgba(255,255,255,.96)",
+                          color: "#111111",
+                          boxShadow: "0 10px 24px rgba(0,0,0,.16)",
+                        }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "flex-start",
+                          }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                color: "#7A5417",
+                                fontSize: ".68rem",
+                                fontWeight: 950,
+                                letterSpacing: ".06em",
+                                textTransform: "uppercase",
+                              }}>
+                              Resumen de tarifa
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: ".86rem",
+                                lineHeight: 1.28,
+                                fontWeight: 950,
+                              }}>
+                              {selectedRoundTripPromotion
+                                ? `${selectedRoundTripPromotion.destinationName} · ida y regreso programados`
+                                : fareQuote.calculationType === "fixed"
+                                  ? "Destino con tarifa fija"
+                                  : fareQuote.ruralKm > 0
+                                    ? `${fareQuote.urbanKm.toFixed(1)} km urbanos + ${fareQuote.ruralKm.toFixed(1)} km rurales`
+                                    : `${fareQuote.urbanKm.toFixed(1)} km urbanos`}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 5,
+                                color: "rgba(17,17,17,.64)",
+                                fontSize: ".72rem",
+                                lineHeight: 1.35,
+                                fontWeight: 800,
+                              }}>
+                              {selectedRoundTripPromotion
+                                ? "Experiencia disponible para tu perfil. Elige la recogida y programa ambos horarios."
+                                : fareQuote.ruralKm > 0
+                                  ? "El sistema combina tramo urbano y rural según la ruta seleccionada."
+                                  : "Tarifa calculada con las reglas activas de RAPA GO."}
+                            </div>
+                          </div>
+                          <div style={{ flex: "0 0 auto", textAlign: "right" }}>
+                            <div
+                              style={{
+                                color: "#111111",
+                                fontSize: ".94rem",
+                                fontWeight: 950,
+                              }}>
+                              {cashPaymentLabel}
+                            </div>
+                            <div
+                              style={{
+                                color: "#7A5417",
+                                fontSize: ".72rem",
+                                fontWeight: 950,
+                              }}>
+                              {cashPaymentUsdLabel}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <IonButton
+                      expand="block"
+                      className="rp-request-payment-cta"
+                      onClick={handleOpenPaymentBox}
+                      style={
+                        {
+                          marginTop: "14px",
+                          "--background":
+                            paymentMethod === "cash"
+                              ? "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)"
+                              : "linear-gradient(135deg,#FFFFFF 0%,#F8D879 100%)",
+                          "--background-activated": "#D2A43A",
+                          "--color": "#111111",
+                          "--border-radius": "18px",
+                          height: "48px",
+                          fontWeight: 950,
+                          letterSpacing: ".02em",
+                          boxShadow: "0 16px 30px rgba(210,164,58,.26)",
+                        } as CSSProperties
+                      }>
+                      {paymentMethod === "cash"
+                        ? "Efectivo seleccionado · continuar"
+                        : paymentMethod === "card"
+                          ? useWalletBenefit === true &&
+                            activePaymentAmountAfterWallet === 0
+                            ? "Tarjeta + Beneficio · sin cobro Klap"
+                            : "Tarjeta seleccionada · Klap"
+                          : "Elegir forma de pago"}
+                    </IonButton>
                   </div>
 
-                  {selectedRoundTripPromotion && returnScheduledAt ? (
-                    <div className="rq-fare__sched">
-                      <IonIcon
-                        icon={calendarOutline}
-                        aria-hidden="true"
-                        style={{ verticalAlign: "-2px", marginRight: 4 }}
-                      />
-                      Regreso agendado para{" "}
-                      {formatScheduleDateTime(returnScheduledAt)}
-                    </div>
-                  ) : rideMode === "scheduled" && scheduledAt ? (
-                    <div className="rq-fare__sched">
-                      <IonIcon
-                        icon={calendarOutline}
-                        aria-hidden="true"
-                        style={{ verticalAlign: "-2px", marginRight: 4 }}
-                      />
-                      Agendado para {formatScheduleDateTime(scheduledAt)}
-                      {requireReturnScheduledAt && returnScheduledAt
-                        ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}`
-                        : ""}
-                    </div>
-                  ) : null}
-
-                  {pendingPassengerChargeTotalClp > 0 && (
-                    <div className="rq-fare__sched rq-fare__sched--warn">
-                      <IonIcon
-                        icon={alertCircleOutline}
-                        aria-hidden="true"
-                        style={{ verticalAlign: "-2px", marginRight: 4 }}
-                      />
-                      Cargos aprobados que se sumarán a este viaje:{" "}
-                      <strong>
-                        {formatCLP(pendingPassengerChargeTotalClp)}
-                      </strong>
-                      .
-                      {pendingCancellationChargeTotalClp > 0 && (
-                        <>
-                          <br />
-                          Cancelación después de 1 minuto desde la asignación:{" "}
-                          <strong>
-                            {formatCLP(pendingCancellationChargeTotalClp)}
-                          </strong>
-                          .
-                        </>
-                      )}
-                      {pendingNoShowChargeTotalClp > 0 && (
-                        <>
-                          <br />
-                          No Show aprobado:{" "}
-                          <strong>
-                            {formatCLP(pendingNoShowChargeTotalClp)}
-                          </strong>
-                          .
-                        </>
-                      )}
-                      <br />
-                      Se aplican exclusivamente a esta cuenta y quedarán
-                      asociados a este nuevo viaje.
-                    </div>
-                  )}
-
-                  {fareQuote && (
+                  {showPaymentBox && (
                     <div
+                      className="rp-request-payment-panel"
                       style={{
-                        marginTop: 13,
-                        borderRadius: "20px",
-                        padding: "12px",
-                        background: "rgba(255,255,255,.96)",
+                        margin: "0 12px 14px",
+                        padding: "14px",
+                        borderRadius: "22px",
+                        background:
+                          "linear-gradient(180deg,#FFFDF7 0%,#F7E7B6 100%)",
+                        border: "1.5px solid rgba(248,216,121,.54)",
                         color: "#111111",
-                        boxShadow: "0 10px 24px rgba(0,0,0,.16)",
+                        boxShadow: "0 18px 35px rgba(0,0,0,.22)",
                       }}>
                       <div
                         style={{
@@ -11577,588 +12261,477 @@ export default function RequestRidePage(): JSX.Element {
                           gap: 10,
                           alignItems: "flex-start",
                         }}>
-                        <div style={{ minWidth: 0 }}>
+                        <div>
                           <div
                             style={{
                               color: "#7A5417",
-                              fontSize: ".68rem",
+                              fontSize: ".7rem",
                               fontWeight: 950,
                               letterSpacing: ".06em",
                               textTransform: "uppercase",
                             }}>
-                            Resumen de tarifa
+                            Pago seguro
                           </div>
                           <div
                             style={{
-                              marginTop: 4,
-                              fontSize: ".86rem",
-                              lineHeight: 1.28,
+                              marginTop: 3,
                               fontWeight: 950,
+                              fontSize: "1.08rem",
+                              lineHeight: 1.05,
                             }}>
-                            {selectedRoundTripPromotion
-                              ? `${selectedRoundTripPromotion.destinationName} · ida y regreso programados`
-                              : fareQuote.calculationType === "fixed"
-                                ? "Destino con tarifa fija"
-                                : fareQuote.ruralKm > 0
-                                  ? `${fareQuote.urbanKm.toFixed(1)} km urbanos + ${fareQuote.ruralKm.toFixed(1)} km rurales`
-                                  : `${fareQuote.urbanKm.toFixed(1)} km urbanos`}
+                            ¿Cómo quieres pagar?
                           </div>
                           <div
                             style={{
-                              marginTop: 5,
-                              color: "rgba(17,17,17,.64)",
-                              fontSize: ".72rem",
+                              marginTop: 6,
+                              color: "rgba(17,17,17,.66)",
+                              fontSize: ".74rem",
                               lineHeight: 1.35,
                               fontWeight: 800,
                             }}>
-                            {selectedRoundTripPromotion
-                              ? "Experiencia disponible para tu perfil. Elige la recogida y programa ambos horarios."
-                              : fareQuote.ruralKm > 0
-                                ? "El sistema combina tramo urbano y rural según la ruta seleccionada."
-                                : "Tarifa calculada con las reglas activas de RAPA GO."}
+                            {reservationRequiresCard
+                              ? "Todas las reservas se pagan obligatoriamente con tarjeta. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000."
+                              : "Paga con tarjeta mediante Klap Checkout Transparente o elige efectivo al conductor."}
                           </div>
                         </div>
-                        <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-                          <div
-                            style={{
-                              color: "#111111",
-                              fontSize: ".94rem",
-                              fontWeight: 950,
-                            }}>
-                            {cashPaymentLabel}
-                          </div>
-                          <div
-                            style={{
-                              color: "#7A5417",
-                              fontSize: ".72rem",
-                              fontWeight: 950,
-                            }}>
-                            {cashPaymentUsdLabel}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <IonButton
-                    expand="block"
-                    className="rp-request-payment-cta"
-                    onClick={handleOpenPaymentBox}
-                    style={
-                      {
-                        marginTop: "14px",
-                        "--background":
-                          paymentMethod === "cash"
-                            ? "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)"
-                            : "linear-gradient(135deg,#FFFFFF 0%,#F8D879 100%)",
-                        "--background-activated": "#D2A43A",
-                        "--color": "#111111",
-                        "--border-radius": "18px",
-                        height: "48px",
-                        fontWeight: 950,
-                        letterSpacing: ".02em",
-                        boxShadow: "0 16px 30px rgba(210,164,58,.26)",
-                      } as CSSProperties
-                    }>
-                    {paymentMethod === "cash"
-                      ? "Efectivo seleccionado · continuar"
-                      : paymentMethod === "card"
-                        ? useWalletBenefit === true &&
-                          activePaymentAmountAfterWallet === 0
-                          ? "Tarjeta + Beneficio · sin cobro Klap"
-                          : "Tarjeta seleccionada · Klap"
-                        : "Elegir forma de pago"}
-                  </IonButton>
-                </div>
-
-                {showPaymentBox && (
-                  <div
-                    className="rp-request-payment-panel"
-                    style={{
-                      margin: "0 12px 14px",
-                      padding: "14px",
-                      borderRadius: "22px",
-                      background:
-                        "linear-gradient(180deg,#FFFDF7 0%,#F7E7B6 100%)",
-                      border: "1.5px solid rgba(248,216,121,.54)",
-                      color: "#111111",
-                      boxShadow: "0 18px 35px rgba(0,0,0,.22)",
-                    }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        alignItems: "flex-start",
-                      }}>
-                      <div>
-                        <div
+                        <span
                           style={{
-                            color: "#7A5417",
-                            fontSize: ".7rem",
+                            borderRadius: 999,
+                            padding: "6px 9px",
+                            background: "#fff7e8",
+                            color: "#9A6A10",
+                            fontSize: ".66rem",
                             fontWeight: 950,
-                            letterSpacing: ".06em",
-                            textTransform: "uppercase",
+                            whiteSpace: "nowrap",
                           }}>
-                          Pago seguro
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 3,
-                            fontWeight: 950,
-                            fontSize: "1.08rem",
-                            lineHeight: 1.05,
-                          }}>
-                          ¿Cómo quieres pagar?
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 6,
-                            color: "rgba(17,17,17,.66)",
-                            fontSize: ".74rem",
-                            lineHeight: 1.35,
-                            fontWeight: 800,
-                          }}>
-                          {reservationRequiresCard
-                            ? "Todas las reservas se pagan obligatoriamente con tarjeta. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000."
-                            : "Elige efectivo al conductor o paga con tarjeta mediante Klap Checkout Transparente."}
-                        </div>
-                      </div>
-                      <span
-                        style={{
-                          borderRadius: 999,
-                          padding: "6px 9px",
-                          background: "#fff7e8",
-                          color: "#9A6A10",
-                          fontSize: ".66rem",
-                          fontWeight: 950,
-                          whiteSpace: "nowrap",
-                        }}>
-                        Klap activo
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr",
-                        gap: 10,
-                        marginTop: 13,
-                      }}>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectPayment("cash")}
-                        style={{
-                          border:
-                            paymentMethod === "cash"
-                              ? "3px solid #111111"
-                              : "2px solid rgba(17,17,17,.10)",
-                          borderRadius: "20px",
-                          padding: "14px 13px",
-                          minHeight: "92px",
-                          background:
-                            "linear-gradient(135deg,#21C55D 0%,#F8D879 42%,#D2A43A 100%)",
-                          color: "#111111",
-                          boxShadow:
-                            paymentMethod === "cash"
-                              ? "0 16px 30px rgba(34,197,94,.26)"
-                              : "0 10px 22px rgba(0,0,0,.10)",
-                          transform:
-                            paymentMethod === "cash"
-                              ? "scale(1.015)"
-                              : "scale(1)",
-                          transition: "all .18s ease",
-                          fontWeight: 950,
-                          textAlign: "left",
-                          width: "100%",
-                          opacity: reservationRequiresCard ? 0.48 : 1,
-                        }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 12,
-                          }}>
-                          <div>
-                            <IonIcon
-                              icon={cashOutline}
-                              aria-hidden="true"
-                              style={{ fontSize: "1.35rem", lineHeight: 1 }}
-                            />
-                            <div style={{ marginTop: 5, fontSize: ".94rem" }}>
-                              {reservationRequiresCard
-                                ? "Efectivo no disponible"
-                                : "Efectivo al conductor"}
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 3,
-                                fontSize: ".72rem",
-                                fontWeight: 850,
-                                opacity: 0.78,
-                              }}>
-                              {reservationRequiresCard
-                                ? "Reservas: solo tarjeta"
-                                : "Confirmación inmediata"}
-                            </div>
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div
-                              style={{
-                                fontSize: "1.04rem",
-                                lineHeight: 1.05,
-                                fontWeight: 950,
-                              }}>
-                              {cashPaymentLabel}
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 2,
-                                fontSize: ".74rem",
-                                fontWeight: 950,
-                                color: "#4F350D",
-                              }}>
-                              {cashPaymentUsdLabel}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleSelectPayment("card")}
-                        style={{
-                          border:
-                            paymentMethod === "card"
-                              ? "3px solid #111111"
-                              : "2px solid rgba(17,17,17,.12)",
-                          borderRadius: "20px",
-                          padding: "14px 13px",
-                          minHeight: "82px",
-                          background:
-                            "linear-gradient(135deg,#FFFFFF 0%,#E8F2FF 50%,#DDEBFF 100%)",
-                          color: "#111111",
-                          boxShadow:
-                            paymentMethod === "card"
-                              ? "0 12px 24px rgba(0,0,0,.18)"
-                              : "0 8px 18px rgba(0,0,0,.06)",
-                          transform:
-                            paymentMethod === "card"
-                              ? "scale(1.015)"
-                              : "scale(1)",
-                          transition: "all .18s ease",
-                          fontWeight: 950,
-                          textAlign: "left",
-                          width: "100%",
-                          opacity: 1,
-                        }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 12,
-                          }}>
-                          <div>
-                            <IonIcon
-                              icon={cardOutline}
-                              aria-hidden="true"
-                              style={{ fontSize: "1.25rem", lineHeight: 1 }}
-                            />
-                            <div style={{ marginTop: 5, fontSize: ".9rem" }}>
-                              Tarjeta
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 3,
-                                fontSize: ".72rem",
-                                fontWeight: 850,
-                                opacity: 0.72,
-                              }}>
-                              Klap seguro
-                            </div>
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div
-                              style={{
-                                fontSize: ".92rem",
-                                lineHeight: 1.05,
-                                fontWeight: 950,
-                              }}>
-                              {cardPaymentLabel}
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 2,
-                                fontSize: ".72rem",
-                                fontWeight: 850,
-                                opacity: 0.72,
-                              }}>
-                              {cardPaymentUsdLabel}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {hasAvailableWalletBenefit &&
-                paymentMethod !== null &&
-                activePaymentAmountBeforeWallet != null && (
-                  <IonCard
-                    style={{
-                      margin: "0 0 14px",
-                      borderRadius: 24,
-                      background:
-                        "linear-gradient(135deg,#EAFBF0 0%,#FFF7D6 100%)",
-                      border: "1.5px solid rgba(34,197,94,.28)",
-                      boxShadow: "0 16px 34px rgba(0,0,0,.18)",
-                      color: "#111111",
-                    }}>
-                    <IonCardContent style={{ padding: "15px 16px" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          alignItems: "flex-start",
-                        }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div
-                            style={{
-                              color: "#15803D",
-                              fontSize: ".72rem",
-                              fontWeight: 950,
-                              textTransform: "uppercase",
-                              letterSpacing: ".05em",
-                            }}>
-                            Beneficio disponible
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontSize: "1rem",
-                              fontWeight: 950,
-                              lineHeight: 1.22,
-                            }}>
-                            ¿Quieres usar tu saldo a favor en este viaje?
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 5,
-                              color: "#36543B",
-                              fontSize: ".78rem",
-                              fontWeight: 820,
-                              lineHeight: 1.35,
-                            }}>
-                            {walletBenefitLoading
-                              ? "Sincronizando tu saldo aprobado…"
-                              : paymentMethod === "card"
-                                ? `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta primero el Beneficio y Klap cobra solo el saldo restante.`
-                                : `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta el monto real del total de este viaje.`}
-                          </div>
-                        </div>
-                        <IonBadge
-                          color="success"
-                          style={{ fontWeight: 950, flexShrink: 0 }}>
-                          A favor
-                        </IonBadge>
+                          Klap activo
+                        </span>
                       </div>
 
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: 9,
+                          gridTemplateColumns: "1fr",
+                          gap: 10,
                           marginTop: 13,
                         }}>
-                        <IonButton
-                          expand="block"
-                          color="success"
-                          fill={useWalletBenefit === true ? "solid" : "outline"}
-                          onClick={() => {
-                            setUseWalletBenefit(true);
-                            setSubmitError(null);
-                          }}
-                          style={
-                            {
-                              "--border-radius": "16px",
-                              height: "44px",
-                              fontWeight: 950,
-                            } as CSSProperties
-                          }>
-                          Sí, usar
-                        </IonButton>
-                        <IonButton
-                          expand="block"
-                          color="medium"
-                          fill={
-                            useWalletBenefit === false ? "solid" : "outline"
-                          }
-                          onClick={() => {
-                            setUseWalletBenefit(false);
-                            setSubmitError(null);
-                          }}
-                          style={
-                            {
-                              "--border-radius": "16px",
-                              height: "44px",
-                              fontWeight: 950,
-                            } as CSSProperties
-                          }>
-                          No usar
-                        </IonButton>
-                      </div>
+                        {/* Tarjeta va PRIMERA. Es el medio que la app puede
+                            confirmar por sí sola (Klap) y el único admitido en
+                            las reservas: ponerlo de segundo hacía que el
+                            pasajero eligiera efectivo por inercia y luego se
+                            topara con el bloqueo. El efectivo no desaparece
+                            —sigue justo debajo— ni cambia su lógica. */}
+                        <button
+                          type="button"
+                          onClick={() => handleSelectPayment("card")}
+                          style={{
+                            border:
+                              paymentMethod === "card"
+                                ? "3px solid #111111"
+                                : "2px solid rgba(17,17,17,.12)",
+                            borderRadius: "20px",
+                            padding: "14px 13px",
+                            minHeight: "82px",
+                            background:
+                              "linear-gradient(135deg,#FFFFFF 0%,#E8F2FF 50%,#DDEBFF 100%)",
+                            color: "#111111",
+                            boxShadow:
+                              paymentMethod === "card"
+                                ? "0 12px 24px rgba(0,0,0,.18)"
+                                : "0 8px 18px rgba(0,0,0,.06)",
+                            transform:
+                              paymentMethod === "card"
+                                ? "scale(1.015)"
+                                : "scale(1)",
+                            transition: "all .18s ease",
+                            fontWeight: 950,
+                            textAlign: "left",
+                            width: "100%",
+                            opacity: 1,
+                          }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 12,
+                            }}>
+                            <div>
+                              <IonIcon
+                                icon={cardOutline}
+                                aria-hidden="true"
+                                style={{ fontSize: "1.25rem", lineHeight: 1 }}
+                              />
+                              <div style={{ marginTop: 5, fontSize: ".9rem" }}>
+                                Tarjeta
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 3,
+                                  fontSize: ".72rem",
+                                  fontWeight: 850,
+                                  opacity: 0.72,
+                                }}>
+                                Klap seguro
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div
+                                style={{
+                                  fontSize: ".92rem",
+                                  lineHeight: 1.05,
+                                  fontWeight: 950,
+                                }}>
+                                {cardPaymentLabel}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 2,
+                                  fontSize: ".72rem",
+                                  fontWeight: 850,
+                                  opacity: 0.72,
+                                }}>
+                                {cardPaymentUsdLabel}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
 
-                      {useWalletBenefit === true &&
-                        activeWalletBenefitDiscountClp > 0 &&
-                        activePaymentAmountAfterWallet != null && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectPayment("cash")}
+                          style={{
+                            border:
+                              paymentMethod === "cash"
+                                ? "3px solid #111111"
+                                : "2px solid rgba(17,17,17,.10)",
+                            borderRadius: "20px",
+                            padding: "14px 13px",
+                            minHeight: "92px",
+                            background:
+                              "linear-gradient(135deg,#21C55D 0%,#F8D879 42%,#D2A43A 100%)",
+                            color: "#111111",
+                            boxShadow:
+                              paymentMethod === "cash"
+                                ? "0 16px 30px rgba(34,197,94,.26)"
+                                : "0 10px 22px rgba(0,0,0,.10)",
+                            transform:
+                              paymentMethod === "cash"
+                                ? "scale(1.015)"
+                                : "scale(1)",
+                            transition: "all .18s ease",
+                            fontWeight: 950,
+                            textAlign: "left",
+                            width: "100%",
+                            opacity: reservationRequiresCard ? 0.48 : 1,
+                          }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 12,
+                            }}>
+                            <div>
+                              <IonIcon
+                                icon={cashOutline}
+                                aria-hidden="true"
+                                style={{ fontSize: "1.35rem", lineHeight: 1 }}
+                              />
+                              <div style={{ marginTop: 5, fontSize: ".94rem" }}>
+                                {reservationRequiresCard
+                                  ? "Efectivo no disponible"
+                                  : "Efectivo al conductor"}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 3,
+                                  fontSize: ".72rem",
+                                  fontWeight: 850,
+                                  opacity: 0.78,
+                                }}>
+                                {reservationRequiresCard
+                                  ? "Reservas: solo tarjeta"
+                                  : "Confirmación inmediata"}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div
+                                style={{
+                                  fontSize: "1.04rem",
+                                  lineHeight: 1.05,
+                                  fontWeight: 950,
+                                }}>
+                                {cashPaymentLabel}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 2,
+                                  fontSize: ".74rem",
+                                  fontWeight: 950,
+                                  color: "#4F350D",
+                                }}>
+                                {cashPaymentUsdLabel}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {hasAvailableWalletBenefit &&
+                  paymentMethod !== null &&
+                  activePaymentAmountBeforeWallet != null && (
+                    <IonCard
+                      style={{
+                        margin: "0 0 14px",
+                        borderRadius: 24,
+                        background:
+                          "linear-gradient(135deg,#EAFBF0 0%,#FFF7D6 100%)",
+                        border: "1.5px solid rgba(34,197,94,.28)",
+                        boxShadow: "0 16px 34px rgba(0,0,0,.18)",
+                        color: "#111111",
+                      }}>
+                      <IonCardContent style={{ padding: "15px 16px" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            alignItems: "flex-start",
+                          }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                color: "#15803D",
+                                fontSize: ".72rem",
+                                fontWeight: 950,
+                                textTransform: "uppercase",
+                                letterSpacing: ".05em",
+                              }}>
+                              Beneficio disponible
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: "1rem",
+                                fontWeight: 950,
+                                lineHeight: 1.22,
+                              }}>
+                              ¿Quieres usar tu saldo a favor en este viaje?
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 5,
+                                color: "#36543B",
+                                fontSize: ".78rem",
+                                fontWeight: 820,
+                                lineHeight: 1.35,
+                              }}>
+                              {walletBenefitLoading
+                                ? "Sincronizando tu saldo aprobado…"
+                                : paymentMethod === "card"
+                                  ? `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta primero el Beneficio y Klap cobra solo el saldo restante.`
+                                  : `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta el monto real del total de este viaje.`}
+                            </div>
+                          </div>
+                          <IonBadge
+                            color="success"
+                            style={{ fontWeight: 950, flexShrink: 0 }}>
+                            A favor
+                          </IonBadge>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 9,
+                            marginTop: 13,
+                          }}>
+                          <IonButton
+                            expand="block"
+                            color="success"
+                            fill={
+                              useWalletBenefit === true ? "solid" : "outline"
+                            }
+                            onClick={() => {
+                              setUseWalletBenefit(true);
+                              setSubmitError(null);
+                            }}
+                            style={
+                              {
+                                "--border-radius": "16px",
+                                height: "44px",
+                                fontWeight: 950,
+                              } as CSSProperties
+                            }>
+                            Sí, usar
+                          </IonButton>
+                          <IonButton
+                            expand="block"
+                            color="medium"
+                            fill={
+                              useWalletBenefit === false ? "solid" : "outline"
+                            }
+                            onClick={() => {
+                              setUseWalletBenefit(false);
+                              setSubmitError(null);
+                            }}
+                            style={
+                              {
+                                "--border-radius": "16px",
+                                height: "44px",
+                                fontWeight: 950,
+                              } as CSSProperties
+                            }>
+                            No usar
+                          </IonButton>
+                        </div>
+
+                        {useWalletBenefit === true &&
+                          activeWalletBenefitDiscountClp > 0 &&
+                          activePaymentAmountAfterWallet != null && (
+                            <div
+                              style={{
+                                marginTop: 12,
+                                padding: 12,
+                                borderRadius: 18,
+                                background: "rgba(34,197,94,.13)",
+                                border: "1px solid rgba(34,197,94,.24)",
+                                color: "#14532D",
+                                fontSize: ".82rem",
+                                fontWeight: 900,
+                                lineHeight: 1.4,
+                              }}>
+                              Total original:{" "}
+                              {formatCLP(activePaymentAmountBeforeWallet)}
+                              <br />
+                              Descuento beneficio: -
+                              {formatCLP(activeWalletBenefitDiscountClp)}
+                              <br />
+                              Total a pagar ahora:{" "}
+                              {formatCLP(activePaymentAmountAfterWallet)}
+                            </div>
+                          )}
+
+                        {useWalletBenefit === false && (
                           <div
                             style={{
                               marginTop: 12,
-                              padding: 12,
+                              padding: 11,
                               borderRadius: 18,
-                              background: "rgba(34,197,94,.13)",
-                              border: "1px solid rgba(34,197,94,.24)",
-                              color: "#14532D",
-                              fontSize: ".82rem",
-                              fontWeight: 900,
-                              lineHeight: 1.4,
+                              background: "rgba(255,255,255,.58)",
+                              color: "#4B3B28",
+                              fontSize: ".78rem",
+                              fontWeight: 830,
+                              lineHeight: 1.35,
                             }}>
-                            Total original:{" "}
-                            {formatCLP(activePaymentAmountBeforeWallet)}
-                            <br />
-                            Descuento beneficio: -
-                            {formatCLP(activeWalletBenefitDiscountClp)}
-                            <br />
-                            Total a pagar ahora:{" "}
-                            {formatCLP(activePaymentAmountAfterWallet)}
+                            No se aplicará descuento. Tu saldo seguirá
+                            disponible para otro viaje.
                           </div>
                         )}
-
-                      {useWalletBenefit === false && (
-                        <div
-                          style={{
-                            marginTop: 12,
-                            padding: 11,
-                            borderRadius: 18,
-                            background: "rgba(255,255,255,.58)",
-                            color: "#4B3B28",
-                            fontSize: ".78rem",
-                            fontWeight: 830,
-                            lineHeight: 1.35,
-                          }}>
-                          No se aplicará descuento. Tu saldo seguirá disponible
-                          para otro viaje.
-                        </div>
-                      )}
-                    </IonCardContent>
-                  </IonCard>
-                )}
-            </div>
-
-            {/* El dock vive DENTRO de la hoja: así cuando la hoja se plega para
-              ver el mapa completo, el dock se oculta con ella. Si fuera hermano
-              del shell ocuparía espacio fijo al fondo e impediría que el mapa
-              llegara al tope. */}
-            <div
-              className="rp-request-action-dock"
-              role="group"
-              aria-label="Confirmación del viaje">
-              {submitError && (
-                /* El error vive DENTRO del dock fijo. Antes se pintaba en el
-                   flujo normal del scroll, por encima de un dock que es
-                   position:fixed: el usuario pulsaba un botón anclado abajo y
-                   el mensaje aparecía a una pantalla larga de distancia, así
-                   que solo lo percibía quien usaba lector de pantalla.
-                   role="alert" para que se anuncie sin mover el foco. */
-                <p className="rq-dock-error" role="alert">
-                  {submitError}
-                </p>
-              )}
-
-              <div className="rp-request-action-dock__meta">
-                <button
-                  type="button"
-                  className="rp-request-payment-chip"
-                  data-required={paymentMethod === null ? "true" : "false"}
-                  onClick={handleOpenPaymentBox}>
-                  <IonIcon
-                    icon={paymentMethod === "card" ? cardOutline : cashOutline}
-                    aria-hidden="true"
-                  />
-                  <span>
-                    {paymentMethod === null
-                      ? "Elegir forma de pago"
-                      : getPaymentLabel(paymentMethod)}
-                  </span>
-                  <strong>Cambiar</strong>
-                </button>
-
-                <span className="rp-request-fare-chip">
-                  <IonIcon icon={checkmarkCircleOutline} aria-hidden="true" />
-                  {passengerFareTypeLabel(effectivePassengerFareType)}
-                </span>
+                      </IonCardContent>
+                    </IonCard>
+                  )}
               </div>
 
-              <IonButton
-                expand="block"
-                className="rp-request-confirm-sticky"
-                onClick={() => void handleRequest()}
-                disabled={!canRequest || submitting}
-                style={
-                  {
-                    /* Solo las propiedades personalizadas de Ionic, que no se
-                       pueden fijar desde una hoja de estilos sin ::part().
-                       El alto, el peso y la sombra los pone ahora el CSS, que
-                       además sabe apagar la sombra dorada cuando el botón está
-                       deshabilitado: con la sombra a pleno brillo parecía
-                       pulsable justo cuando no lo era. */
-                    "--background": "var(--rp-btn-primary)",
-                    "--background-activated":
-                      "linear-gradient(135deg,#c89b3c,#b84f2e)",
-                    "--color": "var(--rp-btn-primary-fg)",
-                  } as CSSProperties
-                }>
-                {submitting ? (
-                  <IonSpinner name="dots" />
-                ) : paymentMethod === null ? (
-                  /* Enunciado, no orden: el botón está deshabilitado en este
-                     estado, así que pedirle al usuario que actúe sobre algo que
-                     no se puede pulsar era un callejón sin salida. La acción
-                     real es el chip de pago de arriba, que se resalta solo. */
-                  "FALTA ELEGIR FORMA DE PAGO"
-                ) : selectedRoundTripPromotion ? (
-                  paymentMethod === "card" &&
-                  useWalletBenefit === true &&
-                  activePaymentAmountAfterWallet === 0 ? (
-                    "RESERVAR EXPERIENCIA CON BENEFICIO"
-                  ) : (
-                    "RESERVAR EXPERIENCIA Y PAGAR"
-                  )
-                ) : rideMode === "scheduled" ? (
-                  paymentMethod === "card" &&
-                  useWalletBenefit === true &&
-                  activePaymentAmountAfterWallet === 0 ? (
-                    "RESERVAR CON BENEFICIO"
-                  ) : (
-                    "RESERVAR Y PAGAR SALDO CON TARJETA"
-                  )
-                ) : paymentMethod === "card" ? (
-                  useWalletBenefit === true &&
-                  activePaymentAmountAfterWallet === 0 ? (
-                    "SOLICITAR CON BENEFICIO"
-                  ) : (
-                    "PAGAR SALDO CON TARJETA"
-                  )
-                ) : (
-                  "SOLICITAR VIAJE"
-                )}
-              </IonButton>
+              {/* Chip de pago + botón confirmar dentro del paso 3:
+                  el usuario los ve justo después del resumen, sin scroll. */}
+              {wizardIsLastStep && (
+                <div style={{ marginTop: "16px" }}>
+                  <div
+                    className="rp-request-action-dock__meta"
+                    style={{ marginBottom: "10px" }}>
+                    <button
+                      type="button"
+                      className="rp-request-payment-chip"
+                      data-required={paymentMethod === null ? "true" : "false"}
+                      onClick={handleOpenPaymentBox}>
+                      <IonIcon
+                        icon={
+                          paymentMethod === "card" ? cardOutline : cashOutline
+                        }
+                        aria-hidden="true"
+                      />
+                      <span>
+                        {paymentMethod === null
+                          ? "Elegir forma de pago"
+                          : getPaymentLabel(paymentMethod)}
+                      </span>
+                      <strong>Cambiar</strong>
+                    </button>
+
+                    <span className="rp-request-fare-chip">
+                      <IonIcon
+                        icon={checkmarkCircleOutline}
+                        aria-hidden="true"
+                      />
+                      {passengerFareTypeLabel(effectivePassengerFareType)}
+                    </span>
+                  </div>
+
+                  <IonButton
+                    expand="block"
+                    className="rp-request-confirm-sticky"
+                    onClick={() => void handleRequest()}
+                    disabled={!canRequest || submitting}
+                    style={
+                      {
+                        "--background": "var(--rp-btn-primary)",
+                        "--background-activated":
+                          "linear-gradient(135deg,#c89b3c,#b84f2e)",
+                        "--color": "var(--rp-btn-primary-fg)",
+                      } as CSSProperties
+                    }>
+                    {submitting ? (
+                      <IonSpinner name="dots" />
+                    ) : paymentMethod === null ? (
+                      "FALTA ELEGIR FORMA DE PAGO"
+                    ) : selectedRoundTripPromotion ? (
+                      paymentMethod === "card" &&
+                      useWalletBenefit === true &&
+                      activePaymentAmountAfterWallet === 0 ? (
+                        "RESERVAR EXPERIENCIA CON BENEFICIO"
+                      ) : (
+                        "RESERVAR EXPERIENCIA Y PAGAR"
+                      )
+                    ) : rideMode === "scheduled" ? (
+                      paymentMethod === "card" &&
+                      useWalletBenefit === true &&
+                      activePaymentAmountAfterWallet === 0 ? (
+                        "RESERVAR CON BENEFICIO"
+                      ) : (
+                        "RESERVAR Y PAGAR SALDO CON TARJETA"
+                      )
+                    ) : paymentMethod === "card" ? (
+                      useWalletBenefit === true &&
+                      activePaymentAmountAfterWallet === 0 ? (
+                        "SOLICITAR CON BENEFICIO"
+                      ) : (
+                        "PAGAR SALDO CON TARJETA"
+                      )
+                    ) : (
+                      "SOLICITAR VIAJE"
+                    )}
+                  </IonButton>
+                </div>
+              )}
             </div>
+          </div>
+
+          <div
+            className="rp-request-action-dock"
+            role="group"
+            aria-label="Confirmación del viaje"
+            data-last={wizardIsLastStep}>
+            {submitError && (
+              <p className="rq-dock-error" role="alert">
+                {submitError}
+              </p>
+            )}
           </div>
         </div>
 

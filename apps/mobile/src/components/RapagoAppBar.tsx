@@ -14,8 +14,12 @@ import {
   sunnyOutline,
 } from "ionicons/icons";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { useHistory } from "react-router-dom";
+import { useHistory, useLocation } from "react-router-dom";
 import { useAuth } from "../features/auth";
+import {
+  isRegisteredDriver,
+  resolveActiveAppMode,
+} from "../features/roles/appMode.js";
 import {
   getDriverActiveRideFlag,
   subscribeDriverActiveRideFlag,
@@ -145,6 +149,7 @@ export function RapagoAppBar({
   unreadCount = 0,
 }: RapagoAppBarProps): JSX.Element {
   const history = useHistory();
+  const { pathname } = useLocation();
   const { session, logout } = useAuth();
   const { isDark, toggleTheme } = useRapagoSectionTheme(sectionId);
 
@@ -166,15 +171,28 @@ export function RapagoAppBar({
   const role = String(user?.role ?? "");
 
   /* Destino de la entrada de cuenta del menú.
-     Antes era un ternario conductor/pasajero, así que el administrador —que no
-     tiene pantalla de perfil personal— acababa en `/passenger/profile`: una
-     ruta que su rol no puede abrir y de la que el guardián de rutas lo expulsa.
-     El panel no tiene "mi perfil" que enseñar; lo equivalente para quien
-     administra es la configuración de la plataforma, y así se nombra. */
+     El administrador no tiene pantalla de perfil personal: acababa en
+     `/passenger/profile`, una ruta que su rol no puede abrir y de la que el
+     guardián lo expulsa. El panel no tiene "mi perfil" que enseñar; lo
+     equivalente para quien administra es la configuración de la plataforma, y
+     así se nombra.
+
+     Manda el MODO ACTIVO, no el rol de la cuenta. Con el rol, un conductor que
+     estaba usando la app como pasajero abría "Mi perfil" y aterrizaba en
+     `/driver/profile`: esa ruta monta el layout de conductor, así que tocar
+     Perfil equivalía a cambiar de modo sin haberlo pedido. El rol sigue
+     mandando en lo que el usuario PUEDE abrir —un modo guardado no habilita
+     una vista que su cuenta no tiene—, pero no en dónde está ahora. */
+  const activeMode = resolveActiveAppMode({
+    pathname,
+    sectionId,
+    accountRole: role,
+  });
+
   const account =
-    role === "driver"
+    activeMode === "driver" && isRegisteredDriver(user)
       ? { href: ROUTES.DRIVER.PROFILE, label: "Mi perfil" }
-      : role === "admin"
+      : activeMode === "admin" && role === "admin"
         ? { href: ROUTES.ADMIN.SETTINGS, label: "Configuración" }
         : { href: ROUTES.PASSENGER.PROFILE, label: "Mi perfil" };
 
