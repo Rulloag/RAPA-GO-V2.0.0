@@ -26,11 +26,16 @@ describe("flujo de solicitud tipo Uber en Rapa Nui", () => {
   });
 
   it("mantiene Google restringido a Rapa Nui y acepta lugares locales", () => {
-    expect(requestRideSource).toContain("bounds: getRapaNuiMapBounds()");
-    expect(requestRideSource).toContain("radius: 22000");
+    // locationRestriction es una restricción dura de Google (no un sesgo
+    // como los deprecados bounds/location/radius), así que ya no hace falta
+    // verificar cada sugerencia con getDetails() antes de mostrarla — esa
+    // verificación sigue igual de estricta en getPlaceDetailsExact() al
+    // seleccionar (ver test RequestRideAutocompleteLocationRestriction).
     expect(requestRideSource).toContain(
-      "filterGoogleSuggestionsToRapaNui(rawSuggestions)",
+      "locationRestriction: getRapaNuiMapBounds()",
     );
+    expect(requestRideSource).not.toContain("bounds: getRapaNuiMapBounds()");
+    expect(requestRideSource).not.toContain("radius: 22000");
     expect(requestRideSource).toContain(
       "getRapaNuiLocalAutocompletePlace(placeId)",
     );

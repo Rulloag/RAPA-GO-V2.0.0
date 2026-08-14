@@ -1234,6 +1234,13 @@ function mapKlapDeclineForPassenger(
   const providerMessage = normalizePaymentText(messageValue);
   const combined = `${providerCode} ${providerMessage}`.trim();
 
+  if (/110059|fraud|fraude|sospecha/.test(combined)) {
+    return {
+      code: "FRAUD_RISK",
+      reason:
+        "La operaci\u00f3n fue rechazada por seguridad. No se realiz\u00f3 ning\u00fan cobro. No repitas el mismo intento de inmediato; espera unos minutos o utiliza otro medio de pago.",
+    };
+  }
   if (/auth|autentic|3ds|cardinal|challenge/.test(combined)) {
     return {
       code: "AUTHENTICATION_FAILED",
@@ -1314,7 +1321,7 @@ function getPublicKlapPaymentDetails(input: {
     return {
       declineCode: decline.code,
       declineReason: decline.reason,
-      retryAllowed: true,
+      retryAllowed: decline.code !== "FRAUD_RISK",
       cardBrand,
       cardType,
       cardLast4,
