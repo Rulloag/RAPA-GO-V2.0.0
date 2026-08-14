@@ -29,15 +29,32 @@ describe("entrada de origen y destino tipo Uber", () => {
     );
   });
 
-  it("conserva el selector sobre el mapa para confirmar la recogida del GPS", () => {
-    /* El modal no desapareció: es donde el pasajero confirma el punto que
-       detectó el GPS, con el buscador ya enfocado. Es el único camino que
-       queda hacia él, así que solo se abre para el origen. */
+  it("abre el selector sobre el mapa para los dos extremos del viaje", () => {
+    /* El modal se abre ahora por dos caminos, no uno.
+
+       Antes esta prueba fijaba que "solo se abre para el origen", porque el
+       único acceso era confirmar el punto del GPS. El componente siempre supo
+       trabajar en modo destino —lo que faltaba era la puerta de entrada—, así
+       que se añadió el atajo "Elegir en el mapa" junto al de ubicación. */
     expect(requestRideSource).toContain('setPickerTarget("origin");');
+    expect(requestRideSource).toContain('setPickerTarget("destination");');
     expect(requestRideSource).toContain(
       "autoFocusSearch={pickerAutoFocusSearch}",
     );
     expect(requestRideSource).toContain("searchInputRef.current?.setFocus();");
-    expect(requestRideSource).toContain("Detectar con GPS");
+
+    /* Los dos atajos, con su nombre accesible. */
+    expect(requestRideSource).toContain(
+      'aria-label="Usar mi ubicación actual como origen"',
+    );
+    expect(requestRideSource).toContain(
+      'aria-label="Elegir el destino en el mapa"',
+    );
+  });
+
+  it("no deja elegir el destino en el mapa antes que el origen", () => {
+    /* El atajo del mapa reutiliza el mismo guardia que el campo de destino, en
+       vez de abrir un camino que se saltara la regla de orden. */
+    expect(requestRideSource).toContain("setRouteOrderHint(true);");
   });
 });

@@ -1,9 +1,6 @@
 import {
   IonAlert,
-  IonBadge,
   IonButton,
-  IonCard,
-  IonCardContent,
   IonContent,
   IonIcon,
   IonInput,
@@ -35,12 +32,14 @@ import {
   leafOutline,
   locationOutline,
   locateOutline,
+  mapOutline,
   removeOutline,
   searchOutline,
   sunnyOutline,
   timeOutline,
   alertCircleOutline,
   walkOutline,
+  walletOutline,
 } from "ionicons/icons";
 import {
   useCallback,
@@ -61,6 +60,7 @@ import {
   type MapPlaceMarker,
 } from "../../../components/MapFallback.js";
 import { useAuth } from "../../../features/auth/index.js";
+import { useKeyboardInset } from "../../../hooks/useKeyboardInset.js";
 import {
   ridesService,
   type CreateRideInput,
@@ -7389,6 +7389,45 @@ export function computeAutoSheetShift({
   return Math.min(maxShift, Math.max(0, markerY + safetyMargin));
 }
 
+/* Desplazamiento que deja el campo que se está escribiendo pegado al borde
+   superior del cuerpo de la hoja, con un respiro por encima.
+
+   Se sube el campo arriba del todo a propósito y no se centra: lo que hay que
+   ver mientras se teclea no es solo el campo, sino la lista de resultados que
+   sale justo debajo. Centrarlo dejaría los resultados fuera de pantalla, que
+   es el fallo que se está corrigiendo. */
+/* Baja el teclado soltando el foco del campo.
+
+   Elegir un resultado deja de ocultar la lista, pero el campo sigue enfocado y
+   el teclado puesto: el pasajero se quedaría mirando media pantalla tapada por
+   un teclado que ya no necesita, y tendría que cerrarlo a mano para ver el mapa
+   con su punto puesto. `ion-input` guarda el <input> real en su shadow DOM, y
+   es a ese al que hay que soltarle el foco: hacerlo sobre el envoltorio no baja
+   el teclado. */
+function dismissSoftKeyboard(): void {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return;
+
+  const inner = active.shadowRoot?.querySelector<HTMLElement>(
+    "input, textarea",
+  );
+  (inner ?? active).blur();
+}
+
+export function computeFieldScrollTop({
+  currentScrollTop,
+  fieldTop,
+  bodyTop,
+  gap = 12,
+}: {
+  currentScrollTop: number;
+  fieldTop: number;
+  bodyTop: number;
+  gap?: number;
+}): number {
+  return Math.max(0, currentScrollTop + (fieldTop - bodyTop) - gap);
+}
+
 function parseScheduleInput(value: string | null | undefined): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
@@ -7661,6 +7700,16 @@ export default function RequestRidePage(): JSX.Element {
   const [sheetMaxShift, setSheetMaxShift] = useState(0);
 
   const [requestSheetDragging, setRequestSheetDragging] = useState(false);
+
+  /* Franja que tapa el teclado. El CSS la usa como relleno al final del scroll
+     de la hoja, de modo que la hoja conserva su alto —y su fondo sigue tapando
+     la pantalla entera— mientras el contenido se aparta del teclado. */
+  const keyboardInset = useKeyboardInset(requestShellRef);
+
+  /* Desplazamiento al que volver cuando se cierra el teclado. Se guarda en una
+     ref y no en estado porque solo se lee al restaurar: en estado provocaría un
+     render por cada foco sin cambiar nada de lo que se ve. */
+  const shiftBeforeKeyboardRef = useRef<number | null>(null);
 
   /* Mide el recorrido REAL: alto del shell menos el alto de la cabecera (asa +
      AHORA/RESERVAR), que es lo único que queda visible con la hoja abajo del
@@ -7954,7 +8003,13 @@ export default function RequestRidePage(): JSX.Element {
 
   const [notesInput, setNotesInput] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
-  const [showPaymentBox, setShowPaymentBox] = useState(false);
+  /* Ya nadie LEE este estado: el panel plegable de formas de pago desapareció
+     cuando el pago pasó a tener su propio paso con las dos tarjetas siempre a
+     la vista. El setter sigue porque el flujo de Klap lo llama desde nueve
+     sitios para cerrar el panel al terminar un cobro; se conservan intactas
+     esas llamadas —ahora inocuas— en vez de tocar el flujo de pago, que no es
+     lo que se está arreglando aquí. */
+  const [, setShowPaymentBox] = useState(false);
   const [useWalletBenefit, setUseWalletBenefit] = useState<boolean | null>(
     null,
   );
@@ -8351,6 +8406,23 @@ export default function RequestRidePage(): JSX.Element {
   }, [destInput, destinationPoint?.text]);
 
   function applyOrigin(point: PickerResult): void {
+    /* No se puede elegir el mismo origen y destino: un viaje de un punto a
+       sí mismo no tiene sentido. Si son iguales (por placeId o por lat/lng),
+       se rechaza y se muestra el motivo. */
+    if (destinationPoint) {
+      const isSamePlaceId =
+        point.placeId && point.placeId === destinationPoint.placeId;
+      const isSameCoords =
+        !isSamePlaceId &&
+        point.lat === destinationPoint.lat &&
+        point.lng === destinationPoint.lng;
+
+      if (isSamePlaceId || isSameCoords) {
+        setSubmitError("No puedes elegir el mismo origen y destino.");
+        return;
+      }
+    }
+
     const confirmed = {
       text: point.text,
       address: point.address,
@@ -8368,6 +8440,7 @@ export default function RequestRidePage(): JSX.Element {
     setOriginSuggestions([]);
     /* Ya hay origen: el aviso de orden pierde sentido y se retira solo. */
     setRouteOrderHint(false);
+    setSubmitError(null);
     /* Baja la hoja al reposo para que el pin quede visible en el mapa. */
   }
 
@@ -8462,6 +8535,23 @@ export default function RequestRidePage(): JSX.Element {
     point: PickerResult,
     options?: { keepRoundTripPromotion?: boolean },
   ): void {
+    /* No se puede elegir el mismo origen y destino: un viaje de un punto a
+       sí mismo no tiene sentido. Si son iguales (por placeId o por lat/lng),
+       se rechaza y se muestra el motivo. */
+    if (originPoint) {
+      const isSamePlaceId =
+        point.placeId && point.placeId === originPoint.placeId;
+      const isSameCoords =
+        !isSamePlaceId &&
+        point.lat === originPoint.lat &&
+        point.lng === originPoint.lng;
+
+      if (isSamePlaceId || isSameCoords) {
+        setSubmitError("No puedes elegir el mismo origen y destino.");
+        return;
+      }
+    }
+
     if (!options?.keepRoundTripPromotion) {
       setSelectedRoundTripPromotionId(null);
       setTripFareMode("one_way");
@@ -8483,6 +8573,7 @@ export default function RequestRidePage(): JSX.Element {
     setDestinationPoint(confirmed);
     setDestInput(confirmed.text);
     setDestSuggestions([]);
+    setSubmitError(null);
     /* Baja la hoja al reposo para que el pin quede visible en el mapa. */
     setSheetShift(Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION));
   }
@@ -8670,6 +8761,7 @@ export default function RequestRidePage(): JSX.Element {
                     if (isOrigin) applyOrigin(picker);
                     else applyDestination(picker);
                     setActiveSearchField(null);
+                    dismissSoftKeyboard();
                   }}>
                   <span className="rq-results__pin" aria-hidden="true">
                     <IonIcon icon={locationOutline} />
@@ -8691,6 +8783,7 @@ export default function RequestRidePage(): JSX.Element {
                     if (isOrigin) void pickOrigin(suggestion);
                     else void pickDestination(suggestion);
                     setActiveSearchField(null);
+                    dismissSoftKeyboard();
                   }}>
                   <span className="rq-results__pin" aria-hidden="true">
                     <IonIcon icon={locationOutline} />
@@ -9274,15 +9367,12 @@ export default function RequestRidePage(): JSX.Element {
     return `Llega en ${baseMinutes + categoryOffset} min`;
   }
 
-  function handleOpenPaymentBox(): void {
-    setSubmitError(null);
-    setShowPaymentBox(true);
-  }
-
+  /* Ya no hay panel que abrir ni cerrar: las dos formas de pago están siempre
+     a la vista en su propio paso, así que sobra el estado que las plegaba. La
+     regla de negocio —en reservas solo tarjeta— se queda igual. */
   function handleSelectPayment(method: Exclude<PaymentMethod, null>): void {
     if (reservationRequiresCard && method === "cash") {
       setPaymentMethod("card");
-      setShowPaymentBox(false);
       setSubmitError(
         "Todas las reservas se pagan obligatoriamente con tarjeta/Klap. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000.",
       );
@@ -9290,7 +9380,6 @@ export default function RequestRidePage(): JSX.Element {
     }
 
     setPaymentMethod(method);
-    setShowPaymentBox(false);
     setSubmitError(null);
   }
 
@@ -10438,9 +10527,15 @@ export default function RequestRidePage(): JSX.Element {
     rideMode === "now" ||
     (!!scheduledAt && (!requireReturnScheduledAt || !!returnScheduledAt));
 
+  /* Mismo sumando final de `canRequest`, aislado en el paso donde el
+     pasajero lo resuelve: elegir forma de pago ya tiene su propio paso y no
+     comparte pantalla con el resumen. */
+  const wizardPaymentReady = paymentMethod !== null;
+
   const WIZARD_STEPS = [
     { label: "Ruta", ready: wizardRouteReady },
-    { label: "Viaje", ready: wizardDetailsReady },
+    { label: "Vehículo", ready: wizardDetailsReady },
+    { label: "Pago", ready: wizardPaymentReady },
     { label: "Confirmar", ready: canRequest },
   ];
 
@@ -10465,6 +10560,85 @@ export default function RequestRidePage(): JSX.Element {
 
     body.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
   }
+
+  /* Escribir una dirección con el teclado abierto.
+
+     Al enfocar un extremo del viaje la hoja sube del todo (shift 0) para dar
+     todo el alto disponible a la búsqueda, y el campo se lleva al borde
+     superior del scroll: los resultados salen debajo, ocupando entero el hueco
+     que queda libre sobre el teclado. Lo que no entra sigue estando ahí, a un
+     dedo de distancia, porque la hoja conserva su alto y solo se le añade
+     relleno al final.
+
+     Solo toca presentación —posición de la hoja y scrollTop—. No cambia el
+     foco, ni el texto, ni la búsqueda, ni la selección del lugar. */
+  useEffect(() => {
+    const editing = wizardStep === 0 && activeSearchField != null;
+    const previous = shiftBeforeKeyboardRef.current;
+
+    /* Teclado abajo: la hoja vuelve donde estaba y el mapa reaparece solo, sin
+       que haya que arrastrarla de vuelta.
+
+       La condición mira el teclado y no el foco a propósito, porque son cosas
+       distintas: cerrar el teclado con el botón del sistema —lo normal en
+       Android— deja el campo enfocado, y atarlo al foco dejaría la hoja
+       desplegada tapando el mapa sin teclado que lo justificara. Y al revés,
+       soltar el foco tocando un resultado no restaura hasta que el teclado ha
+       terminado de bajar, para no dejarla medio segundo en su posición de
+       reposo dentro de un shell todavía recortado.
+
+       `previous` solo tiene valor si llegamos a desplegarla, así que el paso
+       por aquí mientras el teclado aún no ha subido no toca nada. */
+    if (keyboardInset <= 0) {
+      if (previous != null) {
+        shiftBeforeKeyboardRef.current = null;
+        setSheetShift(previous);
+      }
+      return;
+    }
+
+    /* Teclado arriba por otro campo (las notas del paso 3, por ejemplo): el
+       shell ya se ha recortado por CSS, que es lo que hacía falta, y la
+       posición de la hoja no es asunto de este efecto. */
+    if (!editing) return;
+
+    if (previous == null) {
+      shiftBeforeKeyboardRef.current =
+        sheetShift ?? Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION);
+    }
+
+    setSheetShift(0);
+
+    /* Un frame de margen: la cabecera se compacta y el relleno del scroll se
+       aplica con la medida de este mismo render, así que medir antes daría la
+       posición vieja del campo. */
+    const frame = window.requestAnimationFrame(() => {
+      const body = wizardBodyRef.current;
+      const field = body?.querySelector<HTMLElement>(
+        `.rq-field[data-active="true"]`,
+      );
+      if (!body || !field) return;
+
+      const reduceMotion =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      body.scrollTo({
+        top: computeFieldScrollTop({
+          currentScrollTop: body.scrollTop,
+          fieldTop: field.getBoundingClientRect().top,
+          bodyTop: body.getBoundingClientRect().top,
+        }),
+        behavior: reduceMotion ? "auto" : "smooth",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+    /* `sheetShift` queda fuera a propósito: lo escribe este mismo efecto y
+       reaccionar a él lo volvería a disparar en bucle. Se lee por ref al
+       guardar el valor previo, que es la única vez que hace falta. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSearchField, keyboardInset, wizardStep, sheetMaxShift]);
 
   const mapOrigin = useMemo(() => {
     if (isAirportScheduledRide) {
@@ -10549,10 +10723,16 @@ export default function RequestRidePage(): JSX.Element {
           /* Desplazamiento en px de la hoja respecto a su tope superior. El CSS
              lo aplica como translateY sobre el overlay, sin tocar el layout del
              mapa. Mientras no hay medida usa el translateY de respaldo del CSS. */
+          /* `data-keyboard` para lo que es un cambio de disposición (apretar
+             cabecera, quitar el área segura de abajo) y no un simple desplazar:
+             con un solo píxel de --rq-kb ya hay teclado, y el CSS no sabe
+             comparar. */
+          data-keyboard={keyboardInset > 0 ? "open" : "closed"}
           style={
             {
               "--rq-sheet-shift":
                 sheetShift != null ? `${sheetShift}px` : undefined,
+              "--rq-kb": `${keyboardInset}px`,
             } as CSSProperties
           }>
           <div
@@ -10874,14 +11054,6 @@ export default function RequestRidePage(): JSX.Element {
                   </div>
                 </div>
 
-                {/* Resultados justo debajo de los campos y en la misma columna:
-                    lo que se escribe arriba se responde abajo, sin tapar el
-                    campo que se está rellenando. Misma fuente de lugares y
-                    mismos handlers de selección que ya existían. */}
-                {wizardStep === 0 && activeSearchField
-                  ? renderRouteResults(activeSearchField)
-                  : null}
-
                 {/* Aviso de orden. Sale sólo cuando el pasajero intenta
                     empezar por el destino; se apaga solo en cuanto confirma el
                     origen, así que no hay que cerrarlo a mano. */}
@@ -10895,29 +11067,80 @@ export default function RequestRidePage(): JSX.Element {
                   </div>
                 )}
 
-                {/* "Buscar lugar" ya no está: hacía exactamente lo mismo que
-                    tocar la fila de arriba, y con el buscador sobre el mapa la
-                    fila ya es evidente. Queda el único atajo que hace algo que
-                    la fila no hace: rellenar el origen con el GPS. */}
-                {canChooseOrigin && !originPoint ? (
+                {/* Los dos atajos van ENCIMA de la lista de lugares.
+
+                    Debajo quedaban al final de una lista que crece con lo que
+                    se escribe, así que había que desplazarse hasta el fondo
+                    para encontrarlos —y con el teclado abierto, ni eso—. Aquí
+                    se ven siempre, pegados a los campos a los que pertenecen.
+
+                    Los dos abren el mismo selector de mapa, cada uno para su
+                    extremo del viaje: el de ubicación centra el mapa en el GPS
+                    para confirmar la recogida, y el de destino lo abre para
+                    elegir a dónde ir. El componente ya distinguía ambos modos;
+                    lo único que faltaba era la puerta de entrada al de
+                    destino. */}
+                {(canChooseOrigin && !originPoint) ||
+                !selectedRoundTripPromotion ? (
                   <div className="rq-quick">
-                    <button
-                      type="button"
-                      className="rq-quick__btn rq-quick__btn--primary"
-                      onClick={handleUseCurrentLocation}
-                      disabled={locating}
-                      aria-label="Mi ubicación · Detectar con GPS">
-                      {locating ? (
-                        <IonSpinner name="dots" />
-                      ) : (
-                        <>
-                          <IonIcon icon={locateOutline} aria-hidden="true" />
-                          Usar mi ubicación actual
-                        </>
-                      )}
-                    </button>
+                    {canChooseOrigin && !originPoint ? (
+                      <button
+                        type="button"
+                        className="rq-quick__btn rq-quick__btn--primary"
+                        onClick={handleUseCurrentLocation}
+                        disabled={locating}
+                        aria-label="Usar mi ubicación actual como origen">
+                        {locating ? (
+                          <IonSpinner name="dots" />
+                        ) : (
+                          <>
+                            <IonIcon icon={locateOutline} aria-hidden="true" />
+                            Usar mi ubicación actual
+                          </>
+                        )}
+                      </button>
+                    ) : null}
+
+                    {!selectedRoundTripPromotion && !destinationPoint ? (
+                      <button
+                        type="button"
+                        className="rq-quick__btn"
+                        aria-label="Elegir el destino en el mapa"
+                        onClick={() => {
+                          /* Mismo guardia que el campo de destino: sin origen
+                             no se elige el otro extremo, porque la ruta y la
+                             búsqueda se calculan desde él. Se reutiliza tal
+                             cual para no abrir por aquí un camino que se
+                             saltara la regla. */
+                          if (canChooseOrigin && !originPoint) {
+                            setRouteOrderHint(true);
+                            setActiveSearchField("origin");
+                            return;
+                          }
+
+                          setRouteOrderHint(false);
+                          /* El modal se abre sobre el teclado si venía de
+                             escribir en un campo; bajarlo antes deja el mapa
+                             entero a la vista. */
+                          dismissSoftKeyboard();
+                          setActiveSearchField(null);
+                          setPickerAutoFocusSearch(false);
+                          setPickerTarget("destination");
+                        }}>
+                        <IonIcon icon={mapOutline} aria-hidden="true" />
+                        Elegir en el mapa
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
+
+                {/* Resultados justo debajo de los campos y en la misma columna:
+                    lo que se escribe arriba se responde abajo, sin tapar el
+                    campo que se está rellenando. Misma fuente de lugares y
+                    mismos handlers de selección que ya existían. */}
+                {wizardStep === 0 && activeSearchField
+                  ? renderRouteResults(activeSearchField)
+                  : null}
 
                 {originPoint?.walkMeters != null &&
                   originPoint.walkMeters > 8 && (
@@ -10953,7 +11176,7 @@ export default function RequestRidePage(): JSX.Element {
                 )}
               </div>
 
-              {/* ── Paso 2 · Viaje ── */}
+              {/* ── Paso 2 · Vehículo ── */}
               <div className="rq-step" data-active={wizardStep === 1}>
                 {/* Navegación del paso 2 */}
                 {wizardStep === 1 && (
@@ -11912,10 +12135,246 @@ export default function RequestRidePage(): JSX.Element {
                 </IonItem>
               </div>
 
-              {/* ── Paso 3 · Confirmar ── */}
+              {/* ── Paso 3 · Pago ── */}
               <div className="rq-step" data-active={wizardStep === 2}>
                 {/* Navegación del paso 3 */}
                 {wizardStep === 2 && (
+                  <div className="rq-nav" style={{ marginBottom: "16px" }}>
+                    <button
+                      type="button"
+                      className="rq-nav__back"
+                      onClick={() => goToWizardStep(wizardStep - 1)}>
+                      <IonIcon icon={arrowBackOutline} aria-hidden="true" />
+                      Anterior
+                    </button>
+
+                    <button
+                      type="button"
+                      className="rq-nav__next"
+                      disabled={!wizardCanAdvance}
+                      onClick={() => goToWizardStep(wizardStep + 1)}>
+                      Siguiente
+                      <IonIcon icon={arrowForwardOutline} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Sin píldora de total al lado: cada tarjeta trae su propio
+                    importe —que no tiene por qué coincidir entre efectivo y
+                    tarjeta—, así que un único "Total" aquí repetía el dato y
+                    además se cortaba con puntos suspensivos. */}
+                <div className="rp-request-vehicle-heading">
+                  <div>
+                    <strong>Elige cómo pagar</strong>
+                    <span>Precio final, sin sorpresas</span>
+                  </div>
+                </div>
+
+                {/* Las dos formas de pago están siempre a la vista y con la
+                    misma forma que las tarjetas de vehículo del paso anterior:
+                    icono, nombre, detalle y precio a la derecha. Antes vivían
+                    detrás de un botón que las plegaba en cuanto se elegía una,
+                    lo que en un paso dedicado solo a esto dejaba la pantalla
+                    prácticamente vacía y obligaba a un toque de más para ver o
+                    cambiar la elección.
+
+                    El estado elegido no se apoya solo en el color: la tarjeta
+                    seleccionada añade una fila "Seleccionado" con su check, que
+                    es lo que la hace distinguible sin percibir el dorado. */}
+                <div
+                  className="rp-request-pay-list"
+                  role="radiogroup"
+                  aria-label="Forma de pago">
+                  {/* Tarjeta va PRIMERA. Es el medio que la app puede
+                      confirmar por sí sola (Klap) y el único admitido en las
+                      reservas: ponerlo de segundo hacía que el pasajero
+                      eligiera efectivo por inercia y luego se topara con el
+                      bloqueo. */}
+                  <button
+                    type="button"
+                    className="rp-request-pay-card"
+                    role="radio"
+                    aria-checked={paymentMethod === "card"}
+                    onClick={() => handleSelectPayment("card")}>
+                    <span className="rp-request-pay-icon" aria-hidden="true">
+                      <IonIcon icon={cardOutline} />
+                    </span>
+
+                    <span className="rp-request-pay-copy">
+                      <span className="rp-request-pay-title">Tarjeta</span>
+                      <span className="rp-request-pay-desc">
+                        Pago seguro con Klap
+                      </span>
+                      <span className="rp-request-pay-state">
+                        <IonIcon
+                          icon={checkmarkCircleOutline}
+                          aria-hidden="true"
+                        />
+                        Seleccionado
+                      </span>
+                    </span>
+
+                    <span className="rp-request-pay-price">
+                      <strong>{cardPaymentLabel}</strong>
+                      <small>{cardPaymentUsdLabel}</small>
+                    </span>
+                  </button>
+
+                  {/* En reservas el efectivo no se admite. El botón se queda
+                      pulsable a propósito —solo atenuado y con aria-disabled—
+                      porque su manejador es quien explica el porqué y cambia a
+                      tarjeta; deshabilitarlo de verdad dejaría al pasajero
+                      tocando algo que no responde y sin saber la razón. */}
+                  <button
+                    type="button"
+                    className="rp-request-pay-card"
+                    role="radio"
+                    aria-checked={paymentMethod === "cash"}
+                    aria-disabled={reservationRequiresCard}
+                    data-unavailable={reservationRequiresCard}
+                    onClick={() => handleSelectPayment("cash")}>
+                    <span className="rp-request-pay-icon" aria-hidden="true">
+                      <IonIcon icon={cashOutline} />
+                    </span>
+
+                    <span className="rp-request-pay-copy">
+                      <span className="rp-request-pay-title">Efectivo</span>
+                      <span className="rp-request-pay-desc">
+                        {reservationRequiresCard
+                          ? "No disponible al reservar"
+                          : "Le pagas al conductor al llegar"}
+                      </span>
+                      <span className="rp-request-pay-state">
+                        <IonIcon
+                          icon={checkmarkCircleOutline}
+                          aria-hidden="true"
+                        />
+                        Seleccionado
+                      </span>
+                    </span>
+
+                    <span className="rp-request-pay-price">
+                      <strong>{cashPaymentLabel}</strong>
+                      <small>{cashPaymentUsdLabel}</small>
+                    </span>
+                  </button>
+                </div>
+
+                {reservationRequiresCard && (
+                  <div className="rq-hint">
+                    <IonIcon icon={cardOutline} aria-hidden="true" />
+                    Las reservas se pagan con tarjeta. Sin conductor asignado
+                    cancelar es gratis.
+                  </div>
+                )}
+
+                {paymentMethod === null && (
+                  <div className="rq-hint rq-hint--pending">
+                    <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+                    Elige una forma de pago para continuar.
+                  </div>
+                )}
+
+                {/* Beneficio del saldo. Antes era una IonCard con degradados y
+                    colores escritos a mano (#EAFBF0, #111111…), así que en modo
+                    noche seguía siendo un recuadro blanco pegado en medio de
+                    una pantalla oscura. Ahora usa los tokens del tema y se
+                    adapta solo. */}
+                {hasAvailableWalletBenefit &&
+                  paymentMethod !== null &&
+                  activePaymentAmountBeforeWallet != null && (
+                    <section
+                      className="rp-request-benefit"
+                      aria-label="Saldo a favor">
+                      <div className="rp-request-benefit__head">
+                        <span
+                          className="rp-request-benefit__icon"
+                          aria-hidden="true">
+                          <IonIcon icon={walletOutline} />
+                        </span>
+
+                        <div className="rp-request-benefit__copy">
+                          <strong>¿Usar tu saldo a favor?</strong>
+                          <span>
+                            {walletBenefitLoading
+                              ? "Sincronizando tu saldo…"
+                              : `Tienes ${formatCLP(availableWalletBenefitTotalClp)} disponible.`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        className="rp-request-benefit__choice"
+                        role="radiogroup"
+                        aria-label="Usar saldo a favor">
+                        <button
+                          type="button"
+                          className="rp-request-benefit__btn"
+                          role="radio"
+                          aria-checked={useWalletBenefit === true}
+                          onClick={() => {
+                            setUseWalletBenefit(true);
+                            setSubmitError(null);
+                          }}>
+                          <IonIcon
+                            icon={checkmarkCircleOutline}
+                            aria-hidden="true"
+                          />
+                          Sí, usar
+                        </button>
+
+                        <button
+                          type="button"
+                          className="rp-request-benefit__btn"
+                          role="radio"
+                          aria-checked={useWalletBenefit === false}
+                          onClick={() => {
+                            setUseWalletBenefit(false);
+                            setSubmitError(null);
+                          }}>
+                          <IonIcon icon={closeOutline} aria-hidden="true" />
+                          No usar
+                        </button>
+                      </div>
+
+                      {useWalletBenefit === true &&
+                        activeWalletBenefitDiscountClp > 0 &&
+                        activePaymentAmountAfterWallet != null && (
+                          <dl className="rp-request-benefit__breakdown">
+                            <div>
+                              <dt>Total original</dt>
+                              <dd>
+                                {formatCLP(activePaymentAmountBeforeWallet)}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Descuento</dt>
+                              <dd data-kind="discount">
+                                -{formatCLP(activeWalletBenefitDiscountClp)}
+                              </dd>
+                            </div>
+                            <div data-total="true">
+                              <dt>A pagar ahora</dt>
+                              <dd>
+                                {formatCLP(activePaymentAmountAfterWallet)}
+                              </dd>
+                            </div>
+                          </dl>
+                        )}
+
+                      {useWalletBenefit === false && (
+                        <p className="rp-request-benefit__note">
+                          Tu saldo seguirá disponible para otro viaje.
+                        </p>
+                      )}
+                    </section>
+                  )}
+              </div>
+
+              {/* ── Paso 4 · Confirmar ── */}
+              <div className="rq-step" data-active={wizardStep === 3}>
+                {/* Navegación del paso 4 */}
+                {wizardStep === 3 && (
                   <div
                     className="rq-nav rq-nav--last"
                     style={{ marginBottom: "16px" }}>
@@ -11928,753 +12387,185 @@ export default function RequestRidePage(): JSX.Element {
                     </button>
                   </div>
                 )}
-                {/* Resumen de tarifa. Antes era una losa negra fija
-                (linear-gradient #101010→#1E1608→#D2A43A) con dos círculos
-                decorativos, y en modo día quedaba como un folleto nocturno
-                pegado en medio de un formulario claro. Ahora usa la superficie
-                del tema, y el TOTAL —que es el dato por el que existe la
-                tarjeta— pasa a ser el elemento más grande: antes el titular de
-                marketing iba a 1,22rem y el precio a 1,02rem. */}
-                <div className="rp-request-fare-summary">
-                  <div className="rq-fare__body">
-                    <div className="rq-fare__head">
-                      <div className="rq-fare__copy">
-                        <div className="rq-fare__eyebrow">
-                          {selectedRoundTripPromotion
-                            ? "Experiencia RAPA GO"
-                            : "Tu viaje RAPA GO"}
-                        </div>
-                        <div className="rq-fare__headline">
-                          {selectedRoundTripPromotion
-                            ? `${selectedRoundTripPromotion.destinationName} · ida y regreso reservados`
-                            : paymentMethod === "cash"
-                              ? "Listo para solicitar"
-                              : "Elige tu forma de pago"}
-                        </div>
-                        <div className="rq-fare__sub">
-                          {selectedRoundTripPromotion
-                            ? "Tarifa confirmada, destino definido y horarios de ida y regreso programados."
-                            : fareQuote
-                              ? "Precio estimado transparente para moverte por Rapa Nui."
-                              : "El precio aparecerá cuando selecciones origen y destino."}
-                        </div>
-                      </div>
+                {/* Resumen del viaje.
 
-                      <div className="rq-fare__total">
-                        <div className="rq-fare__total-label">Total</div>
-                        <div className="rq-fare__total-value">
-                          {cashPaymentLabel}
-                        </div>
-                        <div className="rq-fare__total-usd">
-                          {cashPaymentUsdLabel}
-                        </div>
+                    Antes esta pantalla repetía el mismo dato hasta tres veces
+                    —el total salía en la cabecera, otra vez dentro de la caja
+                    "Resumen de tarifa" y otra en el chip de pago; los km, el
+                    tipo de pasajero y la forma de pago iban duplicados igual—
+                    y, a cambio, NO enseñaba lo único que de verdad hay que
+                    revisar antes de confirmar: a dónde se va. Todo ese bulto
+                    sobrante era lo que obligaba a recorrer la hoja entera con
+                    el dedo para alcanzar el botón.
+
+                    Ahora cada dato aparece UNA vez y en el orden en que se fue
+                    decidiendo: ruta, vehículo, pago, total. El desglose de la
+                    tarifa baja a un desplegable porque es la explicación del
+                    precio, no el precio.
+
+                    Los colores salen de tokens. La caja del desglose llevaba
+                    fondo blanco y texto #111111 escritos a mano, así que en
+                    modo noche era una losa blanca en mitad de la pantalla. */}
+                <section
+                  className="rp-request-review"
+                  aria-label="Resumen de tu viaje">
+                  <h3 className="rp-request-review__title">
+                    Resumen de tu viaje
+                  </h3>
+
+                  {/* Ruta: mismo riel de punto y cuadrado que el paso 1, para
+                      que los dos extremos se lean como un viaje y no como dos
+                      filas sueltas. */}
+                  <div className="rp-request-review__route">
+                    <div className="rp-request-review__stop" data-kind="origin">
+                      <span
+                        className="rp-request-review__marker"
+                        aria-hidden="true"
+                      />
+                      <div className="rp-request-review__stop-copy">
+                        <span className="rp-request-review__label">Origen</span>
+                        <strong>
+                          {originPoint?.text || originInput || "Sin definir"}
+                        </strong>
                       </div>
                     </div>
 
                     <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 7,
-                        marginTop: 14,
-                      }}>
+                      className="rp-request-review__stop"
+                      data-kind="destination">
                       <span
-                        style={{
-                          borderRadius: 999,
-                          padding: "6px 9px",
-                          background: "rgba(248,216,121,.16)",
-                          border: "1px solid rgba(248,216,121,.24)",
-                          color: "#F8D879",
-                          fontSize: ".66rem",
-                          fontWeight: 950,
-                        }}>
-                        {selectedRoundTripPromotion
-                          ? "Tarifa confirmada"
-                          : "Precio claro"}
+                        className="rp-request-review__marker"
+                        aria-hidden="true"
+                      />
+                      <div className="rp-request-review__stop-copy">
+                        <span className="rp-request-review__label">
+                          Destino
+                        </span>
+                        <strong>
+                          {selectedRoundTripPromotion?.destinationName ||
+                            destinationPoint?.text ||
+                            destInput ||
+                            "Sin definir"}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <ul className="rp-request-review__rows">
+                    <li className="rp-request-review__row">
+                      <span
+                        className="rp-request-review__icon"
+                        aria-hidden="true">
+                        <IonIcon icon={vehicleCategoryIcon(vehicleCategory)} />
                       </span>
-                      <span
-                        style={{
-                          borderRadius: 999,
-                          padding: "6px 9px",
-                          background: "rgba(255,255,255,.08)",
-                          border: "1px solid rgba(255,255,255,.10)",
-                          color: "#F6F2EC",
-                          fontSize: ".66rem",
-                          fontWeight: 900,
-                        }}>
+                      <div className="rp-request-review__cell">
+                        <span className="rp-request-review__label">
+                          Vehículo
+                        </span>
+                        <strong>{vehicleCategoryTitle(vehicleCategory)}</strong>
+                      </div>
+                      <span className="rp-request-review__aside">
                         {fareQuote
                           ? `${fareQuote.km.toFixed(1)} km · ${fareQuote.minutes} min`
                           : "Calculando ruta"}
                       </span>
+                    </li>
+
+                    <li className="rp-request-review__row">
                       <span
-                        style={{
-                          borderRadius: 999,
-                          padding: "6px 9px",
-                          background: "rgba(255,255,255,.08)",
-                          border: "1px solid rgba(255,255,255,.10)",
-                          color: "#F6F2EC",
-                          fontSize: ".66rem",
-                          fontWeight: 900,
-                        }}>
-                        {vehicleCategoryTitle(vehicleCategory)}
+                        className="rp-request-review__icon"
+                        aria-hidden="true">
+                        <IonIcon
+                          icon={
+                            paymentMethod === "card" ? cardOutline : cashOutline
+                          }
+                        />
                       </span>
-                      {hasAirportFlowerLei && (
-                        <span
-                          style={{
-                            borderRadius: 999,
-                            padding: "6px 9px",
-                            background: "rgba(248,216,121,.16)",
-                            border: "1px solid rgba(248,216,121,.28)",
-                            color: "#F8D879",
-                            fontSize: ".66rem",
-                            fontWeight: 950,
-                          }}>
-                          <IonIcon
-                            icon={flowerOutline}
-                            style={{
-                              verticalAlign: "middle",
-                              fontSize: "0.8rem",
-                            }}
-                          />{" "}
-                          Collar +{formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="rq-fare__stats">
-                      <div className="rq-stat">
-                        <div className="rq-stat__label">Pasajero</div>
-                        <div className="rq-stat__value">
-                          {passengerFareTypeLabel(effectivePassengerFareType)}
-                        </div>
-                      </div>
-                      <div className="rq-stat">
-                        <div className="rq-stat__label">Viaje</div>
-                        <div className="rq-stat__value">
-                          {selectedRoundTripPromotion
-                            ? "Experiencia ida y vuelta"
-                            : tripFareModeLabel(tripFareMode)}
-                        </div>
-                      </div>
-                      <div className="rq-stat">
-                        <div className="rq-stat__label">Pago</div>
-                        <div className="rq-stat__value">
-                          {paymentMethod === "cash"
-                            ? "Efectivo listo"
-                            : paymentMethod === "card"
-                              ? "Tarjeta lista"
-                              : "Pendiente"}
-                        </div>
-                      </div>
-                    </div>
-
-                    {selectedRoundTripPromotion && returnScheduledAt ? (
-                      <div className="rq-fare__sched">
-                        <IonIcon
-                          icon={calendarOutline}
-                          aria-hidden="true"
-                          style={{ verticalAlign: "-2px", marginRight: 4 }}
-                        />
-                        Regreso agendado para{" "}
-                        {formatScheduleDateTime(returnScheduledAt)}
-                      </div>
-                    ) : rideMode === "scheduled" && scheduledAt ? (
-                      <div className="rq-fare__sched">
-                        <IonIcon
-                          icon={calendarOutline}
-                          aria-hidden="true"
-                          style={{ verticalAlign: "-2px", marginRight: 4 }}
-                        />
-                        Agendado para {formatScheduleDateTime(scheduledAt)}
-                        {requireReturnScheduledAt && returnScheduledAt
-                          ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}`
-                          : ""}
-                      </div>
-                    ) : null}
-
-                    {pendingPassengerChargeTotalClp > 0 && (
-                      <div className="rq-fare__sched rq-fare__sched--warn">
-                        <IonIcon
-                          icon={alertCircleOutline}
-                          aria-hidden="true"
-                          style={{ verticalAlign: "-2px", marginRight: 4 }}
-                        />
-                        Cargos aprobados que se sumarán a este viaje:{" "}
+                      <div className="rp-request-review__cell">
+                        <span className="rp-request-review__label">Pago</span>
                         <strong>
-                          {formatCLP(pendingPassengerChargeTotalClp)}
+                          {paymentMethod === null
+                            ? "Sin elegir"
+                            : getPaymentLabel(paymentMethod)}
                         </strong>
-                        .
-                        {pendingCancellationChargeTotalClp > 0 && (
-                          <>
-                            <br />
-                            Cancelación después de 1 minuto desde la asignación:{" "}
-                            <strong>
-                              {formatCLP(pendingCancellationChargeTotalClp)}
-                            </strong>
-                            .
-                          </>
-                        )}
-                        {pendingNoShowChargeTotalClp > 0 && (
-                          <>
-                            <br />
-                            No Show aprobado:{" "}
-                            <strong>
-                              {formatCLP(pendingNoShowChargeTotalClp)}
-                            </strong>
-                            .
-                          </>
-                        )}
-                        <br />
-                        Se aplican exclusivamente a esta cuenta y quedarán
-                        asociados a este nuevo viaje.
                       </div>
-                    )}
+                      {/* Vuelve al paso donde se elige, en vez de abrir aquí un
+                          panel: el pago tiene su propio paso desde que el flujo
+                          se partió en cuatro. */}
+                      <button
+                        type="button"
+                        className="rp-request-review__change"
+                        onClick={() => goToWizardStep(2)}>
+                        Cambiar
+                      </button>
+                    </li>
 
-                    {fareQuote && (
-                      <div
-                        style={{
-                          marginTop: 13,
-                          borderRadius: "20px",
-                          padding: "12px",
-                          background: "rgba(255,255,255,.96)",
-                          color: "#111111",
-                          boxShadow: "0 10px 24px rgba(0,0,0,.16)",
-                        }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 10,
-                            alignItems: "flex-start",
-                          }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div
-                              style={{
-                                color: "#7A5417",
-                                fontSize: ".68rem",
-                                fontWeight: 950,
-                                letterSpacing: ".06em",
-                                textTransform: "uppercase",
-                              }}>
-                              Resumen de tarifa
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: ".86rem",
-                                lineHeight: 1.28,
-                                fontWeight: 950,
-                              }}>
-                              {selectedRoundTripPromotion
-                                ? `${selectedRoundTripPromotion.destinationName} · ida y regreso programados`
-                                : fareQuote.calculationType === "fixed"
-                                  ? "Destino con tarifa fija"
-                                  : fareQuote.ruralKm > 0
-                                    ? `${fareQuote.urbanKm.toFixed(1)} km urbanos + ${fareQuote.ruralKm.toFixed(1)} km rurales`
-                                    : `${fareQuote.urbanKm.toFixed(1)} km urbanos`}
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 5,
-                                color: "rgba(17,17,17,.64)",
-                                fontSize: ".72rem",
-                                lineHeight: 1.35,
-                                fontWeight: 800,
-                              }}>
-                              {selectedRoundTripPromotion
-                                ? "Experiencia disponible para tu perfil. Elige la recogida y programa ambos horarios."
-                                : fareQuote.ruralKm > 0
-                                  ? "El sistema combina tramo urbano y rural según la ruta seleccionada."
-                                  : "Tarifa calculada con las reglas activas de RAPA GO."}
-                            </div>
-                          </div>
-                          <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-                            <div
-                              style={{
-                                color: "#111111",
-                                fontSize: ".94rem",
-                                fontWeight: 950,
-                              }}>
-                              {cashPaymentLabel}
-                            </div>
-                            <div
-                              style={{
-                                color: "#7A5417",
-                                fontSize: ".72rem",
-                                fontWeight: 950,
-                              }}>
-                              {cashPaymentUsdLabel}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <IonButton
-                      expand="block"
-                      className="rp-request-payment-cta"
-                      onClick={handleOpenPaymentBox}
-                      style={
-                        {
-                          marginTop: "14px",
-                          "--background":
-                            paymentMethod === "cash"
-                              ? "linear-gradient(135deg,#F8D879 0%,#D2A43A 100%)"
-                              : "linear-gradient(135deg,#FFFFFF 0%,#F8D879 100%)",
-                          "--background-activated": "#D2A43A",
-                          "--color": "#111111",
-                          "--border-radius": "18px",
-                          height: "48px",
-                          fontWeight: 950,
-                          letterSpacing: ".02em",
-                          boxShadow: "0 16px 30px rgba(210,164,58,.26)",
-                        } as CSSProperties
-                      }>
-                      {paymentMethod === "cash"
-                        ? "Efectivo seleccionado · continuar"
-                        : paymentMethod === "card"
-                          ? useWalletBenefit === true &&
-                            activePaymentAmountAfterWallet === 0
-                            ? "Tarjeta + Beneficio · sin cobro Klap"
-                            : "Tarjeta seleccionada · Klap"
-                          : "Elegir forma de pago"}
-                    </IonButton>
-                  </div>
-
-                  {showPaymentBox && (
-                    <div
-                      className="rp-request-payment-panel"
-                      style={{
-                        margin: "0 12px 14px",
-                        padding: "14px",
-                        borderRadius: "22px",
-                        background:
-                          "linear-gradient(180deg,#FFFDF7 0%,#F7E7B6 100%)",
-                        border: "1.5px solid rgba(248,216,121,.54)",
-                        color: "#111111",
-                        boxShadow: "0 18px 35px rgba(0,0,0,.22)",
-                      }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 10,
-                          alignItems: "flex-start",
-                        }}>
-                        <div>
-                          <div
-                            style={{
-                              color: "#7A5417",
-                              fontSize: ".7rem",
-                              fontWeight: 950,
-                              letterSpacing: ".06em",
-                              textTransform: "uppercase",
-                            }}>
-                            Pago seguro
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 3,
-                              fontWeight: 950,
-                              fontSize: "1.08rem",
-                              lineHeight: 1.05,
-                            }}>
-                            ¿Cómo quieres pagar?
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 6,
-                              color: "rgba(17,17,17,.66)",
-                              fontSize: ".74rem",
-                              lineHeight: 1.35,
-                              fontWeight: 800,
-                            }}>
-                            {reservationRequiresCard
-                              ? "Todas las reservas se pagan obligatoriamente con tarjeta. Sin conductor asignado la cancelación es gratuita; con conductor asignado tienes 1 minuto gratis y luego corresponde 30% con tope $3.000."
-                              : "Paga con tarjeta mediante Klap Checkout Transparente o elige efectivo al conductor."}
-                          </div>
-                        </div>
-                        <span
-                          style={{
-                            borderRadius: 999,
-                            padding: "6px 9px",
-                            background: "#fff7e8",
-                            color: "#9A6A10",
-                            fontSize: ".66rem",
-                            fontWeight: 950,
-                            whiteSpace: "nowrap",
-                          }}>
-                          Klap activo
-                        </span>
-                      </div>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr",
-                          gap: 10,
-                          marginTop: 13,
-                        }}>
-                        {/* Tarjeta va PRIMERA. Es el medio que la app puede
-                            confirmar por sí sola (Klap) y el único admitido en
-                            las reservas: ponerlo de segundo hacía que el
-                            pasajero eligiera efectivo por inercia y luego se
-                            topara con el bloqueo. El efectivo no desaparece
-                            —sigue justo debajo— ni cambia su lógica. */}
-                        <button
-                          type="button"
-                          onClick={() => handleSelectPayment("card")}
-                          style={{
-                            border:
-                              paymentMethod === "card"
-                                ? "3px solid #111111"
-                                : "2px solid rgba(17,17,17,.12)",
-                            borderRadius: "20px",
-                            padding: "14px 13px",
-                            minHeight: "82px",
-                            background:
-                              "linear-gradient(135deg,#FFFFFF 0%,#E8F2FF 50%,#DDEBFF 100%)",
-                            color: "#111111",
-                            boxShadow:
-                              paymentMethod === "card"
-                                ? "0 12px 24px rgba(0,0,0,.18)"
-                                : "0 8px 18px rgba(0,0,0,.06)",
-                            transform:
-                              paymentMethod === "card"
-                                ? "scale(1.015)"
-                                : "scale(1)",
-                            transition: "all .18s ease",
-                            fontWeight: 950,
-                            textAlign: "left",
-                            width: "100%",
-                            opacity: 1,
-                          }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 12,
-                            }}>
-                            <div>
-                              <IonIcon
-                                icon={cardOutline}
-                                aria-hidden="true"
-                                style={{ fontSize: "1.25rem", lineHeight: 1 }}
-                              />
-                              <div style={{ marginTop: 5, fontSize: ".9rem" }}>
-                                Tarjeta
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 3,
-                                  fontSize: ".72rem",
-                                  fontWeight: 850,
-                                  opacity: 0.72,
-                                }}>
-                                Klap seguro
-                              </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                              <div
-                                style={{
-                                  fontSize: ".92rem",
-                                  lineHeight: 1.05,
-                                  fontWeight: 950,
-                                }}>
-                                {cardPaymentLabel}
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 2,
-                                  fontSize: ".72rem",
-                                  fontWeight: 850,
-                                  opacity: 0.72,
-                                }}>
-                                {cardPaymentUsdLabel}
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSelectPayment("cash")}
-                          style={{
-                            border:
-                              paymentMethod === "cash"
-                                ? "3px solid #111111"
-                                : "2px solid rgba(17,17,17,.10)",
-                            borderRadius: "20px",
-                            padding: "14px 13px",
-                            minHeight: "92px",
-                            background:
-                              "linear-gradient(135deg,#21C55D 0%,#F8D879 42%,#D2A43A 100%)",
-                            color: "#111111",
-                            boxShadow:
-                              paymentMethod === "cash"
-                                ? "0 16px 30px rgba(34,197,94,.26)"
-                                : "0 10px 22px rgba(0,0,0,.10)",
-                            transform:
-                              paymentMethod === "cash"
-                                ? "scale(1.015)"
-                                : "scale(1)",
-                            transition: "all .18s ease",
-                            fontWeight: 950,
-                            textAlign: "left",
-                            width: "100%",
-                            opacity: reservationRequiresCard ? 0.48 : 1,
-                          }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 12,
-                            }}>
-                            <div>
-                              <IonIcon
-                                icon={cashOutline}
-                                aria-hidden="true"
-                                style={{ fontSize: "1.35rem", lineHeight: 1 }}
-                              />
-                              <div style={{ marginTop: 5, fontSize: ".94rem" }}>
-                                {reservationRequiresCard
-                                  ? "Efectivo no disponible"
-                                  : "Efectivo al conductor"}
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 3,
-                                  fontSize: ".72rem",
-                                  fontWeight: 850,
-                                  opacity: 0.78,
-                                }}>
-                                {reservationRequiresCard
-                                  ? "Reservas: solo tarjeta"
-                                  : "Confirmación inmediata"}
-                              </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                              <div
-                                style={{
-                                  fontSize: "1.04rem",
-                                  lineHeight: 1.05,
-                                  fontWeight: 950,
-                                }}>
-                                {cashPaymentLabel}
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 2,
-                                  fontSize: ".74rem",
-                                  fontWeight: 950,
-                                  color: "#4F350D",
-                                }}>
-                                {cashPaymentUsdLabel}
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {hasAvailableWalletBenefit &&
-                  paymentMethod !== null &&
-                  activePaymentAmountBeforeWallet != null && (
-                    <IonCard
-                      style={{
-                        margin: "0 0 14px",
-                        borderRadius: 24,
-                        background:
-                          "linear-gradient(135deg,#EAFBF0 0%,#FFF7D6 100%)",
-                        border: "1.5px solid rgba(34,197,94,.28)",
-                        boxShadow: "0 16px 34px rgba(0,0,0,.18)",
-                        color: "#111111",
-                      }}>
-                      <IonCardContent style={{ padding: "15px 16px" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 12,
-                            alignItems: "flex-start",
-                          }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div
-                              style={{
-                                color: "#15803D",
-                                fontSize: ".72rem",
-                                fontWeight: 950,
-                                textTransform: "uppercase",
-                                letterSpacing: ".05em",
-                              }}>
-                              Beneficio disponible
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: "1rem",
-                                fontWeight: 950,
-                                lineHeight: 1.22,
-                              }}>
-                              ¿Quieres usar tu saldo a favor en este viaje?
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 5,
-                                color: "#36543B",
-                                fontSize: ".78rem",
-                                fontWeight: 820,
-                                lineHeight: 1.35,
-                              }}>
-                              {walletBenefitLoading
-                                ? "Sincronizando tu saldo aprobado…"
-                                : paymentMethod === "card"
-                                  ? `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta primero el Beneficio y Klap cobra solo el saldo restante.`
-                                  : `Tienes ${formatCLP(availableWalletBenefitTotalClp)} aprobado por admin. Si lo usas, el backend descuenta el monto real del total de este viaje.`}
-                            </div>
-                          </div>
-                          <IonBadge
-                            color="success"
-                            style={{ fontWeight: 950, flexShrink: 0 }}>
-                            A favor
-                          </IonBadge>
-                        </div>
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: 9,
-                            marginTop: 13,
-                          }}>
-                          <IonButton
-                            expand="block"
-                            color="success"
-                            fill={
-                              useWalletBenefit === true ? "solid" : "outline"
-                            }
-                            onClick={() => {
-                              setUseWalletBenefit(true);
-                              setSubmitError(null);
-                            }}
-                            style={
-                              {
-                                "--border-radius": "16px",
-                                height: "44px",
-                                fontWeight: 950,
-                              } as CSSProperties
-                            }>
-                            Sí, usar
-                          </IonButton>
-                          <IonButton
-                            expand="block"
-                            color="medium"
-                            fill={
-                              useWalletBenefit === false ? "solid" : "outline"
-                            }
-                            onClick={() => {
-                              setUseWalletBenefit(false);
-                              setSubmitError(null);
-                            }}
-                            style={
-                              {
-                                "--border-radius": "16px",
-                                height: "44px",
-                                fontWeight: 950,
-                              } as CSSProperties
-                            }>
-                            No usar
-                          </IonButton>
-                        </div>
-
-                        {useWalletBenefit === true &&
-                          activeWalletBenefitDiscountClp > 0 &&
-                          activePaymentAmountAfterWallet != null && (
-                            <div
-                              style={{
-                                marginTop: 12,
-                                padding: 12,
-                                borderRadius: 18,
-                                background: "rgba(34,197,94,.13)",
-                                border: "1px solid rgba(34,197,94,.24)",
-                                color: "#14532D",
-                                fontSize: ".82rem",
-                                fontWeight: 900,
-                                lineHeight: 1.4,
-                              }}>
-                              Total original:{" "}
-                              {formatCLP(activePaymentAmountBeforeWallet)}
-                              <br />
-                              Descuento beneficio: -
-                              {formatCLP(activeWalletBenefitDiscountClp)}
-                              <br />
-                              Total a pagar ahora:{" "}
-                              {formatCLP(activePaymentAmountAfterWallet)}
-                            </div>
-                          )}
-
-                        {useWalletBenefit === false && (
-                          <div
-                            style={{
-                              marginTop: 12,
-                              padding: 11,
-                              borderRadius: 18,
-                              background: "rgba(255,255,255,.58)",
-                              color: "#4B3B28",
-                              fontSize: ".78rem",
-                              fontWeight: 830,
-                              lineHeight: 1.35,
-                            }}>
-                            No se aplicará descuento. Tu saldo seguirá
-                            disponible para otro viaje.
-                          </div>
-                        )}
-                      </IonCardContent>
-                    </IonCard>
-                  )}
-              </div>
-
-              {/* Chip de pago + botón confirmar dentro del paso 3:
-                  el usuario los ve justo después del resumen, sin scroll. */}
-              {wizardIsLastStep && (
-                <div style={{ marginTop: "16px" }}>
-                  <div
-                    className="rp-request-action-dock__meta"
-                    style={{ marginBottom: "10px" }}>
-                    <button
-                      type="button"
-                      className="rp-request-payment-chip"
-                      data-required={paymentMethod === null ? "true" : "false"}
-                      onClick={handleOpenPaymentBox}>
-                      <IonIcon
-                        icon={
-                          paymentMethod === "card" ? cardOutline : cashOutline
-                        }
-                        aria-hidden="true"
-                      />
-                      <span>
-                        {paymentMethod === null
-                          ? "Elegir forma de pago"
-                          : getPaymentLabel(paymentMethod)}
+                    <li className="rp-request-review__row">
+                      <span
+                        className="rp-request-review__icon"
+                        aria-hidden="true">
+                        <IonIcon icon={checkmarkCircleOutline} />
                       </span>
-                      <strong>Cambiar</strong>
-                    </button>
+                      <div className="rp-request-review__cell">
+                        <span className="rp-request-review__label">
+                          Pasajero
+                        </span>
+                        <strong>
+                          {passengerFareTypeLabel(effectivePassengerFareType)}
+                        </strong>
+                      </div>
+                      <span className="rp-request-review__aside">
+                        {selectedRoundTripPromotion
+                          ? "Ida y vuelta"
+                          : tripFareModeLabel(tripFareMode)}
+                      </span>
+                    </li>
+                  </ul>
 
-                    <span className="rp-request-fare-chip">
-                      <IonIcon
-                        icon={checkmarkCircleOutline}
-                        aria-hidden="true"
-                      />
-                      {passengerFareTypeLabel(effectivePassengerFareType)}
-                    </span>
+                  {selectedRoundTripPromotion && returnScheduledAt ? (
+                    <p className="rp-request-review__note">
+                      <IonIcon icon={calendarOutline} aria-hidden="true" />
+                      Regreso agendado para{" "}
+                      {formatScheduleDateTime(returnScheduledAt)}
+                    </p>
+                  ) : rideMode === "scheduled" && scheduledAt ? (
+                    <p className="rp-request-review__note">
+                      <IonIcon icon={calendarOutline} aria-hidden="true" />
+                      Agendado para {formatScheduleDateTime(scheduledAt)}
+                      {requireReturnScheduledAt && returnScheduledAt
+                        ? ` · regreso ${formatScheduleDateTime(returnScheduledAt)}`
+                        : ""}
+                    </p>
+                  ) : null}
+
+                  {hasAirportFlowerLei && (
+                    <p className="rp-request-review__note">
+                      <IonIcon icon={flowerOutline} aria-hidden="true" />
+                      Incluye collar de flores +
+                      {formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}
+                    </p>
+                  )}
+
+                  {/* El total va solo y en grande: es el dato por el que existe
+                      esta pantalla, así que nada compite a su lado. */}
+                  <div className="rp-request-review__total">
+                    <div className="rp-request-review__cell">
+                      <span className="rp-request-review__label">Total</span>
+                      <small>Precio final · sin sorpresas</small>
+                    </div>
+                    <div className="rp-request-review__amount">
+                      <strong>{cashPaymentLabel}</strong>
+                      <small>{cashPaymentUsdLabel}</small>
+                    </div>
                   </div>
 
+                  {/* Confirmar va PEGADO al total, dentro de la misma tarjeta.
+                      Antes vivía al final de la hoja, después del desglose de
+                      tarifa y de los avisos, así que había que seguir bajando
+                      justo cuando ya estaba todo revisado. Aquí el precio y la
+                      acción que lo acepta se leen de un tirón, que es el par
+                      que de verdad importa en esta pantalla. */}
                   <IonButton
-                    expand="block"
                     className="rp-request-confirm-sticky"
                     onClick={() => void handleRequest()}
                     disabled={!canRequest || submitting}
@@ -12717,8 +12608,63 @@ export default function RequestRidePage(): JSX.Element {
                       "SOLICITAR VIAJE"
                     )}
                   </IonButton>
-                </div>
-              )}
+
+                  {pendingPassengerChargeTotalClp > 0 && (
+                    <div className="rp-request-review__warn" role="note">
+                      <IonIcon icon={alertCircleOutline} aria-hidden="true" />
+                      <span>
+                        A este viaje se le suman cargos aprobados por{" "}
+                        <strong>
+                          {formatCLP(pendingPassengerChargeTotalClp)}
+                        </strong>
+                        .
+                        {pendingCancellationChargeTotalClp > 0 && (
+                          <>
+                            {" "}
+                            Cancelación:{" "}
+                            <strong>
+                              {formatCLP(pendingCancellationChargeTotalClp)}
+                            </strong>
+                            .
+                          </>
+                        )}
+                        {pendingNoShowChargeTotalClp > 0 && (
+                          <>
+                            {" "}
+                            No Show:{" "}
+                            <strong>
+                              {formatCLP(pendingNoShowChargeTotalClp)}
+                            </strong>
+                            .
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Plegado por defecto y con <details>, que ya trae el
+                      comportamiento y la semántica de "abrir para saber más"
+                      sin estado propio ni JS. Quien solo quiere pedir el viaje
+                      no lo abre; quien duda del precio, sí. */}
+                  {fareQuote && (
+                    <details className="rp-request-review__detail">
+                      <summary>¿Cómo calculamos tu tarifa?</summary>
+                      <p>
+                        {fareQuote.calculationType === "fixed"
+                          ? "Destino con tarifa fija."
+                          : fareQuote.ruralKm > 0
+                            ? `${fareQuote.urbanKm.toFixed(1)} km urbanos + ${fareQuote.ruralKm.toFixed(1)} km rurales.`
+                            : `${fareQuote.urbanKm.toFixed(1)} km urbanos.`}{" "}
+                        {selectedRoundTripPromotion
+                          ? "Experiencia con ida y regreso programados."
+                          : fareQuote.ruralKm > 0
+                            ? "Se combina el tramo urbano y el rural según la ruta."
+                            : "Tarifa calculada con las reglas activas de RAPA GO."}
+                      </p>
+                    </details>
+                  )}
+                </section>
+              </div>
             </div>
           </div>
 

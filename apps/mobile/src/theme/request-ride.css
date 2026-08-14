@@ -2232,6 +2232,77 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   background: var(--rq-page);
 }
 
+/* ── Con el teclado abierto ──────────────────────────────────────────────── */
+/* La hoja NO se recorta por arriba del teclado, y es deliberado.
+
+   Recortarla dejaba una franja entre su borde inferior y el teclado por la que
+   se veía la foto de fondo de la app —el ion-content de esta pantalla es
+   transparente—, y encima partía el último resultado por la mitad: la lista
+   parecía cortada, no continuada. Así que la hoja sigue llegando hasta abajo
+   del todo, su fondo tapa la foto, y quien esquiva el teclado es el CONTENIDO,
+   con relleno inferior en el scroll.
+
+   La ventaja de fondo es que lo que queda debajo del teclado no desaparece,
+   solo queda fuera de vista: se sigue pudiendo bajar la lista entera con el
+   dedo sin cerrar el teclado, que es justo lo que se pedía. Recortando, esos
+   resultados no existían. */
+
+/* --rq-kb la mide en JS con visualViewport, porque en iOS el teclado no encoge
+   el viewport de layout y `100dvh` sigue midiendo la pantalla entera. Vale 0
+   sin teclado, así que se queda en el respiro de siempre.
+
+   La medida incluye la barra de Safari y la de sugerencias del teclado, unos
+   30px de más: aquí eso no sobra, es exactamente el respiro que evita que el
+   último resultado quede lamiendo el borde del teclado. */
+.rapago-request-page
+  .rp-request-uber-shell[data-keyboard="open"]
+  .rq-sheet-body {
+  padding-bottom: calc(var(--rq-kb, 0px) + var(--rq-4));
+  /* El desplazamiento automático al campo activo termina justo bajo la
+     cabecera, sin pegarlo a ella. */
+  scroll-padding-top: var(--rq-2);
+}
+
+/* Lo que sigue le quita a la cabecera el aire que no se está usando mientras se
+   teclea una dirección, para que entren más resultados de una vez. Todo vuelve
+   solo en cuanto baja el teclado. */
+
+/* AHORA/RESERVAR se retira mientras se escribe: son ~70px —más de un resultado
+   entero— dedicados a una decisión que ya está tomada y que no se cambia en
+   mitad de una búsqueda. Reaparece intacto al cerrar el teclado, y el paso 1
+   sigue rotulado por los discos de progreso. */
+.rapago-request-page .rp-request-uber-shell[data-keyboard="open"] .rq-seg {
+  display: none;
+}
+
+.rapago-request-page
+  .rp-request-uber-shell[data-keyboard="open"]
+  .rq-sheet-head {
+  padding-bottom: var(--rq-1);
+}
+
+/* El asa encoge de vista, pero la zona de arrastre no se toca: el gesto lo
+   captura la cabecera entera, no esta barra. */
+.rapago-request-page .rp-request-uber-shell[data-keyboard="open"] .rq-grip {
+  height: 20px;
+}
+
+.rapago-request-page .rp-request-uber-shell[data-keyboard="open"] .rq-steps {
+  margin-top: var(--rq-1);
+}
+
+/* Solo donde el alto aprieta de verdad —un iPhone SE y similares— se retiran
+   los rótulos del progreso. Los discos numerados y `aria-current` se quedan,
+   así que en qué paso se está sigue sabiéndose y el lector de pantalla lo
+   anuncia igual. En pantallas grandes sobra el alto y los rótulos no se tocan. */
+@media (max-height: 740px) {
+  .rapago-request-page
+    .rp-request-uber-shell[data-keyboard="open"]
+    .rq-steps__label {
+    display: none;
+  }
+}
+
 /* ── Cabecera FIJA de la hoja: asa + selector "cuándo" ───────────────────── */
 /* Fila fija de la columna (flex:0 0 auto), fuera del área con scroll. Así el
    selector AHORA/RESERVAR no se mueve nunca al desplazar el formulario, y el
@@ -2798,8 +2869,15 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
 .rapago-request-page .rq-quick__btn {
   display: inline-flex;
   align-items: center;
+  /* Se reparten la fila a partes iguales y con el texto centrado, para que los
+     dos atajos se lean como una pareja y no como un botón grande y otro que
+     sobró. Con `flex-wrap` en el contenedor, si los dos rótulos no caben en
+     pantallas de 360px o menos cada uno pasa a su propia línea a ancho
+     completo, en vez de recortarse. */
+  flex: 1 1 auto;
+  justify-content: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 var(--rq-3);
   border: 1px solid var(--rq-line);
   border-radius: 999px;
@@ -2876,6 +2954,595 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
 .rapago-request-page .rq-hint ion-icon {
   flex-shrink: 0;
   font-size: 1rem;
+}
+
+/* Variante para lo que falta por hacer. El acento dorado se reserva a lo que
+   informa; que falte elegir algo para poder seguir se dice en el color de
+   "pendiente", y con su propio icono, no solo con el tono. */
+.rapago-request-page .rq-hint--pending {
+  color: var(--rq-dest);
+}
+
+/* ── Formas de pago ──────────────────────────────────────────────────────── */
+/* Misma anatomía que las tarjetas de vehículo —icono, texto, precio a la
+   derecha— para que el paso 3 no obligue a aprender un patrón nuevo justo
+   antes de confirmar. Los colores salen todos de tokens, así que el bloque se
+   adapta al modo noche sin una sola regla aparte; el diseño anterior llevaba
+   los degradados y los #hex escritos a mano y en oscuro seguía siendo un
+   recuadro blanco. */
+.rapago-request-page .rp-request-pay-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--rq-2);
+  margin: 0 0 var(--rq-3);
+}
+
+.rapago-request-page button.rp-request-pay-card {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--rq-3);
+  width: 100%;
+  min-height: 72px;
+  padding: var(--rq-2) var(--rq-3);
+  border: 1.5px solid var(--rq-line);
+  border-radius: var(--rq-r);
+  background: var(--rq-surface);
+  color: var(--rq-text);
+  box-shadow: var(--rq-shadow-sm);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms var(--rq-ease),
+    background-color 160ms var(--rq-ease),
+    box-shadow 160ms var(--rq-ease);
+}
+
+.rapago-request-page button.rp-request-pay-card[aria-checked="true"] {
+  border-color: var(--rq-brand-edge);
+  background: var(--rq-accent-fill);
+  box-shadow: 0 8px 20px rgba(185, 133, 23, 0.18);
+}
+
+@media (hover: hover) {
+  .rapago-request-page
+    button.rp-request-pay-card:not([aria-checked="true"]):hover {
+    border-color: var(--rq-line-strong);
+    background: var(--rq-surface-2);
+  }
+}
+
+.rapago-request-page button.rp-request-pay-card:focus-visible {
+  outline: 3px solid var(--rq-accent);
+  outline-offset: 2px;
+}
+
+/* Atenuado, no apagado: sigue siendo pulsable para que su manejador explique
+   por qué no se puede pagar así en una reserva. */
+.rapago-request-page
+  button.rp-request-pay-card[data-unavailable="true"]:not(
+    [aria-checked="true"]
+  ) {
+  opacity: 0.55;
+}
+
+.rapago-request-page .rp-request-pay-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-accent-fill);
+  color: var(--rq-accent);
+  font-size: 1.3rem;
+}
+
+.rapago-request-page
+  .rp-request-pay-card[aria-checked="true"]
+  .rp-request-pay-icon {
+  background: var(--rq-brand);
+  color: var(--rq-brand-fg);
+}
+
+.rapago-request-page .rp-request-pay-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.rapago-request-page .rp-request-pay-title {
+  color: var(--rq-text);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.2;
+}
+
+.rapago-request-page .rp-request-pay-desc {
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* La marca de elegido. Sale solo en la tarjeta activa: es lo que permite
+   distinguirla sin depender de percibir el borde dorado. */
+.rapago-request-page .rp-request-pay-state {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  color: var(--rq-ok);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  line-height: 1;
+}
+
+.rapago-request-page
+  .rp-request-pay-card[aria-checked="true"]
+  .rp-request-pay-state {
+  display: inline-flex;
+}
+
+.rapago-request-page .rp-request-pay-state ion-icon {
+  font-size: 0.9rem;
+}
+
+.rapago-request-page .rp-request-pay-price {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  color: var(--rq-text);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rapago-request-page .rp-request-pay-price strong {
+  font-size: var(--rq-fs-title);
+  font-weight: var(--rq-fw-bold);
+  line-height: 1.1;
+}
+
+.rapago-request-page .rp-request-pay-price small {
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+}
+
+/* ── Saldo a favor ───────────────────────────────────────────────────────── */
+.rapago-request-page .rp-request-benefit {
+  margin: 0 0 var(--rq-4);
+  padding: var(--rq-3);
+  border: 1px solid var(--rq-ok);
+  border-radius: var(--rq-r);
+  background: var(--rq-ok-fill);
+}
+
+.rapago-request-page .rp-request-benefit__head {
+  display: flex;
+  align-items: center;
+  gap: var(--rq-3);
+}
+
+.rapago-request-page .rp-request-benefit__icon {
+  display: grid;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-surface);
+  color: var(--rq-ok);
+  font-size: 1.2rem;
+}
+
+.rapago-request-page .rp-request-benefit__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.rapago-request-page .rp-request-benefit__copy strong {
+  color: var(--rq-text);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.2;
+}
+
+.rapago-request-page .rp-request-benefit__copy span {
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.3;
+}
+
+.rapago-request-page .rp-request-benefit__choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--rq-2);
+  margin-top: var(--rq-3);
+}
+
+.rapago-request-page button.rp-request-benefit__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  /* 44px: mínimo táctil. */
+  min-height: 44px;
+  padding: 0 var(--rq-2);
+  border: 1.5px solid var(--rq-line);
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-surface);
+  color: var(--rq-text);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  cursor: pointer;
+}
+
+.rapago-request-page button.rp-request-benefit__btn[aria-checked="true"] {
+  border-color: var(--rq-ok);
+  background: var(--rq-surface);
+  color: var(--rq-ok);
+}
+
+.rapago-request-page button.rp-request-benefit__btn:focus-visible {
+  outline: 3px solid var(--rq-accent);
+  outline-offset: 2px;
+}
+
+.rapago-request-page .rp-request-benefit__btn ion-icon {
+  font-size: 1rem;
+}
+
+/* Desglose. Como <dl> y no como texto con <br>: son pares dato/valor, y así
+   cada cifra queda alineada a la derecha bajo la anterior en vez de perdida
+   dentro de un párrafo. */
+.rapago-request-page .rp-request-benefit__breakdown {
+  margin: var(--rq-3) 0 0;
+  padding: var(--rq-2) var(--rq-3);
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-surface);
+}
+
+.rapago-request-page .rp-request-benefit__breakdown > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--rq-3);
+  padding: 3px 0;
+}
+
+.rapago-request-page .rp-request-benefit__breakdown dt {
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+}
+
+.rapago-request-page .rp-request-benefit__breakdown dd {
+  margin: 0;
+  color: var(--rq-text);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  font-variant-numeric: tabular-nums;
+}
+
+.rapago-request-page .rp-request-benefit__breakdown dd[data-kind="discount"] {
+  color: var(--rq-ok);
+}
+
+.rapago-request-page .rp-request-benefit__breakdown > div[data-total="true"] {
+  margin-top: 3px;
+  padding-top: var(--rq-2);
+  border-top: 1px solid var(--rq-line);
+}
+
+.rapago-request-page
+  .rp-request-benefit__breakdown
+  > div[data-total="true"]
+  dt {
+  color: var(--rq-text);
+  font-weight: var(--rq-fw-med);
+}
+
+.rapago-request-page
+  .rp-request-benefit__breakdown
+  > div[data-total="true"]
+  dd {
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-bold);
+}
+
+/* ── Resumen de confirmación ─────────────────────────────────────────────── */
+.rapago-request-page .rp-request-review {
+  margin: 0 0 var(--rq-4);
+  padding: var(--rq-3);
+  border: 1px solid var(--rq-line);
+  border-radius: var(--rq-r-lg);
+  background: var(--rq-surface);
+  box-shadow: var(--rq-shadow-sm);
+}
+
+.rapago-request-page .rp-request-review__title {
+  margin: 0 0 var(--rq-3);
+  color: var(--rq-text);
+  font-size: var(--rq-fs-title);
+  font-weight: var(--rq-fw-bold);
+  line-height: 1.15;
+}
+
+/* Etiqueta de cada dato. Va arriba y pequeña, con el valor debajo en el peso
+   fuerte: así se recorre la columna leyendo solo los valores. */
+.rapago-request-page .rp-request-review__label {
+  display: block;
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.2;
+}
+
+.rapago-request-page .rp-request-review__cell,
+.rapago-request-page .rp-request-review__stop-copy {
+  min-width: 0;
+}
+
+.rapago-request-page .rp-request-review__cell strong,
+.rapago-request-page .rp-request-review__stop-copy strong {
+  display: block;
+  overflow: hidden;
+  color: var(--rq-text);
+  font-size: var(--rq-fs-body);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Riel origen → destino. La línea la dibuja el propio origen con ::after, así
+   que no hace falta un elemento decorativo suelto que luego haya que mantener
+   alineado a mano. */
+.rapago-request-page .rp-request-review__route {
+  display: grid;
+  gap: var(--rq-3);
+  padding-bottom: var(--rq-3);
+  border-bottom: 1px solid var(--rq-line);
+}
+
+.rapago-request-page .rp-request-review__stop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--rq-3);
+}
+
+.rapago-request-page .rp-request-review__marker {
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border: 2px solid var(--rq-ok);
+  border-radius: 999px;
+  background: var(--rq-surface);
+}
+
+/* El destino es un cuadrado y el origen un círculo: la forma distingue los dos
+   extremos aunque no se perciba la diferencia de color. */
+.rapago-request-page
+  .rp-request-review__stop[data-kind="destination"]
+  .rp-request-review__marker {
+  border-color: var(--rq-dest);
+  border-radius: 3px;
+}
+
+.rapago-request-page
+  .rp-request-review__stop[data-kind="origin"]::after {
+  content: "";
+  position: absolute;
+  top: 20px;
+  bottom: calc(var(--rq-3) * -1);
+  left: 5px;
+  width: 2px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--rq-line-strong) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.rapago-request-page .rp-request-review__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rapago-request-page .rp-request-review__row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--rq-3);
+  padding: var(--rq-2) 0;
+  border-bottom: 1px solid var(--rq-line);
+}
+
+.rapago-request-page .rp-request-review__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-accent-fill);
+  color: var(--rq-accent);
+  font-size: 1.05rem;
+}
+
+.rapago-request-page .rp-request-review__aside {
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* "Cambiar" es un botón de verdad y con área táctil de 44px: es la única
+   salida de esta pantalla si la forma de pago no es la que se quería. */
+.rapago-request-page button.rp-request-review__change {
+  min-height: 44px;
+  padding: 0 var(--rq-2);
+  border: 0;
+  background: transparent;
+  color: var(--rq-accent);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-bold);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rapago-request-page button.rp-request-review__change:focus-visible {
+  outline: 3px solid var(--rq-accent);
+  outline-offset: 2px;
+  border-radius: var(--rq-r-sm);
+}
+
+.rapago-request-page .rp-request-review__note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--rq-2) 0 0;
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.35;
+}
+
+.rapago-request-page .rp-request-review__note ion-icon {
+  flex-shrink: 0;
+  font-size: 0.95rem;
+}
+
+/* Total. Único sitio de la pantalla donde aparece el precio. */
+.rapago-request-page .rp-request-review__total {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--rq-3);
+  margin-top: var(--rq-3);
+  padding: var(--rq-3);
+  border-radius: var(--rq-r);
+  background: var(--rq-accent-fill);
+}
+
+.rapago-request-page .rp-request-review__total .rp-request-review__cell small {
+  display: block;
+  margin-top: 1px;
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+}
+
+.rapago-request-page .rp-request-review__amount {
+  display: grid;
+  justify-items: end;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rapago-request-page .rp-request-review__amount strong {
+  color: var(--rq-text);
+  font-size: var(--rq-fs-price);
+  font-weight: var(--rq-fw-bold);
+  line-height: 1.05;
+}
+
+.rapago-request-page .rp-request-review__amount small {
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+}
+
+.rapago-request-page .rp-request-review__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--rq-2);
+  margin-top: var(--rq-3);
+  padding: var(--rq-2) var(--rq-3);
+  border: 1px solid var(--rq-dest);
+  border-radius: var(--rq-r-sm);
+  background: var(--rq-dest-fill);
+  color: var(--rq-text);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.4;
+}
+
+.rapago-request-page .rp-request-review__warn ion-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--rq-dest);
+  font-size: 1rem;
+}
+
+/* Desglose plegable. <details> ya trae el comportamiento; solo se le quita el
+   triángulo por defecto y se le pone un área táctil decente. */
+.rapago-request-page .rp-request-review__detail {
+  margin-top: var(--rq-3);
+  border-top: 1px solid var(--rq-line);
+}
+
+.rapago-request-page .rp-request-review__detail summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--rq-accent);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-med);
+  cursor: pointer;
+  list-style: none;
+}
+
+.rapago-request-page .rp-request-review__detail summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Cheurón propio: gira al abrir, así que el estado se ve sin leer. */
+.rapago-request-page .rp-request-review__detail summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 160ms var(--rq-ease);
+}
+
+.rapago-request-page .rp-request-review__detail[open] summary::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.rapago-request-page .rp-request-review__detail summary:focus-visible {
+  outline: 3px solid var(--rq-accent);
+  outline-offset: 2px;
+  border-radius: var(--rq-r-sm);
+}
+
+.rapago-request-page .rp-request-review__detail p {
+  margin: 0 0 var(--rq-2);
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.45;
+}
+
+.rapago-request-page .rp-request-benefit__note {
+  margin: var(--rq-3) 0 0;
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-body);
+  line-height: 1.35;
 }
 
 /* ── Encabezado del selector de vehículo ─────────────────────────────────── */
@@ -3441,9 +4108,23 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   line-height: 1.35;
 }
 
+/* Vive dentro de la tarjeta de resumen, justo debajo del total.
+
+   Sin `expand="block"`: a todo lo ancho parecía el pie de la pantalla —una
+   barra de borde a borde— y competía con la tarjeta en vez de pertenecerle.
+   Ancho por contenido con un mínimo generoso, y centrado, lo deja como el
+   remate del resumen. El tope del 100% es lo que evita que las etiquetas
+   largas ("RESERVAR Y PAGAR SALDO CON TARJETA") se salgan en pantallas
+   estrechas: ahí vuelve a ocupar el ancho disponible y nada se corta. */
 .rapago-request-page .rp-request-confirm-sticky {
-  --border-radius: var(--rq-r);
-  margin: 0;
+  --border-radius: 999px;
+  --padding-start: var(--rq-5);
+  --padding-end: var(--rq-5);
+  display: block;
+  width: fit-content;
+  min-width: 60%;
+  max-width: 100%;
+  margin: var(--rq-3) auto 0;
   height: 52px;
   font-size: var(--rq-fs-body);
   font-weight: var(--rq-fw-bold);
