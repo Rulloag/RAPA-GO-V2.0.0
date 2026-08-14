@@ -36,4 +36,16 @@ describe("final auth/deletion/legal closure", () => {
     expect(legalGateSource).toContain("setCompleted(true)");
     expect(legalGateSource).not.toContain("backdropDismiss={true}");
   });
+
+  it("allows the legal notice to close immediately without a page reload", () => {
+    expect(legalGateSource).toContain("canDismiss={true}");
+    expect(legalGateSource).not.toContain("canDismiss={false}");
+    expect(legalGateSource).toContain(
+      'onDidDismiss={() => setDismissed(true)}',
+    );
+    expect(legalGateSource).toContain("backdropDismiss={false}");
+    expect(legalGateSource).toContain(
+      "onClick={completed ? closeCompleted : closeNotice}",
+    );
+  });
 });

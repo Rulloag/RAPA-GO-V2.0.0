@@ -134,7 +134,8 @@ export function LegalReacceptanceGate(): JSX.Element | null {
     <IonModal
       isOpen={isOpen}
       backdropDismiss={false}
-      canDismiss={false}
+      canDismiss={true}
+      onDidDismiss={() => setDismissed(true)}
       style={{
         "--width": "min(92vw, 640px)",
         "--height": "min(86vh, 760px)",
