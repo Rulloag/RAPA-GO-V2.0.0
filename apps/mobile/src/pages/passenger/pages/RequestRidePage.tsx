@@ -4301,57 +4301,78 @@ async function geocodeText(text: string): Promise<PickerResult | null> {
 
 const RAPA_NUI_PLACE_SCOPE_CACHE = new Map<string, boolean>();
 const MAX_RAPA_NUI_PLACE_SCOPE_CACHE_ENTRIES = 240;
+// Pertenecer o no a Rapa Nui es un hecho geográfico del placeId, no cambia
+// durante la sesión — por eso el cache no necesita TTL, solo el límite de
+// tamaño de arriba. Este segundo mapa solo deduplica llamadas EN VUELO: sin
+// él, origen y destino pidiendo el mismo placeId sin cache todavía disparan
+// dos getDetails() en paralelo en vez de compartir la misma respuesta.
+const RAPA_NUI_PLACE_SCOPE_IN_FLIGHT = new Map<string, Promise<boolean | null>>();
 
-async function isGooglePlaceInsideRapaNui(
+export async function isGooglePlaceInsideRapaNui(
   placeId: string,
 ): Promise<boolean | null> {
   const cached = RAPA_NUI_PLACE_SCOPE_CACHE.get(placeId);
   if (typeof cached === "boolean") return cached;
 
-  await loadRapaGoGoogleMaps();
+  const inFlight = RAPA_NUI_PLACE_SCOPE_IN_FLIGHT.get(placeId);
+  if (inFlight) return inFlight;
 
-  const container = document.createElement("div");
-  const service = new google.maps.places.PlacesService(container);
+  const request = (async (): Promise<boolean | null> => {
+    await loadRapaGoGoogleMaps();
 
-  const inside = await new Promise<boolean | null>((resolve) => {
-    service.getDetails(
-      {
-        placeId,
-        fields: ["geometry", "formatted_address", "name"],
-      },
-      (place, status) => {
-        if (
-          status !== google.maps.places.PlacesServiceStatus.OK ||
-          !place?.geometry?.location
-        ) {
-          resolve(null);
-          return;
-        }
+    const container = document.createElement("div");
+    const service = new google.maps.places.PlacesService(container);
 
-        resolve(
-          isPointInsideRapaNuiServiceArea({
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng(),
-          }),
-        );
-      },
-    );
-  });
+    const inside = await new Promise<boolean | null>((resolve) => {
+      service.getDetails(
+        {
+          placeId,
+          fields: ["geometry", "formatted_address", "name"],
+        },
+        (place, status) => {
+          if (
+            status !== google.maps.places.PlacesServiceStatus.OK ||
+            !place?.geometry?.location
+          ) {
+            resolve(null);
+            return;
+          }
 
-  if (typeof inside === "boolean") {
-    RAPA_NUI_PLACE_SCOPE_CACHE.set(placeId, inside);
+          resolve(
+            isPointInsideRapaNuiServiceArea({
+              lat: place.geometry.location.lat(),
+              lng: place.geometry.location.lng(),
+            }),
+          );
+        },
+      );
+    });
+
+    if (typeof inside === "boolean") {
+      RAPA_NUI_PLACE_SCOPE_CACHE.set(placeId, inside);
+    }
+
+    if (
+      RAPA_NUI_PLACE_SCOPE_CACHE.size > MAX_RAPA_NUI_PLACE_SCOPE_CACHE_ENTRIES
+    ) {
+      const firstKey = RAPA_NUI_PLACE_SCOPE_CACHE.keys().next().value as
+        | string
+        | undefined;
+      if (firstKey) RAPA_NUI_PLACE_SCOPE_CACHE.delete(firstKey);
+    }
+
+    return inside;
+  })();
+
+  RAPA_NUI_PLACE_SCOPE_IN_FLIGHT.set(placeId, request);
+
+  try {
+    return await request;
+  } finally {
+    if (RAPA_NUI_PLACE_SCOPE_IN_FLIGHT.get(placeId) === request) {
+      RAPA_NUI_PLACE_SCOPE_IN_FLIGHT.delete(placeId);
+    }
   }
-
-  if (
-    RAPA_NUI_PLACE_SCOPE_CACHE.size > MAX_RAPA_NUI_PLACE_SCOPE_CACHE_ENTRIES
-  ) {
-    const firstKey = RAPA_NUI_PLACE_SCOPE_CACHE.keys().next().value as
-      | string
-      | undefined;
-    if (firstKey) RAPA_NUI_PLACE_SCOPE_CACHE.delete(firstKey);
-  }
-
-  return inside;
 }
 
 async function filterGoogleSuggestionsToRapaNui(
@@ -4391,7 +4412,7 @@ async function filterGoogleSuggestionsToRapaNui(
     .slice(0, 6);
 }
 
-async function getGooglePredictions(
+export async function getGooglePredictions(
   input: string,
 ): Promise<GoogleSuggestion[]> {
   const cleanInput = input.trim();
@@ -4406,6 +4427,13 @@ async function getGooglePredictions(
 
     const service = new google.maps.places.AutocompleteService();
 
+    // locationRestriction (a diferencia de bounds/location/radius, deprecados
+    // desde mayo 2023 y solo un sesgo blando) es una restricción dura del
+    // lado de Google: los resultados quedan acotados a estos límites, no
+    // solo "preferidos". Por eso ya no hace falta verificar cada sugerencia
+    // con getDetails() antes de mostrarla — esa verificación sigue existiendo
+    // igual de estricta en getPlaceDetailsExact(), en el momento en que el
+    // usuario selecciona un resultado, que es donde de verdad importa.
     const rawSuggestions = await new Promise<GoogleSuggestion[]>((resolve) => {
       service.getPlacePredictions(
         {
@@ -4413,12 +4441,7 @@ async function getGooglePredictions(
           componentRestrictions: {
             country: "cl",
           },
-          bounds: getRapaNuiMapBounds(),
-          location: new google.maps.LatLng(
-            RAPA_NUI_CENTER.lat,
-            RAPA_NUI_CENTER.lng,
-          ),
-          radius: 22000,
+          locationRestriction: getRapaNuiMapBounds(),
           types: ["establishment", "geocode"],
         },
         (predictions, status) => {
@@ -4444,19 +4467,16 @@ async function getGooglePredictions(
       );
     });
 
-    const googleSuggestions =
-      await filterGoogleSuggestionsToRapaNui(rawSuggestions);
-
     return mergeRapaNuiAutocompletePredictions(
       localSuggestions,
-      googleSuggestions,
+      rawSuggestions,
     );
   } catch {
     return localSuggestions;
   }
 }
 
-async function getPlaceDetailsExact(
+export async function getPlaceDetailsExact(
   placeId: string,
 ): Promise<PickerResult | null> {
   const localPlace = getRapaNuiLocalAutocompletePlace(placeId);
