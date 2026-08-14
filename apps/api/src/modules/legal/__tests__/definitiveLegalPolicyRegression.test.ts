@@ -35,4 +35,23 @@ describe("definitive legal policy release 2026-08-13", () => {
     expect(migration).toContain("23%");
     expect(migration).toContain("77%");
   });
+
+  it("deactivates the previous active legal document before switching versions", () => {
+    expect(
+      migration.match(/AND \(target_id IS NULL OR id <> target_id\);/g),
+    ).toHaveLength(4);
+
+    expect(migration).toContain(
+      "WHERE type = 'terms_and_conditions'\n    AND is_active = true\n    AND (target_id IS NULL OR id <> target_id);",
+    );
+    expect(migration).toContain(
+      "WHERE type = 'user_conditions'\n    AND is_active = true\n    AND (target_id IS NULL OR id <> target_id);",
+    );
+    expect(migration).toContain(
+      "WHERE type = 'privacy_policy'\n    AND is_active = true\n    AND (target_id IS NULL OR id <> target_id);",
+    );
+    expect(migration).toContain(
+      "WHERE type = 'driver_conditions'\n    AND is_active = true\n    AND (target_id IS NULL OR id <> target_id);",
+    );
+  });
 });

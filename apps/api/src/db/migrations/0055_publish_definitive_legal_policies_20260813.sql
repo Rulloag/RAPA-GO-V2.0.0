@@ -324,6 +324,13 @@ $rapago_terms_v4$
   ORDER BY created_at DESC, id DESC
   LIMIT 1;
 
+  UPDATE legal_documents
+  SET is_active = false,
+      updated_at = NOW()
+  WHERE type = 'terms_and_conditions'
+    AND is_active = true
+    AND (target_id IS NULL OR id <> target_id);
+
   IF target_id IS NULL THEN
     INSERT INTO legal_documents (
       type, version, title, content, effective_date, is_active, created_at, updated_at
@@ -785,6 +792,13 @@ $rapago_users_v11$
   ORDER BY created_at DESC, id DESC
   LIMIT 1;
 
+  UPDATE legal_documents
+  SET is_active = false,
+      updated_at = NOW()
+  WHERE type = 'user_conditions'
+    AND is_active = true
+    AND (target_id IS NULL OR id <> target_id);
+
   IF target_id IS NULL THEN
     INSERT INTO legal_documents (
       type, version, title, content, effective_date, is_active, created_at, updated_at
@@ -1139,6 +1153,13 @@ Responsable: Haka Taiko SpA, RUT 77.930.635-6. Domicilio: Miru s/n, Isla de Pasc
 $rapago_privacy_v10$
   ORDER BY created_at DESC, id DESC
   LIMIT 1;
+
+  UPDATE legal_documents
+  SET is_active = false,
+      updated_at = NOW()
+  WHERE type = 'privacy_policy'
+    AND is_active = true
+    AND (target_id IS NULL OR id <> target_id);
 
   IF target_id IS NULL THEN
     INSERT INTO legal_documents (
@@ -1758,6 +1779,13 @@ DECLARACIÓN DE ACEPTACIÓN Al seleccionar “Acepto el Contrato de Prestación 
 $rapago_driver_v21$
   ORDER BY created_at DESC, id DESC
   LIMIT 1;
+
+  UPDATE legal_documents
+  SET is_active = false,
+      updated_at = NOW()
+  WHERE type = 'driver_conditions'
+    AND is_active = true
+    AND (target_id IS NULL OR id <> target_id);
 
   IF target_id IS NULL THEN
     INSERT INTO legal_documents (
