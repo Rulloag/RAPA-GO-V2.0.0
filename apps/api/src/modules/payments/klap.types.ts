@@ -152,6 +152,7 @@ export type KlapProviderErrorKind =
   | "timeout"
   | "network"
   | "http_rejected"
+  | "capture_rejected"
   | "invalid_response"
   | "unsafe_redirect";
 

@@ -564,6 +564,70 @@ describe("KlapProvider.captureOrder", () => {
     ).rejects.toMatchObject({ kind: "invalid_response", httpStatus: 204 });
   });
 
+  it("HTTP 200 + status FAILED is an explicit financial rejection", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          order_id: "test-order-123",
+          amount: 5000,
+          status: "FAILED",
+          mc_code: null,
+        }),
+      ),
+    } as unknown as Response);
+
+    await expect(
+      new KlapProvider().captureOrder({
+        orderId: "test-order-123",
+        amountClp: 5000,
+      }),
+    ).rejects.toMatchObject({
+      kind: "capture_rejected",
+      httpStatus: 200,
+    });
+  });
+
+  it("rejects a 2xx capture response with mismatched echoed identity", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          order_id: "other-order",
+          amount: 5000,
+          status: "captured",
+        }),
+      ),
+    } as unknown as Response);
+
+    await expect(
+      new KlapProvider().captureOrder({
+        orderId: "test-order-123",
+        amountClp: 5000,
+      }),
+    ).rejects.toMatchObject({ kind: "invalid_response", httpStatus: 200 });
+
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          order_id: "test-order-123",
+          amount: 4999,
+          status: "captured",
+        }),
+      ),
+    } as unknown as Response);
+
+    await expect(
+      new KlapProvider().captureOrder({
+        orderId: "test-order-123",
+        amountClp: 5000,
+      }),
+    ).rejects.toMatchObject({ kind: "invalid_response", httpStatus: 200 });
+  });
   it("nunca filtra la ApiKey ni datos sensibles al leer el body de captura", async () => {
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,

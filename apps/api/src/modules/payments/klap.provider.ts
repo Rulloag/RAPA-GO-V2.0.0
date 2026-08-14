@@ -958,6 +958,38 @@ export class KlapProvider implements PaymentProvider {
     // Discovery productivo: la petición es REAL, pero la respuesta se conserva
     // únicamente como evidencia sanitizada. Nunca se marca success ni se
     // reintenta automáticamente, aun cuando HTTP sea 2xx y parezca aprobada.
+    // A real Checkout capture may answer HTTP 200 while reporting status FAILED.
+    // That is an explicit financial rejection, not a successful capture.
+    // Validate echoed identity fields before classifying the provider result.
+    const returnedOrderId = String(sanitizedResponse?.["order_id"] ?? "").trim();
+    if (returnedOrderId && returnedOrderId !== params.orderId.trim()) {
+      throw new KlapProviderError(
+        "invalid_response",
+        "Klap capture returned an unexpected order_id.",
+        response.status,
+      );
+    }
+
+    const returnedAmount = sanitizedResponse?.["amount"];
+    if (
+      typeof returnedAmount === "number" &&
+      Number.isFinite(returnedAmount) &&
+      Math.round(returnedAmount) !== params.amountClp
+    ) {
+      throw new KlapProviderError(
+        "invalid_response",
+        "Klap capture returned an unexpected amount.",
+        response.status,
+      );
+    }
+
+    if (providerStatus === "failed") {
+      throw new KlapProviderError(
+        "capture_rejected",
+        "Klap capture returned explicit provider status 'failed'.",
+        response.status,
+      );
+    }
     if (discoveryCapture) {
       return {
         httpStatus: response.status,

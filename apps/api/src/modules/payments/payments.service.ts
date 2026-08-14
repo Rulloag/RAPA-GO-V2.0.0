@@ -3490,12 +3490,16 @@ export class PaymentsService {
         error.kind === "http_rejected" &&
         definitiveClientRejectionStatuses.has(error.httpStatus ?? 0);
 
+      const isExplicitProviderRejection =
+        error instanceof KlapProviderError &&
+        error.kind === "capture_rejected";
+
       const reason =
         error instanceof KlapProviderError
           ? error.message
           : `Unexpected error during Klap capture: ${String(error)}`;
 
-      if (isClientRejection) {
+      if (isClientRejection || isExplicitProviderRejection) {
         await paymentsRepo.markCaptureFailed({ id: payment.id, reason });
 
         auditService.recordSafe({
@@ -3513,7 +3517,7 @@ export class PaymentsService {
         return {
           ok: false,
           code: "CAPTURE_FAILED",
-          message: "Klap rejected the capture request definitively.",
+          message: "Klap reported that the capture failed definitively.",
           statusCode: 502,
         };
       }

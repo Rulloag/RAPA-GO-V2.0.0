@@ -465,6 +465,29 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
     if (!result.ok) expect(result.code).toBe("CAPTURE_UNKNOWN");
   });
 
+  it("HTTP 200 + provider status FAILED becomes capture_failed and is not retried", async () => {
+    mockFindById.mockResolvedValue(paymentFixture());
+    mockClaimCapture.mockResolvedValue(
+      paymentFixture({ status: "capture_pending" }),
+    );
+    mockCaptureOrder.mockRejectedValue(
+      new KlapProviderError(
+        "capture_rejected",
+        "Klap capture returned explicit provider status 'failed'.",
+        200,
+      ),
+    );
+
+    const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID);
+
+    expect(mockMarkCaptureFailed).toHaveBeenCalledOnce();
+    expect(mockMarkCaptureUnknown).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("CAPTURE_FAILED");
+    expect(mockRecordSafe).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "payment.klap_capture_failed" }),
+    );
+  });
   it("HTTP 5xx classifies as capture_unknown, not capture_failed", async () => {
     mockFindById.mockResolvedValue(paymentFixture());
     mockClaimCapture.mockResolvedValue(paymentFixture({ status: "capture_pending" }));
