@@ -759,6 +759,46 @@ describe("PaymentsService.getPaymentStatus Klap details", () => {
     }
   });
 
+  it("blocks immediate retry for Klap fraud-risk code 110059", async () => {
+    const now = new Date("2026-08-14T12:19:58.540Z");
+    mockFindById.mockResolvedValue({
+      id: PAYMENT_ID,
+      rideRequestId: RIDE_ID,
+      passengerUserId: PASSENGER_ID,
+      amountClp: 2000,
+      paymentPurpose: "ride",
+      provider: "klap",
+      status: "rejected",
+      providerOrderId: "klap-fraud-order",
+      providerPaymentId: null,
+      rawProviderPayload: {
+        code: "110059",
+        message: "Sospecha de Fraude",
+        order_id: "klap-fraud-order",
+        reference_id: PAYMENT_ID,
+      },
+      paidAt: null,
+      rejectedAt: now,
+      failedAt: null,
+      refundStatus: null,
+      refundProviderId: null,
+      refundedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const result = await service.getPaymentStatus("tok", PAYMENT_ID);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payment.status).toBe("rejected");
+      expect(result.payment.declineCode).toBe("FRAUD_RISK");
+      expect(result.payment.declineReason).toContain("rechazada por seguridad");
+      expect(result.payment.declineReason).toContain("No se realiz\u00f3 ning\u00fan cobro");
+      expect(result.payment.retryAllowed).toBe(false);
+      expect(JSON.stringify(result.payment)).not.toContain("Sospecha de Fraude");
+    }
+  });
   it("returns safe card metadata after a successful Klap confirmation", async () => {
     const now = new Date("2026-08-04T20:00:00.000Z");
     mockFindById.mockResolvedValue({
