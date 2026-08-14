@@ -163,13 +163,72 @@ function unwrap<T>(
   return envelope.data;
 }
 
+// Cache en memoria de getMyWallet(), solo lectura: WalletPage y
+// RequestRidePage piden el mismo wallet por separado en cada montaje (sin
+// esto, navegar Solicitar Viaje <-> Beneficios repite la consulta cada vez).
+// TTL corto (no financiero: nunca se usa para decidir un cobro) + invalida
+// ante los eventos que ya emite el resto de la app cuando el wallet cambia
+// de verdad. Nada de esto toca localStorage: se limpia solo al recargar.
+const WALLET_CACHE_TTL_MS = 45_000;
+
+let walletCacheToken: string | null = null;
+let walletCacheEntry: { data: WalletData; expiresAt: number } | null = null;
+let walletCacheInFlight: Promise<WalletData> | null = null;
+
+function invalidateWalletCache(): void {
+  walletCacheEntry = null;
+  walletCacheInFlight = null;
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("rapago:wallet-updated", invalidateWalletCache);
+  window.addEventListener(
+    "rapago:wallet-benefit-updated",
+    invalidateWalletCache,
+  );
+}
+
 export const walletService = {
   async getMyWallet(accessToken: string): Promise<WalletData> {
-    const result = await apiClient.get<Envelope<WalletData>>(
-      "/wallets/me",
-      { token: accessToken },
-    );
-    return unwrap(result, "No se pudo cargar Beneficios.");
+    if (accessToken !== walletCacheToken) {
+      // Cuenta distinta a la del cache: nunca reutilizar saldo de otro usuario.
+      invalidateWalletCache();
+      walletCacheToken = accessToken;
+    }
+
+    const now = Date.now();
+    if (walletCacheEntry && walletCacheEntry.expiresAt > now) {
+      return walletCacheEntry.data;
+    }
+
+    if (walletCacheInFlight) {
+      return walletCacheInFlight;
+    }
+
+    const request = (async (): Promise<WalletData> => {
+      const result = await apiClient.get<Envelope<WalletData>>(
+        "/wallets/me",
+        { token: accessToken },
+      );
+      const data = unwrap<WalletData>(result, "No se pudo cargar Beneficios.");
+
+      walletCacheEntry = { data, expiresAt: Date.now() + WALLET_CACHE_TTL_MS };
+      return data;
+    })();
+
+    walletCacheInFlight = request;
+
+    try {
+      return await request;
+    } catch (error) {
+      // No cachear errores: el próximo intento debe golpear la red de nuevo.
+      invalidateWalletCache();
+      throw error;
+    } finally {
+      if (walletCacheInFlight === request) {
+        walletCacheInFlight = null;
+      }
+    }
   },
 
   async getMyTransactions(
