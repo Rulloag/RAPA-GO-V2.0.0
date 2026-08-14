@@ -206,7 +206,10 @@ export function generateDriverContractPdf(
     `Contrato y anexos: ${acceptance["acceptedContract"] === true ? "ACEPTADO" : "NO REGISTRADO"}`,
     `Datos y documentos autenticos: ${acceptance["acceptedDocumentsTruth"] === true ? "ACEPTADO" : "NO REGISTRADO"}`,
     `Naturaleza independiente: ${acceptance["acceptedIndependentNature"] === true ? "ACEPTADO" : "NO REGISTRADO"}`,
-    `Privacidad y geolocalizacion: ${acceptance["acceptedPrivacyGeolocation"] === true ? "ACEPTADO" : "NO REGISTRADO"}`,
+    `Politica de Privacidad: ${acceptance["acceptedPrivacyGeolocation"] === true ? "ACEPTADO" : "NO REGISTRADO"}`,
+    ...(acceptance["acceptedSensitiveData"] !== undefined
+      ? [`Datos sensibles (cuando corresponde): ${acceptance["acceptedSensitiveData"] === true ? "ACEPTADO" : "NO ACEPTADO"}`]
+      : []),
     `Franja de desconexion: ${acceptance["acceptedRestWindow"] === true ? "ACEPTADO" : "NO REGISTRADO"}`,
     `Ejecucion personal del servicio: ${acceptance["acceptedPersonalService"] === true ? "ACEPTADO" : "NO REGISTRADO"}`,
     "",
@@ -227,4 +230,24 @@ export function generateDriverContractPdf(
     ...evidenceLines.flatMap((line) => wrapLine(line)),
     ...contractLines,
   ]);
+}
+
+export function generateLegalDocumentPdf(
+  legalDocument: LegalDocument,
+  heading = "RAPA GO - DOCUMENTO LEGAL",
+): Buffer {
+  const lines = [
+    heading,
+    "",
+    `Documento: ${legalDocument.title}`,
+    `Version: ${legalDocument.version}`,
+    `Vigente desde: ${legalDocument.effectiveDate}`,
+    "",
+    ...legalDocument.content
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .flatMap((line) => wrapLine(line)),
+  ];
+
+  return buildPdfFromLines(lines);
 }

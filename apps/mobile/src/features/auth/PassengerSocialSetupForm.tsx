@@ -361,21 +361,21 @@ export function PassengerSocialSetupForm({
   const legalAcceptances = [
     {
       key: "terms",
-      label: "Acepto los Términos y Condiciones.",
+      label: "He leído y acepto los Términos y Condiciones Generales de Rapa Go, versión 4.0.",
       checked: acceptTerms,
       onChange: onAcceptTermsChange,
       onOpen: onOpenTerms,
     },
     {
       key: "user-conditions",
-      label: "Acepto las Condiciones para Usuarios.",
+      label: "He leído y acepto las Condiciones de Usuarios, versión 1.1, como anexo subordinado a los Términos Generales.",
       checked: acceptUserConditions,
       onChange: onAcceptUserConditionsChange,
       onOpen: onOpenUserConditions,
     },
     {
       key: "privacy",
-      label: "Acepto la Política de Privacidad.",
+      label: "He leído la Política de Privacidad de Rapa Go, versión 1.0, y consiento el tratamiento de mis datos personales conforme a ella en los casos en que dicho tratamiento requiera mi consentimiento.",
       checked: acceptPrivacy,
       onChange: onAcceptPrivacyChange,
       onOpen: onOpenPrivacy,
@@ -716,6 +716,30 @@ export function PassengerSocialSetupForm({
                 )}
               </div>
             )}
+
+            <section
+              aria-label="Divulgación de geolocalización"
+              style={{
+                margin: "4px 0 12px",
+                padding: "13px 14px",
+                borderRadius: 18,
+                background: "rgba(255,248,230,.94)",
+                border: "1px solid rgba(200,155,60,.34)",
+                color: "#4A3520",
+                fontSize: ".82rem",
+                fontWeight: 760,
+                lineHeight: 1.45,
+              }}
+            >
+              <strong style={{ display: "block", marginBottom: 4 }}>
+                Geolocalización
+              </strong>
+              Rapa Go utiliza tu ubicación al confirmar el origen o solicitar
+              un viaje para mostrar tu posición, buscar conductores y calcular
+              la ruta. Puedes ingresar origen y destino manualmente si no
+              autorizas la ubicación. La solicitud del permiso del sistema deberá efectuarse después de la
+              divulgación y no dentro de una casilla contractual genérica.
+            </section>
 
             <section
               aria-labelledby={`${provider}-legal-title`}

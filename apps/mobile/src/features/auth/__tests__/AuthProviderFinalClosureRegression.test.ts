@@ -15,11 +15,13 @@ describe("final auth/deletion/legal closure", () => {
     expect(routerSource).not.toContain("FacebookCallbackPage");
   });
 
-  it("requires an explicit reason for account deletion", () => {
-    expect(deletionCardSource).toContain("Motivo (obligatorio)");
-    expect(publicDeletionSource).toContain("Motivo (obligatorio)");
-    expect(deletionCardSource).not.toContain("Prefiero no indicar el motivo");
-    expect(publicDeletionSource).not.toContain("Prefiero no indicar el motivo");
+  it("keeps the account-deletion reason optional", () => {
+    expect(deletionCardSource).toContain("Motivo (opcional)");
+    expect(publicDeletionSource).toContain("Motivo (opcional)");
+    expect(deletionCardSource).toContain("Prefiero no indicar el motivo");
+    expect(publicDeletionSource).toContain("Prefiero no indicar el motivo");
+    expect(deletionCardSource).not.toContain("Motivo (obligatorio)");
+    expect(publicDeletionSource).not.toContain("Motivo (obligatorio)");
   });
 
   it("provides a dismissible legal reacceptance notice without silently accepting", () => {
@@ -33,5 +35,17 @@ describe("final auth/deletion/legal closure", () => {
     );
     expect(legalGateSource).toContain("setCompleted(true)");
     expect(legalGateSource).not.toContain("backdropDismiss={true}");
+  });
+
+  it("allows the legal notice to close immediately without a page reload", () => {
+    expect(legalGateSource).toContain("canDismiss={true}");
+    expect(legalGateSource).not.toContain("canDismiss={false}");
+    expect(legalGateSource).toContain(
+      'onDidDismiss={() => setDismissed(true)}',
+    );
+    expect(legalGateSource).toContain("backdropDismiss={false}");
+    expect(legalGateSource).toContain(
+      "onClick={completed ? closeCompleted : closeNotice}",
+    );
   });
 });

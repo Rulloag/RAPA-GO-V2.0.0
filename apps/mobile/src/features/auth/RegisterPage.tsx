@@ -1662,7 +1662,7 @@ export function RegisterPage(): JSX.Element {
                   lineHeight: 1.4,
                 }}
               >
-                Declaro haber leído la{" "}
+                He leído la{" "}
                 <a
                   href={ROUTES.PUBLIC.PRIVACY}
                   target="_blank"
@@ -1670,10 +1670,11 @@ export function RegisterPage(): JSX.Element {
                 >
                   Política de Privacidad
                 </a>{" "}
-                y conocer cómo Rapa Go trata mis datos
-                personales, geolocalización, pagos,
-                autenticación, soporte y eliminación de
-                cuenta.
+                de Rapa Go, versión{" "}
+                {registrationLegalVersion("privacy_policy")}, y
+                consiento el tratamiento de mis datos personales
+                conforme a ella en los casos en que dicho
+                tratamiento requiera mi consentimiento.
               </IonLabel>
             </IonItem>
           </IonList>

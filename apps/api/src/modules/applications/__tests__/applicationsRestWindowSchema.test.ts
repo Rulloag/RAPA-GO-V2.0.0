@@ -9,6 +9,7 @@ const baseAcceptance = {
   acceptedDocumentsTruth: true,
   acceptedIndependentNature: true,
   acceptedPrivacyGeolocation: true,
+  acceptedSensitiveData: true,
   acceptedRestWindow: true,
   acceptedPersonalService: true,
   clientAcceptedAt: "2026-08-04T18:11:00.000Z",

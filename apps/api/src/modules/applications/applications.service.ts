@@ -7,7 +7,10 @@ import { ApplicationsRepository } from "./applications.repository.js";
 import { LegalRepository } from "../legal/legal.repository.js";
 import { MailService } from "../auth/mail.service.js";
 import { buildLegalAcceptanceEvidence } from "../legal/legalEvidence.js";
-import { generateDriverContractPdf } from "./driverContractPdf.service.js";
+import {
+  generateDriverContractPdf,
+  generateLegalDocumentPdf,
+} from "./driverContractPdf.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { db } from "../../db/client.js";
 import {
@@ -490,7 +493,25 @@ async function deliverDriverContract(
     return;
   }
 
+  const privacyDocuments = await legalRepo.findAll({
+    type: "privacy_policy",
+    isActive: true,
+  });
+  const privacyDocument = privacyDocuments[0] ?? null;
+
+  if (!privacyDocument) {
+    await repo.updateContractDelivery(application.id, {
+      status: "failed",
+      error: "No se encontró la Política de Privacidad vigente.",
+    });
+    return;
+  }
+
   const pdfBuffer = generateDriverContractPdf(application, document);
+  const privacyPolicyPdfBuffer = generateLegalDocumentPdf(
+    privacyDocument,
+    "RAPA GO - POLÍTICA DE PRIVACIDAD VIGENTE",
+  );
 
   try {
     await mailService.sendDriverContractAccepted({
@@ -499,6 +520,8 @@ async function deliverDriverContract(
       applicationId: application.id,
       contractVersion: document.version,
       pdfBuffer,
+      privacyPolicyVersion: privacyDocument.version,
+      privacyPolicyPdfBuffer,
     });
 
     await repo.updateContractDelivery(application.id, {
@@ -722,6 +745,9 @@ export class ApplicationsService {
           acceptedDocumentsTruth: acceptance.acceptedDocumentsTruth,
           acceptedIndependentNature: acceptance.acceptedIndependentNature,
           acceptedPrivacyGeolocation: acceptance.acceptedPrivacyGeolocation,
+          ...(acceptance.acceptedSensitiveData !== undefined
+            ? { acceptedSensitiveData: acceptance.acceptedSensitiveData }
+            : {}),
           acceptedRestWindow: acceptance.acceptedRestWindow,
           acceptedPersonalService: acceptance.acceptedPersonalService,
           clientAcceptedAt: acceptance.clientAcceptedAt ?? null,
