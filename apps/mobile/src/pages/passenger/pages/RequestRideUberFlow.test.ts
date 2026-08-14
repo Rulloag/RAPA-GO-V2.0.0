@@ -9,9 +9,12 @@ describe("flujo de solicitud tipo Uber en Rapa Nui", () => {
     expect(requestRideSource).toContain(
       'name: "Hospital de Hanga Roa"',
     );
-    expect(requestRideSource).toContain(
-      'aliases: ["hospital", "hosp", "urgencia"',
-    );
+    /* Los alias se comprueban uno a uno: el arreglo pasó a ocupar varias
+       líneas y buscarlo entero ataba la prueba al formato, no al contenido.
+       Lo que importa es que escribir "hosp" siga encontrando el hospital. */
+    for (const alias of ['"hospital"', '"hosp"', '"urgencia"']) {
+      expect(requestRideSource).toContain(alias);
+    }
     expect(requestRideSource).toContain("query.length < 2");
     expect(requestRideSource).toContain(
       "for (const suggestion of [...localSuggestions, ...googleSuggestions])",
@@ -43,7 +46,11 @@ describe("flujo de solicitud tipo Uber en Rapa Nui", () => {
     expect(requestRideSource).not.toContain('text: "Elegir otro lugar"');
     expect(requestRideSource).toContain("AHORA");
     expect(requestRideSource).toContain("RESERVAR");
-    expect(requestRideSource).toContain("Elegir en mapa");
+    /* "Elegir en mapa" se retiró a propósito: hacía lo mismo que tocar la fila
+       de origen, que ahora ES el campo de búsqueda. Queda el único atajo que
+       la fila no cubre, rellenar el origen con el GPS. */
+    expect(requestRideSource).not.toContain("Elegir en mapa");
+    expect(requestRideSource).toContain("Usar mi ubicación actual");
     expect(requestRideSource).toContain("Mi ubicación");
     expect(requestRideSource).toContain("onClick={selectRideModeNow}");
     expect(requestRideSource).toContain("onClick={selectRideModeScheduled}");
