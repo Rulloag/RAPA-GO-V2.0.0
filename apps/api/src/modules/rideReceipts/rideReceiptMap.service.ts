@@ -1,8 +1,18 @@
 import { deflateSync } from "node:zlib";
 
+import { composeOsmBaseMap } from "./rideReceiptOsmMap.js";
+import { decodePngToRgb } from "./rideReceiptMapPng.js";
+
 export interface ReceiptRoutePoint {
   lat: number;
   lng: number;
+}
+
+export interface ReceiptMapBounds {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
 }
 
 export interface ReceiptMapImage {
@@ -10,14 +20,19 @@ export interface ReceiptMapImage {
   width: number;
   height: number;
   filter: "DCTDecode" | "FlateDecode";
-  provider: "google_static_maps" | "route_sketch";
+  provider: "google_static_maps" | "osm_tiles" | "route_sketch";
   routePointCount: number;
 }
 
 const GOOGLE_STATIC_MAP_URL =
   "https://maps.googleapis.com/maps/api/staticmap";
+const GOOGLE_DIRECTIONS_URL =
+  "https://maps.googleapis.com/maps/api/directions/json";
 const MAX_GOOGLE_ROUTE_POINTS = 80;
 const MAP_TIMEOUT_MS = 9_000;
+const MIN_MAP_SPAN_DEGREES = 0.02;
+const MAP_BOUNDS_PADDING = 0.2;
+const ROAD_SNAP_MIN_METERS = 80;
 
 function isValidPoint(point: ReceiptRoutePoint): boolean {
   return (
@@ -105,6 +120,28 @@ export function normalizeReceiptRoute(
   return route;
 }
 
+export function fitReceiptMapBounds(route: ReceiptRoutePoint[]): ReceiptMapBounds {
+  const latitudes = route.map((point) => point.lat);
+  const longitudes = route.map((point) => point.lng);
+  const rawMinLat = Math.min(...latitudes);
+  const rawMaxLat = Math.max(...latitudes);
+  const rawMinLng = Math.min(...longitudes);
+  const rawMaxLng = Math.max(...longitudes);
+  const latCenter = (rawMinLat + rawMaxLat) / 2;
+  const lngCenter = (rawMinLng + rawMaxLng) / 2;
+  const latSpan = Math.max(MIN_MAP_SPAN_DEGREES, rawMaxLat - rawMinLat);
+  const lngSpan = Math.max(MIN_MAP_SPAN_DEGREES, rawMaxLng - rawMinLng);
+  const paddedLatSpan = latSpan * (1 + MAP_BOUNDS_PADDING * 2);
+  const paddedLngSpan = lngSpan * (1 + MAP_BOUNDS_PADDING * 2);
+
+  return {
+    minLat: latCenter - paddedLatSpan / 2,
+    maxLat: latCenter + paddedLatSpan / 2,
+    minLng: lngCenter - paddedLngSpan / 2,
+    maxLng: lngCenter + paddedLngSpan / 2,
+  };
+}
+
 function downsampleRoute(
   points: ReceiptRoutePoint[],
   maximum: number,
@@ -153,6 +190,39 @@ export function encodeGooglePolyline(points: ReceiptRoutePoint[]): string {
   }
 
   return encoded;
+}
+
+export function decodeGooglePolyline(encoded: string): ReceiptRoutePoint[] {
+  const points: ReceiptRoutePoint[] = [];
+  let index = 0;
+  let latitude = 0;
+  let longitude = 0;
+
+  while (index < encoded.length) {
+    const next = (): number => {
+      let result = 0;
+      let shift = 0;
+      let byte = 0;
+
+      do {
+        byte = encoded.charCodeAt(index) - 63;
+        index += 1;
+        result |= (byte & 0x1f) << shift;
+        shift += 5;
+      } while (byte >= 0x20 && index < encoded.length);
+
+      return result & 1 ? ~(result >> 1) : result >> 1;
+    };
+
+    latitude += next();
+    longitude += next();
+    points.push({
+      lat: latitude / 100_000,
+      lng: longitude / 100_000,
+    });
+  }
+
+  return points.filter(isValidPoint);
 }
 
 function parseJpegDimensions(buffer: Buffer): {
@@ -205,13 +275,23 @@ function parseJpegDimensions(buffer: Buffer): {
   return null;
 }
 
-function buildGoogleStaticMapUrl(
+function logMapWarning(message: string, details?: Record<string, unknown>): void {
+  if (details) {
+    console.warn(`[RideReceipts] ${message}`, details);
+    return;
+  }
+
+  console.warn(`[RideReceipts] ${message}`);
+}
+
+export function buildGoogleStaticMapUrl(
   route: ReceiptRoutePoint[],
   origin: ReceiptRoutePoint,
   destination: ReceiptRoutePoint,
   apiKey: string,
 ): string {
   const sampled = downsampleRoute(route, MAX_GOOGLE_ROUTE_POINTS);
+  const bounds = fitReceiptMapBounds(route);
   const url = new URL(GOOGLE_STATIC_MAP_URL);
 
   url.searchParams.set("size", "600x300");
@@ -221,8 +301,12 @@ function buildGoogleStaticMapUrl(
   url.searchParams.set("language", "es");
   url.searchParams.set("region", "cl");
   url.searchParams.append(
+    "visible",
+    `${bounds.minLat.toFixed(5)},${bounds.minLng.toFixed(5)}|${bounds.maxLat.toFixed(5)},${bounds.maxLng.toFixed(5)}`,
+  );
+  url.searchParams.append(
     "path",
-    `color:0x2459d3ff|weight:7|enc:${encodeGooglePolyline(sampled)}`,
+    `color:0x2459d3ff|weight:5|enc:${encodeGooglePolyline(sampled)}`,
   );
   url.searchParams.append(
     "markers",
@@ -253,35 +337,127 @@ async function fetchGoogleMap(
         method: "GET",
         signal: controller.signal,
         headers: {
-          Accept: "image/jpeg",
+          Accept: "image/jpeg,image/png",
           "User-Agent": "RAPA-GO-Receipt-Service/2.0",
         },
       },
     );
 
-    if (!response.ok) return null;
+    const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
 
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.toLowerCase().includes("image/jpeg")) return null;
+    if (!response.ok) {
+      logMapWarning("Google Static Maps no disponible.", {
+        status: response.status,
+        contentType,
+      });
+      return null;
+    }
 
     const data = Buffer.from(await response.arrayBuffer());
-    const dimensions = parseJpegDimensions(data);
 
-    if (!dimensions || data.length < 1_000) return null;
+    if (contentType.includes("image/jpeg") || contentType.includes("image/jpg")) {
+      const dimensions = parseJpegDimensions(data);
+      if (!dimensions || data.length < 1_000) {
+        logMapWarning("Google Static Maps devolvió un JPEG inválido.");
+        return null;
+      }
 
-    return {
-      data,
-      width: dimensions.width,
-      height: dimensions.height,
-      filter: "DCTDecode",
-      provider: "google_static_maps",
-      routePointCount: route.length,
+      return {
+        data,
+        width: dimensions.width,
+        height: dimensions.height,
+        filter: "DCTDecode",
+        provider: "google_static_maps",
+        routePointCount: route.length,
+      };
+    }
+
+    if (contentType.includes("image/png") || data.subarray(0, 8).equals(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    )) {
+      const decoded = decodePngToRgb(data);
+      if (!decoded || decoded.width < 400 || decoded.height < 180 || data.length < 3_000) {
+        logMapWarning("Google Static Maps devolvió un PNG de error o demasiado pequeño.");
+        return null;
+      }
+
+      return {
+        data: deflateSync(decoded.rgb, { level: 9 }),
+        width: decoded.width,
+        height: decoded.height,
+        filter: "FlateDecode",
+        provider: "google_static_maps",
+        routePointCount: route.length,
+      };
+    }
+
+    logMapWarning("Google Static Maps devolvió un tipo no usable.", { contentType });
+    return null;
+  } catch {
+    logMapWarning("Google Static Maps falló por red o timeout.");
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchDrivingRoute(
+  origin: ReceiptRoutePoint,
+  destination: ReceiptRoutePoint,
+  apiKey: string,
+): Promise<ReceiptRoutePoint[] | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MAP_TIMEOUT_MS);
+  const url = new URL(GOOGLE_DIRECTIONS_URL);
+  url.searchParams.set("origin", `${origin.lat},${origin.lng}`);
+  url.searchParams.set("destination", `${destination.lat},${destination.lng}`);
+  url.searchParams.set("mode", "driving");
+  url.searchParams.set("region", "cl");
+  url.searchParams.set("language", "es");
+  url.searchParams.set("key", apiKey);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "RAPA-GO-Receipt-Service/2.0",
+      },
+    });
+
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as {
+      status?: string;
+      routes?: Array<{ overview_polyline?: { points?: string } }>;
     };
+
+    if (payload.status !== "OK") return null;
+
+    const encoded = payload.routes?.[0]?.overview_polyline?.points;
+    if (typeof encoded !== "string" || encoded.length < 8) return null;
+
+    const decoded = decodeGooglePolyline(encoded);
+    return decoded.length >= 3 ? decoded : null;
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function resolveDisplayRoute(
+  route: ReceiptRoutePoint[],
+  origin: ReceiptRoutePoint,
+  destination: ReceiptRoutePoint,
+  apiKey: string | null,
+): Promise<ReceiptRoutePoint[]> {
+  if (!apiKey || route.length >= 4) return route;
+  if (distanceMeters(origin, destination) < ROAD_SNAP_MIN_METERS) return route;
+
+  const driven = await fetchDrivingRoute(origin, destination, apiKey);
+  return driven ?? route;
 }
 
 function setPixel(
@@ -369,6 +545,36 @@ function drawCircle(
   }
 }
 
+function overlayRoute(
+  pixels: Buffer,
+  width: number,
+  height: number,
+  projected: Array<{ x: number; y: number }>,
+  thickness: number,
+): void {
+  for (let index = 1; index < projected.length; index += 1) {
+    const start = projected[index - 1];
+    const end = projected[index];
+
+    if (start && end) {
+      drawLine(pixels, width, height, start, end, [36, 89, 211], thickness);
+    }
+  }
+
+  const first = projected[0];
+  const last = projected[projected.length - 1];
+
+  if (first) {
+    drawCircle(pixels, width, height, first, 16, [22, 163, 74]);
+    drawCircle(pixels, width, height, first, 7, [255, 255, 255]);
+  }
+
+  if (last) {
+    drawCircle(pixels, width, height, last, 16, [220, 38, 38]);
+    drawCircle(pixels, width, height, last, 7, [255, 255, 255]);
+  }
+}
+
 function createRouteSketch(route: ReceiptRoutePoint[]): ReceiptMapImage {
   const width = 1_000;
   const height = 440;
@@ -406,42 +612,16 @@ function createRouteSketch(route: ReceiptRoutePoint[]): ReceiptMapImage {
   const latSpan = Math.max(0.0005, maxLat - minLat);
   const lngSpan = Math.max(0.0005, maxLng - minLng);
 
-  const projected = route.map((point) => ({
-    x: padding + ((point.lng - minLng) / lngSpan) * (width - padding * 2),
-    y:
-      padding +
-      ((maxLat - point.lat) / latSpan) * (height - padding * 2),
-  }));
-
-  for (let index = 1; index < projected.length; index += 1) {
-    const start = projected[index - 1];
-    const end = projected[index];
-
-    if (start && end) {
-      drawLine(
-        pixels,
-        width,
-        height,
-        start,
-        end,
-        [36, 89, 211],
-        7,
-      );
-    }
-  }
-
-  const first = projected[0];
-  const last = projected[projected.length - 1];
-
-  if (first) {
-    drawCircle(pixels, width, height, first, 16, [22, 163, 74]);
-    drawCircle(pixels, width, height, first, 7, [255, 255, 255]);
-  }
-
-  if (last) {
-    drawCircle(pixels, width, height, last, 16, [220, 38, 38]);
-    drawCircle(pixels, width, height, last, 7, [255, 255, 255]);
-  }
+  overlayRoute(
+    pixels,
+    width,
+    height,
+    route.map((point) => ({
+      x: padding + ((point.lng - minLng) / lngSpan) * (width - padding * 2),
+      y: padding + ((maxLat - point.lat) / latSpan) * (height - padding * 2),
+    })),
+    5,
+  );
 
   return {
     data: deflateSync(pixels, { level: 9 }),
@@ -449,6 +629,34 @@ function createRouteSketch(route: ReceiptRoutePoint[]): ReceiptMapImage {
     height,
     filter: "FlateDecode",
     provider: "route_sketch",
+    routePointCount: route.length,
+  };
+}
+
+async function createOsmMap(route: ReceiptRoutePoint[]): Promise<ReceiptMapImage | null> {
+  const bounds = fitReceiptMapBounds(route);
+  const composed = await composeOsmBaseMap({
+    ...bounds,
+    width: 1_000,
+    height: 440,
+  });
+
+  if (!composed) return null;
+
+  overlayRoute(
+    composed.pixels,
+    composed.width,
+    composed.height,
+    route.map((point) => composed.project(point)),
+    4,
+  );
+
+  return {
+    data: deflateSync(composed.pixels, { level: 9 }),
+    width: composed.width,
+    height: composed.height,
+    filter: "FlateDecode",
+    provider: "osm_tiles",
     routePointCount: route.length,
   };
 }
@@ -465,6 +673,10 @@ function configuredGoogleKey(): string | null {
   }
 
   return value;
+}
+
+function configuredProvider(): string {
+  return process.env["RIDE_RECEIPTS_MAP_PROVIDER"]?.trim().toLowerCase() ?? "google";
 }
 
 export class RideReceiptMapService {
@@ -490,13 +702,17 @@ export class RideReceiptMapService {
     const origin = safeRoute[0]!;
     const destination = safeRoute[safeRoute.length - 1]!;
     const apiKey = configuredGoogleKey();
-    const provider =
-      process.env["RIDE_RECEIPTS_MAP_PROVIDER"]?.trim().toLowerCase() ??
-      "google";
+    const provider = configuredProvider();
+    const displayRoute = await resolveDisplayRoute(
+      safeRoute,
+      origin,
+      destination,
+      apiKey,
+    );
 
-    if (apiKey && provider !== "sketch") {
+    if (apiKey && provider !== "sketch" && provider !== "osm") {
       const googleImage = await fetchGoogleMap(
-        safeRoute,
+        displayRoute,
         origin,
         destination,
         apiKey,
@@ -505,6 +721,13 @@ export class RideReceiptMapService {
       if (googleImage) return googleImage;
     }
 
-    return createRouteSketch(safeRoute);
+    if (provider !== "sketch") {
+      const osmImage = await createOsmMap(displayRoute);
+      if (osmImage) return osmImage;
+
+      logMapWarning("Mapa OSM no disponible; se usa el trazado local de respaldo.");
+    }
+
+    return createRouteSketch(displayRoute);
   }
 }

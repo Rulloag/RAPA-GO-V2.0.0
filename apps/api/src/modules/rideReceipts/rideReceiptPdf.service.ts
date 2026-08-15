@@ -355,6 +355,15 @@ function buildContent(input: RideReceiptPdfInput): string {
   canvas.strokeRect(112, MARGIN, contentWidth, 235, COLOR.border, 1);
   canvas.image(121, MARGIN + 9, contentWidth - 18, 176, input.map);
 
+  if (input.map.provider === "osm_tiles") {
+    canvas.text("Mapa © OpenStreetMap", 298, MARGIN, {
+      size: 6.5,
+      color: COLOR.muted,
+      align: "right",
+      width: contentWidth,
+    });
+  }
+
   canvas.fillRect(306, MARGIN + 10, 13, 13, COLOR.green);
   canvas.text("R", 308, MARGIN + 13.5, {
     size: 7,
