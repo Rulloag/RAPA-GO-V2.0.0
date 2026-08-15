@@ -8,10 +8,11 @@ export const RAPAGO_PENDING_CARD_PAYMENT_KEY =
   "rapago_pending_card_payment_v1";
 
 const ALLOWED_KLAP_CHECKOUT_HOSTS = new Set([
-  "pagos-pasarela-sandbox.mcdesaqa.cl",
-  "sandbox.mcdesaqa.cl",
   "pagos.pasarela.multicaja.cl",
   "www.klap.cl",
+  ...(import.meta.env.DEV
+    ? ["pagos-pasarela-sandbox.mcdesaqa.cl", "sandbox.mcdesaqa.cl"]
+    : []),
 ]);
 
 export type PendingKlapPaymentRecord = {

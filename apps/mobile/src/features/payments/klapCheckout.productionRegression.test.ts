@@ -15,7 +15,7 @@ describe("Klap production checkout host regression", () => {
 
     expect(validateKlapRedirectUrl(url)).toBe(url);
   });
-  it("conserva el host Sandbox para pruebas controladas", () => {
+  it("conserva el host Sandbox únicamente durante pruebas/desarrollo", () => {
     const url =
       "https://pagos-pasarela-sandbox.mcdesaqa.cl/order/test-sandbox-order";
 

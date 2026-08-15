@@ -535,4 +535,17 @@ export const paymentsController = {
 
     reply.status(200).send({ status: "ok" });
   },
+
+  /**
+   * Klap (sobre todo Google Pay) hace GET al webhook de validación y a veces
+   * al confirm/reject antes del POST firmado. Un 405 aborta el pago con
+   * 500001 "Request method 'GET' is not supported". GET nunca confirma ni
+   * rechaza un cobro: solo responde que el endpoint existe.
+   */
+  async klapWebhookConnectivityCheck(
+    _request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    reply.status(200).send({ status: "ok" });
+  },
 };

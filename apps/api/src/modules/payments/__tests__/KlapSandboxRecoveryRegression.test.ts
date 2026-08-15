@@ -18,8 +18,10 @@ describe("Klap V108 hosted-checkout regressions", () => {
   it("mantiene rutas firmadas de confirmación y rechazo", () => {
     expect(routesSource).toContain('"/webhooks/klap/confirm"');
     expect(routesSource).toContain('"/webhooks/klap/reject"');
+    expect(routesSource).toContain('"/webhooks/klap/validate"');
     expect(routesSource).toContain('"/payments/webhook/klap"');
     expect(controllerSource).toContain("klapUnifiedWebhook");
+    expect(controllerSource).toContain("klapWebhookConnectivityCheck");
   });
 
   it("usa POST/GET oficiales de órdenes y valida redirect_url", () => {

@@ -11,6 +11,8 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
   );
   fastify.get("/payments/return/klap", paymentsController.klapBrowserReturn);
   fastify.get("/payments/cancel/klap", paymentsController.klapBrowserCancel);
+  fastify.post("/payments/return/klap", paymentsController.klapBrowserReturn);
+  fastify.post("/payments/cancel/klap", paymentsController.klapBrowserCancel);
   fastify.get("/payments/:paymentId/status", paymentsController.getPaymentStatus);
   fastify.get("/payments/:paymentId/receipt", paymentsController.getPaymentReceipt);
   fastify.get(
@@ -56,11 +58,22 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
     "/payments/webhook/klap/reject",
   ] as const;
 
+  const klapValidatePaths = [
+    "/webhooks/klap/validate",
+    "/payments/webhooks/klap/validate",
+    "/payments/webhook/klap/validate",
+  ] as const;
+
   for (const path of klapConfirmPaths) {
     fastify.post(
       path,
       webhookOptions,
       paymentsController.klapConfirmWebhook,
+    );
+    fastify.get(
+      path,
+      webhookOptions,
+      paymentsController.klapWebhookConnectivityCheck,
     );
   }
 
@@ -70,6 +83,24 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
       webhookOptions,
       paymentsController.klapRejectWebhook,
     );
+    fastify.get(
+      path,
+      webhookOptions,
+      paymentsController.klapWebhookConnectivityCheck,
+    );
+  }
+
+  for (const path of klapValidatePaths) {
+    fastify.get(
+      path,
+      webhookOptions,
+      paymentsController.klapWebhookConnectivityCheck,
+    );
+    fastify.post(
+      path,
+      webhookOptions,
+      paymentsController.klapWebhookConnectivityCheck,
+    );
   }
 
   // Compatibilidad con PAYMENT_WEBHOOK_BASE_URL + /api/payments/webhook/klap.
@@ -78,5 +109,10 @@ export async function paymentsRoutes(fastify: FastifyInstance): Promise<void> {
     "/payments/webhook/klap",
     webhookOptions,
     paymentsController.klapUnifiedWebhook,
+  );
+  fastify.get(
+    "/payments/webhook/klap",
+    webhookOptions,
+    paymentsController.klapWebhookConnectivityCheck,
   );
 }

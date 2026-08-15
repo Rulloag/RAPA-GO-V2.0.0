@@ -31,6 +31,7 @@ KLAP_RETURN_URL=https://backend.rapago.cl/api/payments/return/klap
 KLAP_CANCEL_URL=https://backend.rapago.cl/api/payments/cancel/klap
 KLAP_WEBHOOK_CONFIRM_URL=https://backend.rapago.cl/api/webhooks/klap/confirm
 KLAP_WEBHOOK_REJECT_URL=https://backend.rapago.cl/api/webhooks/klap/reject
+KLAP_WEBHOOK_VALIDATION_URL=https://backend.rapago.cl/api/webhooks/klap/validate
 
 KLAP_ORDER_EXPIRATION_MINUTES=30
 KLAP_REQUEST_TIMEOUT_MS=10000
@@ -55,6 +56,7 @@ Se conservan los webhooks existentes:
 ```text
 POST /api/webhooks/klap/confirm
 POST /api/webhooks/klap/reject
+GET/POST /api/webhooks/klap/validate
 ```
 
 También se mantienen aliases históricos definidos en `payments.routes.ts`.
@@ -85,12 +87,13 @@ Klap debe confirmar durante la reunión el enum exacto de estados.
 
 ## `webhook_validation`
 
-La documentación entregada muestra `webhook_validation` dentro del modelo, pero
-no explica en las páginas proporcionadas su contrato, firma ni respuesta
-esperada. V108 no inventa ese endpoint. Se conservan `webhook_confirm` y
-`webhook_reject`, que ya están implementados y firmados. Klap debe confirmar si
-`webhook_validation` es obligatorio y entregar su especificación antes de
-agregarlo.
+Klap Checkout (incluido Google Pay) consulta `webhook_validation` con GET
+antes de confirmar el pago. Si esa URL no existe o solo admite POST, el
+checkout aborta con `500001 Request method 'GET' is not supported`.
+
+V108 envía `webhook_validation` en la orden y responde `{"status":"ok"}` a
+GET/POST en `/api/webhooks/klap/validate`. Un GET a confirm/reject también
+responde 200 de conectividad y **nunca** marca el pago como cobrado.
 
 ## Validación después de instalar
 
