@@ -16,13 +16,18 @@ describe("flujo de solicitud tipo Uber en Rapa Nui", () => {
       expect(requestRideSource).toContain(alias);
     }
     expect(requestRideSource).toContain("query.length < 2");
+    /* El catálogo ya no va entero por delante de Google: solo sus
+       coincidencias fuertes. Las flojas —las que existen para rescatar
+       erratas— van detrás, donde no desplazan a un resultado exacto. */
     expect(requestRideSource).toContain(
-      "for (const suggestion of [...localSuggestions, ...googleSuggestions])",
+      "for (const suggestion of [...strong, ...googleSuggestions, ...weak])",
     );
     expect(requestRideSource).toContain(
       "normalizeRapaNuiAutocompleteText(value).length < 2",
     );
-    expect(requestRideSource).toContain("}, 220);");
+    /* La espera antes de preguntarle a Google dejó de ser un número fijo:
+       depende de cuánto se lleve escrito (ver autocompleteDebounceMs). */
+    expect(requestRideSource).toContain("autocompleteDebounceMs(value)");
   });
 
   it("mantiene Google restringido a Rapa Nui y acepta lugares locales", () => {

@@ -1533,7 +1533,7 @@ type ConfirmedPoint = Coords & {
   roadProbeHits?: number;
 };
 
-type GoogleSuggestion = {
+export type GoogleSuggestion = {
   placeId: string;
   description: string;
   mainText: string;
@@ -1880,6 +1880,131 @@ type RapaNuiLocalAutocompletePlace = {
 
 const RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX = "rapago-local:";
 
+/* ── Nombres conocidos que había que escribir enteros ───────────────────────
+
+   Lugares de Rapa Nui que Google sí conoce, pero a los que no se llegaba sin
+   teclear el nombre completo: la consulta que sale de aquí es el texto tal
+   cual más "Rapa Nui", así que escribir "haka" pedía «haka Rapa Nui», que no
+   basta para que Google devuelva "Haka Piri Mana". Con estas pistas, esas
+   mismas cuatro letras piden ya el nombre entero.
+
+   ESTAS ENTRADAS NO LLEVAN COORDENADAS, Y ES A PROPÓSITO. Las de verdad las
+   resuelve Google al seleccionar el lugar (getPlaceDetailsExact), que además
+   valida que caiga dentro de la isla. Escribir aquí a mano un lat/lng que no
+   he podido verificar sería mandar al conductor a donde yo supongo que está
+   el sitio, y cobrar el viaje sobre esa distancia inventada: para eso es
+   preferible que el lugar no salga. Si algún día se quieren en el catálogo
+   local —que responde sin red— hay que añadirlos a
+   RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES con sus coordenadas reales. */
+type RapaNuiPlaceHint = {
+  /* Lo que se le pide a Google cuando alguna clave encaja. */
+  query: string;
+  /* Lo que basta teclear. Se comparan normalizadas, así que no importan
+     tildes ni mayúsculas. */
+  keywords: readonly string[];
+};
+
+const RAPA_NUI_PLACE_HINTS: readonly RapaNuiPlaceHint[] = [
+  {
+    query: "O Te Ahi",
+    keywords: ["o te ahi", "ote ahi", "oteahi", "te ahi"],
+  },
+  {
+    query: "Hotel Maea Hare Repa",
+    keywords: [
+      "maea",
+      "maea hare",
+      "maea hare repa",
+      "hare repa",
+      "hotel maea",
+    ],
+  },
+  {
+    query: "Omotohi",
+    keywords: ["omotohi", "omoto", "omotoi"],
+  },
+  {
+    query: "Marae Hanga Piko",
+    keywords: ["marae", "marae hanga", "marae hanga piko", "hanga piko"],
+  },
+  {
+    query: "Planetario Rapa Nui",
+    keywords: ["planetario", "planeta", "planetari"],
+  },
+  {
+    query: "Pou Vae Tea",
+    keywords: ["pou vae", "pou vae tea", "pouvae", "vae tea"],
+  },
+  {
+    query: "DGAC Dirección General de Aeronáutica Civil",
+    keywords: ["dgac", "aeronautica", "aeronautica civil"],
+  },
+  {
+    query: "Haka Piri Mana",
+    keywords: ["haka piri", "haka piri mana", "piri mana", "haka"],
+  },
+];
+
+/** Nombre completo que pedirle a Google, o null si nada encaja con confianza.
+ *
+ *  Se exige que lo escrito sea PREFIJO de una clave (o la clave entera) y que
+ *  tenga al menos tres letras. Con menos, o emparejando por cualquier trozo
+ *  interior, una consulta se reescribiría hacia un lugar que el pasajero no
+ *  estaba buscando —y eso es peor que obligarle a teclear de más, porque le
+ *  esconde lo que sí quería. */
+/* Longitud a partir de la cual una clave puede absorber texto escrito DE MÁS.
+   Cuatro letras es demasiado poco: con ese tope, buscar "haka pei" —un lugar
+   distinto de la isla— acabaría reescrito a "Haka Piri Mana" solo porque
+   comparten las primeras cuatro. */
+const HINT_MIN_ABSORB_LEN = 5;
+
+export function matchRapaNuiPlaceHint(input: string): string | null {
+  const query = normalizeRapaNuiAutocompleteText(input);
+  if (query.length < 3) return null;
+
+  /* El nombre completo entra como una clave más: si no, escribirlo entero no
+     encajaría con ninguna de las claves cortas, que son más breves que él. */
+  const candidatesFor = (hint: RapaNuiPlaceHint): string[] => [
+    normalizeRapaNuiAutocompleteText(hint.query),
+    ...hint.keywords.map(normalizeRapaNuiAutocompleteText),
+  ];
+
+  for (const hint of RAPA_NUI_PLACE_HINTS) {
+    for (const candidate of candidatesFor(hint)) {
+      if (!candidate) continue;
+
+      /* Va escribiendo el principio del nombre. */
+      if (candidate.startsWith(query)) return hint.query;
+
+      /* Ya escribió la clave entera y sigue: "hotel maea" + " hare repa". */
+      if (
+        candidate.length >= HINT_MIN_ABSORB_LEN &&
+        query.startsWith(candidate)
+      ) {
+        return hint.query;
+      }
+    }
+  }
+
+  /* Nada literal: se acepta una errata sobre la clave completa, con el mismo
+     tope que el resto de la búsqueda. Así "planetraio" o "omotoi" siguen
+     llegando. */
+  const max = allowedTypos(query.length);
+  if (max === 0) return null;
+
+  for (const hint of RAPA_NUI_PLACE_HINTS) {
+    for (const candidate of candidatesFor(hint)) {
+      if (!candidate) continue;
+
+      if (boundedEditDistance(candidate, query, max) <= max) {
+        return hint.query;
+      }
+    }
+  }
+
+  return null;
+}
+
 const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace[] =
   [
     {
@@ -1907,7 +2032,23 @@ const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace
         "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
       lat: -27.16395,
       lng: -109.42465,
-      aliases: ["aero", "aeropuerto", "airport", "mataveri", "terminal"],
+      /* La DGAC (Dirección General de Aeronáutica Civil) no tiene oficina
+         propia en otra dirección: administra el aeropuerto y opera desde ahí
+         mismo, en Calle Hotu Matúa s/n. Antes "dgac" solo reescribía la
+         búsqueda hacia Google con el nombre oficial completo, y Google no lo
+         reconoce como establecimiento, así que la lista quedaba vacía. Con el
+         alias aquí, responde al instante y con las coordenadas ya
+         verificadas del aeropuerto, sin depender de la red. */
+      aliases: [
+        "aero",
+        "aeropuerto",
+        "airport",
+        "mataveri",
+        "terminal",
+        "dgac",
+        "aeronautica",
+        "aeronautica civil",
+      ],
       placeTypes: ["airport", "point_of_interest", "establishment"],
     },
     {
@@ -2072,6 +2213,165 @@ function normalizeRapaNuiAutocompleteText(value: unknown): string {
     .trim();
 }
 
+/* \u2500\u2500 Tolerancia a erratas en el cat\u00e1logo local \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+   Todo lo de abajo emparejaba por subcadena exacta (`startsWith`/`includes`),
+   as\u00ed que una letra de m\u00e1s o de menos dejaba la lista vac\u00eda: "anakna",
+   "hopital", "matavery" o "hangaroa" no devolv\u00edan nada. Google s\u00ed tolera
+   erratas por su cuenta, pero el cat\u00e1logo local es el que responde al instante
+   y el que sostiene la b\u00fasqueda cuando Google falla o a\u00fan no carg\u00f3.
+
+   Se resuelve con distancia de edici\u00f3n, no con comparaciones sueltas por
+   letra: es la medida que corresponde a "cu\u00e1ntas pulsaciones separan lo que
+   escribi\u00f3 de lo que quiso escribir". */
+
+/* Longitud m\u00e1xima que se compara. Los nombres del cat\u00e1logo son cortos; esto
+   solo acota un pegado enorme, que disparar\u00eda el coste sin ganar nada. */
+const FUZZY_MAX_LEN = 64;
+
+/* Erratas permitidas seg\u00fan lo escrito. Por debajo de 5 letras no se aplica
+   nada: "pea", "tah", "aero" o "tere" son ya alias literales del cat\u00e1logo y
+   los tramos exactos los resuelven solos, mientras que permitir una errata
+   con cuatro letras es una red lo bastante ancha como para enganchar casi
+   cualquier nombre de la isla. */
+function allowedTypos(queryLength: number): number {
+  if (queryLength < 5) return 0;
+  if (queryLength < 8) return 1;
+  return 2;
+}
+
+/** Distancia de Damerau-Levenshtein restringida (OSA), cortada en `max`.
+ *
+ *  Cuenta como UNA edici\u00f3n el intercambio de dos letras contiguas ("tahia" por
+ *  "tahai"), que es de las erratas m\u00e1s frecuentes al teclear y que la
+ *  Levenshtein cl\u00e1sica cobrar\u00eda como dos.
+ *
+ *  Devuelve `max + 1` en cuanto se sabe que se pasa del tope, sin terminar el
+ *  c\u00e1lculo: esto corre por cada lugar y cada alias en cada pulsaci\u00f3n. */
+export function boundedEditDistance(
+  a: string,
+  b: string,
+  max: number,
+): number {
+  if (a === b) return 0;
+  if (max <= 0) return 1;
+
+  const lenA = Math.min(a.length, FUZZY_MAX_LEN);
+  const lenB = Math.min(b.length, FUZZY_MAX_LEN);
+
+  /* Solo la diferencia de longitudes ya supera el tope: no hay nada que
+     calcular. */
+  if (Math.abs(lenA - lenB) > max) return max + 1;
+  if (lenA === 0) return lenB;
+  if (lenB === 0) return lenA;
+
+  let prev2: number[] = [];
+  let prev: number[] = new Array<number>(lenB + 1);
+  let current: number[] = new Array<number>(lenB + 1);
+
+  for (let j = 0; j <= lenB; j += 1) prev[j] = j;
+
+  for (let i = 1; i <= lenA; i += 1) {
+    current[0] = i;
+    let rowBest = current[0];
+
+    for (let j = 1; j <= lenB; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+
+      let value = Math.min(
+        prev[j] + 1, // borrar
+        current[j - 1] + 1, // insertar
+        prev[j - 1] + cost, // sustituir
+      );
+
+      /* Intercambio de dos letras contiguas. */
+      if (
+        i > 1 &&
+        j > 1 &&
+        a[i - 1] === b[j - 2] &&
+        a[i - 2] === b[j - 1]
+      ) {
+        value = Math.min(value, prev2[j - 2] + 1);
+      }
+
+      current[j] = value;
+      if (value < rowBest) rowBest = value;
+    }
+
+    /* Ninguna casilla de la fila baja del tope: lo que quede solo puede
+       crecer, as\u00ed que se corta aqu\u00ed. */
+    if (rowBest > max) return max + 1;
+
+    prev2 = prev;
+    prev = current;
+    current = new Array<number>(lenB + 1);
+  }
+
+  const distance = prev[lenB];
+  return distance > max ? max + 1 : distance;
+}
+
+/** Punt\u00faa lo escrito contra UN texto del cat\u00e1logo tolerando erratas.
+ *
+ *  Devuelve -1 si no se parece lo bastante. Los valores van siempre por DEBAJO
+ *  del tramo de subcadena exacta (720) para que una coincidencia literal nunca
+ *  quede desplazada por una aproximada. */
+export function fuzzyAutocompleteScore(value: string, query: string): number {
+  if (!value || !query) return -1;
+
+  const max = allowedTypos(query.length);
+  if (max === 0) return -1;
+
+  /* Sin espacios a los dos lados: es lo que rescata "hangaroa" contra
+     "hanga roa", que no es una errata sino otra forma de escribir lo mismo. */
+  const tightValue = value.replace(/ /g, "");
+  const tightQuery = query.replace(/ /g, "");
+
+  /* Escrito todo junto y sin ninguna errata. Se comprueba ANTES que la
+     distancia de edición porque esta no llega a mirarlo: "hangaroa" contra
+     "caleta hanga roa" son 14 y 8 caracteres, y esa diferencia de longitud ya
+     supera cualquier tope de erratas razonable. Puntúa alto dentro de lo
+     difuso —es una coincidencia exacta, solo que ignorando espacios— pero
+     sigue por debajo del tramo literal. */
+  if (tightValue.includes(tightQuery)) return 700;
+
+  const whole = boundedEditDistance(tightValue, tightQuery, max);
+  if (whole <= max) return 600 - whole * 60;
+
+  /* Palabra suelta dentro del nombre: "mercdo" contra "mercado artesanal". */
+  const queryWords = query.split(" ").filter(Boolean);
+  const valueWords = value.split(" ").filter(Boolean);
+
+  if (queryWords.length === 1) {
+    let best = -1;
+
+    for (const word of valueWords) {
+      /* Solo contra palabras de largo parecido: comparar "mercdo" con "de"
+         nunca va a ser una errata, y s\u00ed puede dar un falso positivo. */
+      if (Math.abs(word.length - tightQuery.length) > max) continue;
+
+      const distance = boundedEditDistance(word, tightQuery, max);
+      if (distance <= max) best = Math.max(best, 540 - distance * 60);
+    }
+
+    return best;
+  }
+
+  /* Varias palabras: todas tienen que encontrar la suya, exacta o con
+     errata. As\u00ed "jardin botaniko" sigue llegando a "Jard\u00edn Bot\u00e1nico". */
+  const everyWordMatches = queryWords.every((queryWord) => {
+    const wordMax = allowedTypos(queryWord.length);
+
+    return valueWords.some((valueWord) => {
+      if (valueWord.includes(queryWord)) return true;
+      if (wordMax === 0) return false;
+      return boundedEditDistance(valueWord, queryWord, wordMax) <= wordMax;
+    });
+  });
+
+  return everyWordMatches ? 500 : -1;
+}
+
 function getRapaNuiLocalAutocompletePlace(
   placeId: string,
 ): RapaNuiLocalAutocompletePlace | null {
@@ -2083,9 +2383,37 @@ function getRapaNuiLocalAutocompletePlace(
   );
 }
 
-function getRapaNuiLocalAutocompletePredictions(
+/* Cuánto baja una coincidencia que ocurre fuera del nombre del lugar. Está
+   calibrado para que el tramo más alto que se alcanza por dirección sin
+   escribirla entera —principio de una de sus palabras, 900— caiga por debajo
+   del corte de abajo. */
+const NON_NAME_FIELD_PENALTY = 250;
+
+/* De aquí para arriba, una coincidencia local ES lo que el pasajero quiso
+   decir: el nombre exacto (1200), su principio (1000), el principio de una de
+   sus palabras (900), todas las palabras escritas presentes (820), o el nombre
+   escrito todo junto sin erratas (700 por la vía difusa). Esas van por delante
+   de Google.
+
+   Por debajo quedan las correcciones de erratas y lo que solo encajó con la
+   dirección: son corazonadas útiles —rescatan búsquedas que si no volverían
+   vacías— pero no pueden desplazar a un resultado exacto que Google sí tiene. */
+const LOCAL_STRONG_AUTOCOMPLETE_SCORE = 700;
+
+export interface LocalAutocompleteMatch {
+  suggestion: GoogleSuggestion;
+  score: number;
+}
+
+/** Igual que `getRapaNuiLocalAutocompletePredictions`, pero conservando la
+ *  puntuación de cada resultado.
+ *
+ *  El mezclado con Google la necesita: antes metía SIEMPRE todo el catálogo por
+ *  delante, así que una coincidencia difusa flojita —de esas que solo existen
+ *  para rescatar erratas— desplazaba al resultado exacto que Google sí tenía. */
+export function getRapaNuiLocalAutocompleteMatches(
   input: string,
-): GoogleSuggestion[] {
+): LocalAutocompleteMatch[] {
   const query = normalizeRapaNuiAutocompleteText(input);
   if (query.length < 2) return [];
 
@@ -2101,23 +2429,64 @@ function getRapaNuiLocalAutocompletePredictions(
 
     let score = -1;
 
-    for (const value of values) {
+    for (let index = 0; index < values.length; index += 1) {
+      const value = values[index];
+
       if (!value) continue;
-      if (value === query) score = Math.max(score, 1200);
-      if (value.startsWith(query)) score = Math.max(score, 1000);
+
+      /* El subtítulo (1) y la dirección (2) dicen de qué tipo es el lugar y
+         DÓNDE está, no cómo se llama.
+
+         Casi todas las fichas del catálogo llevan "Hanga Roa" en la dirección,
+         así que sin penalizar este campo la palabra "hanga" sacaba el
+         aeropuerto, la comisaría y Ahu Tahai al mismo nivel que el Hospital de
+         Hanga Roa y la Caleta Hanga Roa —los dos únicos que se llaman así—.
+         Buscar el nombre de un barrio no puede devolver todo lo que hay dentro
+         del barrio.
+
+         La penalización estaba solo en el tramo difuso, que es donde se detectó
+         el problema, pero la causa no tenía nada que ver con las erratas: era
+         el campo. Así que se aplica también a los tramos literales, y con
+         margen suficiente para que una coincidencia con la dirección quede por
+         debajo del corte de "esto es lo que buscaba" (ver
+         LOCAL_STRONG_AUTOCOMPLETE_SCORE). Lo que sí sobrevive es escribir la
+         dirección entera o su principio: ahí la intención está clara. */
+      const isLocationField = index === 1 || index === 2;
+
+      let literal = -1;
+      if (value === query) literal = Math.max(literal, 1200);
+      if (value.startsWith(query)) literal = Math.max(literal, 1000);
 
       const words = value.split(" ").filter(Boolean);
       if (words.some((word) => word.startsWith(query))) {
-        score = Math.max(score, 900);
+        literal = Math.max(literal, 900);
       }
-
-      if (value.includes(query)) score = Math.max(score, 720);
 
       if (
         queryWords.length > 1 &&
         queryWords.every((word) => value.includes(word))
       ) {
-        score = Math.max(score, 820);
+        literal = Math.max(literal, 820);
+      }
+
+      if (value.includes(query)) literal = Math.max(literal, 720);
+
+      if (literal >= 0) {
+        score = Math.max(
+          score,
+          isLocationField ? literal - NON_NAME_FIELD_PENALTY : literal,
+        );
+      }
+
+      /* Último recurso, y solo si nada literal encajó. Va por debajo de 720,
+         así que no puede adelantar a una coincidencia exacta: únicamente
+         rescata lo que antes se iba con la lista vacía. */
+      if (score < 720) {
+        const fuzzy = fuzzyAutocompleteScore(value, query);
+
+        if (fuzzy >= 0) {
+          score = Math.max(score, isLocationField ? fuzzy - 80 : fuzzy);
+        }
       }
     }
 
@@ -2129,25 +2498,50 @@ function getRapaNuiLocalAutocompletePredictions(
         b.score - a.score || a.place.name.localeCompare(b.place.name, "es"),
     )
     .slice(0, 5)
-    .map(({ place }) => ({
-      placeId: `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${place.id}`,
-      description: `${place.name}, ${place.address}`,
-      mainText: place.name,
-      secondaryText: `${place.subtitle} · Sugerencia RAPA GO`,
+    .map(({ place, score }) => ({
+      score,
+      suggestion: {
+        placeId: `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${place.id}`,
+        description: `${place.name}, ${place.address}`,
+        mainText: place.name,
+        secondaryText: `${place.subtitle} · Sugerencia RAPA GO`,
+      },
     }));
 }
 
-function mergeRapaNuiAutocompletePredictions(
-  localSuggestions: GoogleSuggestion[],
+export function getRapaNuiLocalAutocompletePredictions(
+  input: string,
+): GoogleSuggestion[] {
+  return getRapaNuiLocalAutocompleteMatches(input).map(
+    ({ suggestion }) => suggestion,
+  );
+}
+
+export function mergeRapaNuiAutocompletePredictions(
+  localMatches: LocalAutocompleteMatch[],
   googleSuggestions: GoogleSuggestion[],
 ): GoogleSuggestion[] {
+  /* Lo fuerte del catálogo primero: son lugares con coordenadas curadas, así
+     que al tocarlos el viaje queda listo sin pedirle a Google los detalles.
+     Después Google. Y al final las corazonadas del catálogo, que están para
+     rescatar erratas, no para encabezar la lista. */
+  const strong = localMatches
+    .filter((match) => match.score >= LOCAL_STRONG_AUTOCOMPLETE_SCORE)
+    .map((match) => match.suggestion);
+  const weak = localMatches
+    .filter((match) => match.score < LOCAL_STRONG_AUTOCOMPLETE_SCORE)
+    .map((match) => match.suggestion);
+
   const seen = new Set<string>();
   const merged: GoogleSuggestion[] = [];
 
-  for (const suggestion of [...localSuggestions, ...googleSuggestions]) {
-    const key = normalizeRapaNuiAutocompleteText(
-      `${suggestion.mainText} ${suggestion.secondaryText}`,
-    );
+  for (const suggestion of [...strong, ...googleSuggestions, ...weak]) {
+    /* La clave es solo el nombre. Antes incluía el subtítulo, y como el del
+       catálogo termina en "· Sugerencia RAPA GO" y el de Google es la
+       dirección, el MISMO lugar aparecía dos veces seguidas: una versión
+       nuestra y otra de Google. Con el nombre a secas se colapsan, y gana el
+       del catálogo por llegar antes en el recorrido. */
+    const key = normalizeRapaNuiAutocompleteText(suggestion.mainText);
 
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -4412,20 +4806,185 @@ async function filterGoogleSuggestionsToRapaNui(
     .slice(0, 6);
 }
 
+/* ── Coste de red del autocompletado ──────────────────────────────────────
+
+   Escribir "anakena" son siete pulsaciones, y cada una disparaba su propia
+   llamada a Google. Borrar una letra disparaba otra más, para una respuesta
+   que ya habíamos tenido hace medio segundo. Con la conexión de la isla eso
+   es medio minuto de lista en blanco a lo largo de una búsqueda.
+
+   Tres piezas lo arreglan y las tres viven a nivel de módulo, así que origen
+   y destino las comparten:
+
+   - CACHÉ por texto normalizado. "Anakena", "anakena " y "ANAKENA" son la
+     misma consulta, así que cambiar mayúsculas o dejar un espacio ya no
+     vuelve a pedir nada.
+   - EN VUELO: si la misma consulta ya está pedida, se espera a esa en vez de
+     abrir una segunda.
+   - SERVICIO reutilizado, en lugar de construir uno nuevo por pulsación. */
+
+const MAX_AUTOCOMPLETE_CACHE_ENTRIES = 80;
+const AUTOCOMPLETE_CACHE = new Map<string, GoogleSuggestion[]>();
+const AUTOCOMPLETE_IN_FLIGHT = new Map<string, Promise<GoogleSuggestion[]>>();
+
+let autocompleteService: google.maps.places.AutocompleteService | null = null;
+let autocompleteSessionToken: google.maps.places.AutocompleteSessionToken | null =
+  null;
+
+/* De qué constructor salió el servicio guardado. `loadRapaGoGoogleMaps` retira
+   y vuelve a inyectar el script cuando cambia la clave de API, y entonces
+   `google.maps` es otro objeto: seguir usando el servicio anterior sería
+   hablarle a un SDK que ya no existe, y las peticiones se quedarían colgadas
+   sin resolver nunca. Se compara la identidad y, si cambió, se reconstruye. */
+let autocompleteServiceCtor: unknown = null;
+
+function getAutocompleteService(): google.maps.places.AutocompleteService {
+  const ctor = google.maps.places.AutocompleteService;
+
+  if (!autocompleteService || autocompleteServiceCtor !== ctor) {
+    autocompleteService = new ctor();
+    autocompleteServiceCtor = ctor;
+    /* SDK nuevo, sesión nueva: el token viejo pertenece al que se fue. */
+    autocompleteSessionToken = null;
+  }
+
+  return autocompleteService;
+}
+
+/** Vacía lo recordado entre búsquedas.
+ *
+ *  Existe para las pruebas: sin esto, una prueba que repite la consulta de otra
+ *  recibe la respuesta guardada y no llega a llamar al SDK simulado, y el fallo
+ *  aparece lejos de su causa. */
+export function resetRapaNuiAutocompleteCaches(): void {
+  AUTOCOMPLETE_CACHE.clear();
+  AUTOCOMPLETE_IN_FLIGHT.clear();
+  autocompleteService = null;
+  autocompleteServiceCtor = null;
+  autocompleteSessionToken = null;
+}
+
+function rememberAutocompleteResult(
+  key: string,
+  suggestions: GoogleSuggestion[],
+): void {
+  /* Se reinserta para que el uso lo mueva al final: el primer elemento de un
+     Map es el menos reciente, que es justo el que conviene tirar. */
+  AUTOCOMPLETE_CACHE.delete(key);
+  AUTOCOMPLETE_CACHE.set(key, suggestions);
+
+  while (AUTOCOMPLETE_CACHE.size > MAX_AUTOCOMPLETE_CACHE_ENTRIES) {
+    const oldest = AUTOCOMPLETE_CACHE.keys().next().value as string | undefined;
+    if (!oldest) break;
+    AUTOCOMPLETE_CACHE.delete(oldest);
+  }
+}
+
+/** Token de sesión de Google Places.
+ *
+ *  Sin él, cada pulsación es una búsqueda suelta: Google no sabe que las
+ *  siete de "anakena" son una sola persona buscando una sola cosa, así que ni
+ *  aprovecha lo tecleado antes para afinar la predicción ni agrupa el cobro.
+ *  Con él, las pulsaciones y el `getDetails` final cuentan como UNA sesión.
+ *
+ *  El token se consume al pedir los detalles del lugar elegido —esa llamada es
+ *  la que cierra la sesión— y la siguiente búsqueda abre uno nuevo. */
+function getAutocompleteSessionToken(): google.maps.places.AutocompleteSessionToken | null {
+  try {
+    if (!autocompleteSessionToken) {
+      autocompleteSessionToken =
+        new google.maps.places.AutocompleteSessionToken();
+    }
+
+    return autocompleteSessionToken;
+  } catch {
+    /* Versión del SDK sin sesiones: se sigue sin token, que es exactamente el
+       comportamiento anterior. */
+    return null;
+  }
+}
+
+function consumeAutocompleteSessionToken(): google.maps.places.AutocompleteSessionToken | null {
+  const token = autocompleteSessionToken;
+  autocompleteSessionToken = null;
+  return token;
+}
+
+/** Espera antes de preguntarle a Google, según lo escrito.
+ *
+ *  No es un número fijo porque las pulsaciones no valen lo mismo. Con dos o
+ *  tres letras el pasajero casi seguro sigue escribiendo y la consulta es la
+ *  más cara —devuelve medio mapa—, así que conviene dejarle terminar. A partir
+ *  de la cuarta ya está cerca del nombre que quiere y lo que toca es
+ *  responderle cuanto antes.
+ *
+ *  Esperar no deja la pantalla vacía: los resultados del catálogo local ya se
+ *  pintaron sin esperar a nadie. */
+export function autocompleteDebounceMs(query: string): number {
+  const normalized = normalizeRapaNuiAutocompleteText(query);
+  if (normalized.length <= 3) return 260;
+  return 140;
+}
+
+/** Carga el SDK de Google por adelantado, sin bloquear a nadie.
+ *
+ *  La primera búsqueda tenía que esperar a que el script entero se
+ *  descargara, y eso es lo más lento de todo el recorrido. Llamando aquí en
+ *  cuanto la pantalla existe, para cuando el pasajero toca el campo el SDK ya
+ *  está listo. Es idempotente: si ya se cargó, no hace nada. */
+export function prewarmRapaNuiAutocomplete(): void {
+  void loadRapaGoGoogleMaps()
+    .then(() => {
+      /* Construir el servicio también cuesta la primera vez. */
+      getAutocompleteService();
+    })
+    .catch(() => {
+      /* Sin red o sin clave no hay nada que precalentar: la búsqueda seguirá
+         funcionando con el catálogo local. */
+    });
+}
+
 export async function getGooglePredictions(
   input: string,
 ): Promise<GoogleSuggestion[]> {
   const cleanInput = input.trim();
-  const localSuggestions = getRapaNuiLocalAutocompletePredictions(cleanInput);
+  const cacheKey = normalizeRapaNuiAutocompleteText(cleanInput);
 
-  if (normalizeRapaNuiAutocompleteText(cleanInput).length < 2) {
+  if (cacheKey.length < 2) {
     return [];
   }
+
+  const cached = AUTOCOMPLETE_CACHE.get(cacheKey);
+  if (cached) {
+    rememberAutocompleteResult(cacheKey, cached);
+    return cached;
+  }
+
+  const inFlight = AUTOCOMPLETE_IN_FLIGHT.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const request = resolveGooglePredictions(cleanInput, cacheKey);
+  AUTOCOMPLETE_IN_FLIGHT.set(cacheKey, request);
+
+  try {
+    return await request;
+  } finally {
+    if (AUTOCOMPLETE_IN_FLIGHT.get(cacheKey) === request) {
+      AUTOCOMPLETE_IN_FLIGHT.delete(cacheKey);
+    }
+  }
+}
+
+async function resolveGooglePredictions(
+  cleanInput: string,
+  cacheKey: string,
+): Promise<GoogleSuggestion[]> {
+  const localMatches = getRapaNuiLocalAutocompleteMatches(cleanInput);
 
   try {
     await loadRapaGoGoogleMaps();
 
-    const service = new google.maps.places.AutocompleteService();
+    const service = getAutocompleteService();
 
     // locationRestriction (a diferencia de bounds/location/radius, deprecados
     // desde mayo 2023 y solo un sesgo blando) es una restricción dura del
@@ -4434,27 +4993,47 @@ export async function getGooglePredictions(
     // con getDetails() antes de mostrarla — esa verificación sigue existiendo
     // igual de estricta en getPlaceDetailsExact(), en el momento en que el
     // usuario selecciona un resultado, que es donde de verdad importa.
-    const rawSuggestions = await new Promise<GoogleSuggestion[]>((resolve) => {
+    /* Si lo escrito es el principio de un nombre conocido, se le pide a Google
+       ese nombre entero en vez del fragmento. Sigue siendo UNA sola llamada:
+       no se añade red, solo se aprovecha mejor la que ya se hacía. */
+    const hintedQuery = matchRapaNuiPlaceHint(cleanInput);
+    const sessionToken = getAutocompleteSessionToken();
+
+    /* "No hay nada" y "no pude preguntar" llegan por el mismo sitio pero no se
+       guardan igual, así que la respuesta viene etiquetada. ZERO_RESULTS es un
+       dato firme y merece recordarse; OVER_QUERY_LIMIT o un corte de red son
+       pasajeros, y guardarlos dejaría la búsqueda congelada hasta que el
+       pasajero cambiara lo escrito. */
+    const answer = await new Promise<{
+      usable: boolean;
+      suggestions: GoogleSuggestion[];
+    }>((resolve) => {
       service.getPlacePredictions(
         {
-          input: `${cleanInput} Rapa Nui`,
+          input: `${hintedQuery ?? cleanInput} Rapa Nui`,
           componentRestrictions: {
             country: "cl",
           },
           locationRestriction: getRapaNuiMapBounds(),
           types: ["establishment", "geocode"],
+          ...(sessionToken ? { sessionToken } : {}),
         },
         (predictions, status) => {
-          if (
-            status !== google.maps.places.PlacesServiceStatus.OK ||
-            !predictions
-          ) {
-            resolve([]);
+          const { OK, ZERO_RESULTS } = google.maps.places.PlacesServiceStatus;
+
+          if (status === ZERO_RESULTS) {
+            resolve({ usable: true, suggestions: [] });
             return;
           }
 
-          resolve(
-            predictions.slice(0, 8).map((prediction) => ({
+          if (status !== OK || !predictions) {
+            resolve({ usable: false, suggestions: [] });
+            return;
+          }
+
+          resolve({
+            usable: true,
+            suggestions: predictions.slice(0, 8).map((prediction) => ({
               placeId: prediction.place_id,
               description: prediction.description,
               mainText: prediction.structured_formatting.main_text,
@@ -4462,17 +5041,23 @@ export async function getGooglePredictions(
                 prediction.structured_formatting.secondary_text ??
                 "Rapa Nui, Chile",
             })),
-          );
+          });
         },
       );
     });
 
-    return mergeRapaNuiAutocompletePredictions(
-      localSuggestions,
-      rawSuggestions,
+    const merged = mergeRapaNuiAutocompletePredictions(
+      localMatches,
+      answer.suggestions,
     );
+
+    if (answer.usable) rememberAutocompleteResult(cacheKey, merged);
+    return merged;
   } catch {
-    return localSuggestions;
+    /* Sin SDK —sin red, sin clave— queda el catálogo local, que es lo que
+       sostiene la pantalla. Tampoco se guarda: en cuanto vuelva la red, la
+       misma búsqueda tiene que poder llegar a Google. */
+    return mergeRapaNuiAutocompletePredictions(localMatches, []);
   }
 }
 
@@ -4489,6 +5074,10 @@ export async function getPlaceDetailsExact(
   const container = document.createElement("div");
   const service = new google.maps.places.PlacesService(container);
 
+  /* Cierra la sesión abierta por el autocompletado: estas son las coordenadas
+     que el pasajero estaba buscando desde la primera letra. */
+  const sessionToken = consumeAutocompleteSessionToken();
+
   return new Promise((resolve) => {
     service.getDetails(
       {
@@ -4501,6 +5090,7 @@ export async function getPlaceDetailsExact(
           "types",
           "business_status",
         ],
+        ...(sessionToken ? { sessionToken } : {}),
       },
       (place, status) => {
         if (
@@ -7081,7 +7671,7 @@ function MapPointPicker({
                 <button
                   type="button"
                   className="rp-map-control"
-                  aria-label="Usar mi ubicación actual"
+                  aria-label="Usar mi ubicación"
                   onClick={useCurrentLocation}>
                   <IonIcon icon={locateOutline} />
                 </button>
@@ -8366,6 +8956,14 @@ export default function RequestRidePage(): JSX.Element {
     setDestSuggestions([]);
   }, [rideMode, selectedRoundTripPromotionId]);
 
+  /* El SDK de Google se descarga mientras el pasajero mira la pantalla, no
+     cuando ya está escribiendo. Es lo más lento del recorrido y no depende de
+     lo que teclee, así que no tiene por qué estar en el camino crítico de la
+     primera búsqueda. */
+  useEffect(() => {
+    prewarmRapaNuiAutocomplete();
+  }, []);
+
   useEffect(() => {
     const value = originInput.trim();
 
@@ -8380,6 +8978,14 @@ export default function RequestRidePage(): JSX.Element {
     }
 
     const seq = ++originSearchSeq.current;
+
+    /* Respuesta inmediata, en esta misma pulsación: el catálogo local está en
+       memoria y no necesita ni espera ni red. Antes se calculaba igual, pero
+       se quedaba retenido dentro de getGooglePredictions hasta que Google
+       contestaba, así que el pasajero miraba una lista vacía esperando por
+       algo que ya teníamos. Google llega después y afina la lista. */
+    const instant = getRapaNuiLocalAutocompletePredictions(value);
+    if (instant.length > 0) setOriginSuggestions(instant);
     setSearchingOrigin(true);
 
     const timeout = window.setTimeout(() => {
@@ -8391,7 +8997,7 @@ export default function RequestRidePage(): JSX.Element {
         .finally(() => {
           if (seq === originSearchSeq.current) setSearchingOrigin(false);
         });
-    }, 220);
+    }, autocompleteDebounceMs(value));
 
     return () => window.clearTimeout(timeout);
   }, [isAirportScheduledRide, originInput, originPoint?.text]);
@@ -8409,6 +9015,10 @@ export default function RequestRidePage(): JSX.Element {
     }
 
     const seq = ++destSearchSeq.current;
+
+    // Mismo trato que el origen: lo que ya sabemos se pinta ya.
+    const instant = getRapaNuiLocalAutocompletePredictions(value);
+    if (instant.length > 0) setDestSuggestions(instant);
     setSearchingDest(true);
 
     const timeout = window.setTimeout(() => {
@@ -8420,7 +9030,7 @@ export default function RequestRidePage(): JSX.Element {
         .finally(() => {
           if (seq === destSearchSeq.current) setSearchingDest(false);
         });
-    }, 220);
+    }, autocompleteDebounceMs(value));
 
     return () => window.clearTimeout(timeout);
   }, [destInput, destinationPoint?.text]);
@@ -8815,7 +9425,15 @@ export default function RequestRidePage(): JSX.Element {
                 </button>
               </li>
             ))
-          ) : searching ? null : (
+          ) : searching ? (
+            /* Antes aquí no se pintaba nada: quedaba el título "Resultados"
+               encabezando un hueco, que se lee igual que "no hay nada" y hace
+               abandonar la búsqueda justo cuando estaba a punto de responder. */
+            <li className="rq-results__loading">
+              <IonSpinner name="dots" />
+              Buscando lugares…
+            </li>
+          ) : (
             <li className="rq-results__empty">
               Sin resultados. Prueba otro nombre o toca un punto del mapa.
             </li>
@@ -8968,7 +9586,7 @@ export default function RequestRidePage(): JSX.Element {
          * para que Rapa Go busque la calle accesible y el usuario confirme.
          */
         setOriginPoint({
-          text: "Mi ubicación actual",
+          text: "Mi ubicación",
           address: "Ubicación GPS detectada",
           lat: gpsPoint.lat,
           lng: gpsPoint.lng,
@@ -8979,7 +9597,7 @@ export default function RequestRidePage(): JSX.Element {
           isAccessiblePickup: false,
         });
 
-        setOriginInput("Mi ubicación actual");
+        setOriginInput("Mi ubicación");
         setOriginSuggestions([]);
         setPickerAutoFocusSearch(false);
         setPickerTarget("origin");
@@ -10570,6 +11188,17 @@ export default function RequestRidePage(): JSX.Element {
     const target = Math.min(WIZARD_STEPS.length - 1, Math.max(0, next));
     setWizardStep(target);
 
+    /* Al llegar al paso 2 (Vehículo) origen y destino ya están decididos: el
+       mapa detrás deja de ser lo que hay que mirar. La hoja sube del todo para
+       enseñar de entrada el paso completo, sin arrastrar nada a mano.
+
+       Es un empujón al llegar, no una posición fija: el arrastre normal —
+       handleRequestGripPointerMove y el resto— sigue funcionando exactamente
+       igual después, así que el pasajero puede volver a bajarla si quiere ver
+       el mapa. Por eso va aquí, en la navegación, y no como un límite que le
+       impida moverla. */
+    if (target === 1) setSheetShift(0);
+
     const body = wizardBodyRef.current;
     if (!body) return;
 
@@ -11162,6 +11791,23 @@ export default function RequestRidePage(): JSX.Element {
                   ? renderRouteResults(activeSearchField)
                   : null}
 
+                {/* Navegación del paso 1. Va pegada a los campos de ruta, no
+                    al fondo de las notas: en cuanto origen y destino están
+                    listos, el botón para avanzar tiene que verse sin
+                    desplazarse por avisos informativos. */}
+                {wizardStep === 0 && (
+                  <div className="rq-nav" style={{ marginTop: "16px" }}>
+                    <button
+                      type="button"
+                      className="rq-nav__next"
+                      disabled={!wizardCanAdvance}
+                      onClick={() => goToWizardStep(wizardStep + 1)}>
+                      Siguiente
+                      <IonIcon icon={arrowForwardOutline} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+
                 {originPoint?.walkMeters != null &&
                   originPoint.walkMeters > 8 && (
                     <div className="rp-request-note">
@@ -11178,20 +11824,6 @@ export default function RequestRidePage(): JSX.Element {
                     <IonIcon icon={airplaneOutline} aria-hidden="true" />
                     Origen fijo: Aeropuerto Rapa Nui. El pasajero elige el
                     destino.
-                  </div>
-                )}
-
-                {/* Navegación del paso 1 */}
-                {wizardStep === 0 && (
-                  <div className="rq-nav" style={{ marginTop: "16px" }}>
-                    <button
-                      type="button"
-                      className="rq-nav__next"
-                      disabled={!wizardCanAdvance}
-                      onClick={() => goToWizardStep(wizardStep + 1)}>
-                      Siguiente
-                      <IonIcon icon={arrowForwardOutline} aria-hidden="true" />
-                    </button>
                   </div>
                 )}
               </div>
@@ -12397,7 +13029,13 @@ export default function RequestRidePage(): JSX.Element {
                 {wizardStep === 3 && (
                   <div
                     className="rq-nav rq-nav--last"
-                    style={{ marginBottom: "16px" }}>
+                    style={{
+                      marginBottom: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                    }}>
                     <button
                       type="button"
                       className="rq-nav__back"
@@ -12405,6 +13043,32 @@ export default function RequestRidePage(): JSX.Element {
                       <IonIcon icon={arrowBackOutline} aria-hidden="true" />
                       Anterior
                     </button>
+
+                    {/* Botón de pago movido a la navegación, arriba y al
+                        costado derecho del "Anterior". Solo dice el nombre de
+                        la acción sin condiciones: las decisiones ya están
+                        todas tomadas antes de llegar aquí. */}
+                    <IonButton
+                      className="rp-request-confirm-sticky"
+                      onClick={() => void handleRequest()}
+                      disabled={!canRequest || submitting}
+                      style={
+                        {
+                          "--background": "var(--rp-btn-primary)",
+                          "--background-activated":
+                            "linear-gradient(135deg,#c89b3c,#b84f2e)",
+                          "--color": "var(--rp-btn-primary-fg)",
+                          flexShrink: 0,
+                        } as CSSProperties
+                      }>
+                      {submitting ? (
+                        <IonSpinner name="dots" />
+                      ) : paymentMethod === "cash" ? (
+                        "SOLICITAR VIAJE"
+                      ) : (
+                        "PAGAR CON TARJETA"
+                      )}
+                    </IonButton>
                   </div>
                 )}
                 {/* Resumen del viaje.
@@ -12579,55 +13243,6 @@ export default function RequestRidePage(): JSX.Element {
                     </div>
                   </div>
 
-                  {/* Confirmar va PEGADO al total, dentro de la misma tarjeta.
-                      Antes vivía al final de la hoja, después del desglose de
-                      tarifa y de los avisos, así que había que seguir bajando
-                      justo cuando ya estaba todo revisado. Aquí el precio y la
-                      acción que lo acepta se leen de un tirón, que es el par
-                      que de verdad importa en esta pantalla. */}
-                  <IonButton
-                    className="rp-request-confirm-sticky"
-                    onClick={() => void handleRequest()}
-                    disabled={!canRequest || submitting}
-                    style={
-                      {
-                        "--background": "var(--rp-btn-primary)",
-                        "--background-activated":
-                          "linear-gradient(135deg,#c89b3c,#b84f2e)",
-                        "--color": "var(--rp-btn-primary-fg)",
-                      } as CSSProperties
-                    }>
-                    {submitting ? (
-                      <IonSpinner name="dots" />
-                    ) : paymentMethod === null ? (
-                      "FALTA ELEGIR FORMA DE PAGO"
-                    ) : selectedRoundTripPromotion ? (
-                      paymentMethod === "card" &&
-                      useWalletBenefit === true &&
-                      activePaymentAmountAfterWallet === 0 ? (
-                        "RESERVAR EXPERIENCIA CON BENEFICIO"
-                      ) : (
-                        "RESERVAR EXPERIENCIA Y PAGAR"
-                      )
-                    ) : rideMode === "scheduled" ? (
-                      paymentMethod === "card" &&
-                      useWalletBenefit === true &&
-                      activePaymentAmountAfterWallet === 0 ? (
-                        "RESERVAR CON BENEFICIO"
-                      ) : (
-                        "RESERVAR Y PAGAR SALDO CON TARJETA"
-                      )
-                    ) : paymentMethod === "card" ? (
-                      useWalletBenefit === true &&
-                      activePaymentAmountAfterWallet === 0 ? (
-                        "SOLICITAR CON BENEFICIO"
-                      ) : (
-                        "PAGAR SALDO CON TARJETA"
-                      )
-                    ) : (
-                      "SOLICITAR VIAJE"
-                    )}
-                  </IonButton>
 
                   {pendingPassengerChargeTotalClp > 0 && (
                     <div className="rp-request-review__warn" role="note">

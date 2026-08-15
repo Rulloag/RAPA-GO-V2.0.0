@@ -2825,6 +2825,26 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   font-weight: var(--rq-fw-med);
   line-height: 1.4;
 }
+
+/* Mismo hueco y mismo tono que "Sin resultados": ocupa el sitio de la
+   respuesta que está por llegar, así la lista no salta cuando aparece. */
+.rapago-request-page .rq-results__loading {
+  display: flex;
+  align-items: center;
+  gap: var(--rq-2);
+  padding: var(--rq-4) var(--rq-3);
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-sub);
+  font-weight: var(--rq-fw-med);
+  line-height: 1.4;
+}
+
+.rapago-request-page .rq-results__loading ion-spinner {
+  width: 20px;
+  height: 20px;
+  color: var(--rq-accent);
+  flex-shrink: 0;
+}
 /* -- Aviso de orden: origen antes que destino --
    Ambar y no rojo: el pasajero no ha hecho nada mal, solo ha empezado por el
    otro extremo. El rojo de esta pantalla esta reservado para lo que impide
@@ -4118,17 +4138,14 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
    estrechas: ahí vuelve a ocupar el ancho disponible y nada se corta. */
 .rapago-request-page .rp-request-confirm-sticky {
   --border-radius: 999px;
-  --padding-start: var(--rq-5);
-  --padding-end: var(--rq-5);
-  display: block;
-  width: fit-content;
-  min-width: 60%;
-  max-width: 100%;
-  margin: var(--rq-3) auto 0;
-  height: 52px;
-  font-size: var(--rq-fs-body);
+  --padding-start: var(--rq-4);
+  --padding-end: var(--rq-4);
+  display: inline-flex;
+  height: 44px;
+  font-size: var(--rq-fs-micro);
   font-weight: var(--rq-fw-bold);
   letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 /* El estado deshabilitado tenía la sombra dorada a pleno brillo, así que
