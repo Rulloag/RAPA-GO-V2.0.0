@@ -330,8 +330,9 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
 
     expect(customs).toEqual(
       expect.arrayContaining([
+        { key: "payments_notify_user", value: "true" },
         { key: "tarjetas_expiration_minutes", value: "30" },
-        { key: "tarjetas_payment_indicator", value: "typed" },
+        { key: "internal_tarjetas_allows_wallets", value: "false" },
         { key: "transaction_type", value: "authorization" },
         { key: "notify_payment_user", value: "true" },
         { key: "notify_payment_merchant", value: "true" },
