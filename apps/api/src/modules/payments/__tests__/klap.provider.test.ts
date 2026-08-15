@@ -59,6 +59,8 @@ beforeEach(() => {
     "https://backend.rapago.cl/api/webhooks/klap/confirm";
   process.env["KLAP_WEBHOOK_REJECT_URL"] =
     "https://backend.rapago.cl/api/webhooks/klap/reject";
+  process.env["KLAP_WEBHOOK_VALIDATION_URL"] =
+    "https://backend.rapago.cl/api/webhooks/klap/validate";
   process.env["KLAP_ORDER_EXPIRATION_MINUTES"] = "30";
   process.env["KLAP_SEND_IDEMPOTENCY_HEADER"] = "false";
   process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "true";
@@ -127,12 +129,18 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
     expect(body["webhooks"]).toEqual({
       webhook_confirm: process.env["KLAP_WEBHOOK_CONFIRM_URL"],
       webhook_reject: process.env["KLAP_WEBHOOK_REJECT_URL"],
+      webhook_validation: process.env["KLAP_WEBHOOK_VALIDATION_URL"],
     });
     expect(body["customs"]).toEqual(
       expect.arrayContaining([
+        { key: "payments_notify_user", value: "true" },
         { key: "tarjetas_expiration_minutes", value: "30" },
-        { key: "tarjetas_payment_indicator", value: "typed" },
         { key: "transaction_type", value: "authorization" },
+      ]),
+    );
+    expect(body["customs"]).not.toEqual(
+      expect.arrayContaining([
+        { key: "tarjetas_payment_indicator", value: "typed" },
       ]),
     );
     expect(raw).not.toMatch(/pan|cvv|card_number|security_code|cards\/receipt/i);
@@ -405,6 +413,37 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
       transaction_id: "transaction-789",
       amount: { currency: "CLP", total: 5000 },
     });
+  });
+
+  it("si GET /orders/{order_id} rechaza el método, consulta el estado con POST", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: vi.fn().mockResolvedValue({
+          code: "500001",
+          message: "Request method 'GET' is not supported",
+        }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          order_id: "test-order-123",
+          reference_id: params().orderId,
+          status: "approved",
+          amount: { currency: "CLP", total: 5000 },
+        }),
+      } as unknown as Response);
+
+    const order = await new KlapProvider().getOrder("test-order-123");
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.[1]).toMatchObject({ method: "GET" });
+    expect(calls[1]?.[1]).toMatchObject({ method: "POST" });
+    expect(order.status).toBe("approved");
   });
 
   it("mapea timeout, red y HTTP sin filtrar la ApiKey", async () => {

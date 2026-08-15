@@ -31,6 +31,7 @@ export interface KlapConfig {
   cancelUrl: string;
   webhookConfirmUrl: string;
   webhookRejectUrl: string;
+  webhookValidationUrl: string;
   orderExpirationMinutes: number;
   /**
    * Solicita al Checkout alojado que no ofrezca billeteras digitales.
@@ -85,6 +86,7 @@ export interface KlapUrls {
 export interface KlapWebhooks {
   webhook_confirm: string;
   webhook_reject: string;
+  webhook_validation: string;
 }
 
 export interface KlapUser {

@@ -214,6 +214,9 @@ function getKlapConfig(): KlapConfig {
   const webhookRejectUrl =
     process.env["KLAP_WEBHOOK_REJECT_URL"] ??
     buildDefaultCallbackUrl("/api/webhooks/klap/reject");
+  const webhookValidationUrl =
+    process.env["KLAP_WEBHOOK_VALIDATION_URL"] ??
+    buildDefaultCallbackUrl("/api/webhooks/klap/validate");
   const orderExpirationMinutes = Number(
     process.env["KLAP_ORDER_EXPIRATION_MINUTES"] ??
       DEFAULT_ORDER_EXPIRATION_MINUTES,
@@ -306,6 +309,7 @@ function getKlapConfig(): KlapConfig {
   assertValidHttpUrl(cancelUrl, "KLAP_CANCEL_URL");
   assertValidHttpUrl(webhookConfirmUrl, "KLAP_WEBHOOK_CONFIRM_URL");
   assertValidHttpUrl(webhookRejectUrl, "KLAP_WEBHOOK_REJECT_URL");
+  assertValidHttpUrl(webhookValidationUrl, "KLAP_WEBHOOK_VALIDATION_URL");
 
   if (
     !Number.isInteger(orderExpirationMinutes) ||
@@ -329,6 +333,7 @@ function getKlapConfig(): KlapConfig {
     cancelUrl,
     webhookConfirmUrl,
     webhookRejectUrl,
+    webhookValidationUrl,
     orderExpirationMinutes,
     disableWallets,
     sendIdempotencyHeader,
@@ -608,12 +613,12 @@ export class KlapProvider implements PaymentProvider {
 
     const customs: KlapCustom[] = [
       {
-        key: "tarjetas_expiration_minutes",
-        value: expirationMinutes,
+        key: "payments_notify_user",
+        value: "true",
       },
       {
-        key: "tarjetas_payment_indicator",
-        value: "typed",
+        key: "tarjetas_expiration_minutes",
+        value: expirationMinutes,
       },
     ];
 
@@ -678,6 +683,7 @@ export class KlapProvider implements PaymentProvider {
       webhooks: {
         webhook_confirm: config.webhookConfirmUrl,
         webhook_reject: config.webhookRejectUrl,
+        webhook_validation: config.webhookValidationUrl,
       },
     };
 
@@ -749,21 +755,50 @@ export class KlapProvider implements PaymentProvider {
     const url = `${config.ordersUrl.replace(/\/+$/, "")}/${encodeURIComponent(
       orderId,
     )}`;
+    const headers = {
+      Accept: "application/json",
+      apikey: config.apiKey,
+    };
 
-    const raw = await fetchJson(
-      url,
-      {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          apikey: config.apiKey,
+    try {
+      const raw = await fetchJson(
+        url,
+        {
+          method: "GET",
+          headers,
         },
-      },
-      config.requestTimeoutMs,
-      "Klap order status query",
-    );
+        config.requestTimeoutMs,
+        "Klap order status query",
+      );
 
-    return parseOrderStatusResponse(raw, config.environment);
+      return parseOrderStatusResponse(raw, config.environment);
+    } catch (error) {
+      // El checkout de Klap (Google Pay) y algunos sandboxes rechazan GET en
+      // /orders/{order_id} con 405/500 "Request method 'GET' is not supported".
+      if (
+        !(error instanceof KlapProviderError) ||
+        error.kind !== "http_rejected" ||
+        (error.httpStatus !== 405 && error.httpStatus !== 500)
+      ) {
+        throw error;
+      }
+
+      const retried = await fetchJson(
+        url,
+        {
+          method: "POST",
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+          },
+          body: "{}",
+        },
+        config.requestTimeoutMs,
+        "Klap order status query",
+      );
+
+      return parseOrderStatusResponse(retried, config.environment);
+    }
   }
 
   /**
