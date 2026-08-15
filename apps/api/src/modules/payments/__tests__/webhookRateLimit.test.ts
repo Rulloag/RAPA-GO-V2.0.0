@@ -107,4 +107,20 @@ describe("payment webhooks are exempt from the global rate limit", () => {
     // 100 req/min bucket regardless of what its handler does with the request.
     expect(last?.statusCode).toBe(429);
   });
+
+  it("acepta GET en webhooks de Klap para que el checkout no falle con método no soportado", async () => {
+    const validate = await app.inject({
+      method: "GET",
+      url: "/webhooks/klap/validate",
+    });
+    const confirm = await app.inject({
+      method: "GET",
+      url: "/webhooks/klap/confirm",
+    });
+
+    expect(validate.statusCode).toBe(200);
+    expect(validate.json()).toEqual({ status: "ok" });
+    expect(confirm.statusCode).toBe(200);
+    expect(confirm.json()).toEqual({ status: "ok" });
+  });
 });
