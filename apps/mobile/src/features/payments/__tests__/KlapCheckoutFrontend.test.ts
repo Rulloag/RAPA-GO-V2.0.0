@@ -16,9 +16,8 @@ describe("Klap V109 frontend — checkout alojado directo", () => {
   });
 
   it("abre únicamente el host oficial de Klap por HTTPS y en la misma ventana", () => {
-    expect(serviceSource).toContain(
-      '"pagos-pasarela-sandbox.mcdesaqa.cl"',
-    );
+    expect(serviceSource).toContain('"pagos.pasarela.multicaja.cl"');
+    expect(serviceSource).toContain("import.meta.env.DEV");
     expect(serviceSource).toContain('url.protocol !== "https:"');
     expect(serviceSource).toContain("openKlapHostedCheckout");
     expect(serviceSource).toContain("window.location.assign(safeUrl)");

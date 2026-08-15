@@ -32,6 +32,11 @@ export interface KlapConfig {
   webhookConfirmUrl: string;
   webhookRejectUrl: string;
   orderExpirationMinutes: number;
+  /**
+   * Solicita al Checkout alojado que no ofrezca billeteras digitales.
+   * RAPA GO mantiene solo tarjeta Klap para este flujo.
+   */
+  disableWallets: boolean;
   /** Header no documentado por Swagger; por seguridad se desactiva por defecto. */
   sendIdempotencyHeader: boolean;
   /** Crea la orden como authorization (retención) aunque capture aún esté fail-closed. */

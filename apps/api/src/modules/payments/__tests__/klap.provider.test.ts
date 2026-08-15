@@ -156,6 +156,50 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
     });
   });
 
+  it("deshabilita Apple Pay y Google Pay en la orden de tarjeta por defecto", async () => {
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(params());
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(customs).toEqual(
+      expect.arrayContaining([
+        { key: "internal_tarjetas_allows_wallets", value: "false" },
+        { key: "internal_tarjetas_allows_quotas_wallets", value: "false" },
+      ]),
+    );
+  });
+
+  it("mantiene comprobante por correo al pasajero aunque las wallets estén deshabilitadas", async () => {
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(
+      params({ passengerEmail: "pasajero@example.com" }),
+    );
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(body["user"]).toEqual({ email: "pasajero@example.com" });
+    expect(customs).toEqual(
+      expect.arrayContaining([
+        { key: "notify_payment_user", value: "true" },
+        { key: "internal_tarjetas_allows_wallets", value: "false" },
+        { key: "internal_tarjetas_allows_quotas_wallets", value: "false" },
+      ]),
+    );
+  });
+
   it("envía user.email y notify_payment_user cuando hay passengerEmail, sin depender del correo del comercio", async () => {
     delete process.env["KLAP_MERCHANT_NOTIFICATION_EMAIL"];
     mockJson(201, {
@@ -410,6 +454,16 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
       providerOrderId: "test-order-123",
       urlPay: CHECKOUT_URL,
     });
+  });
+
+  it("falla cerrado si KLAP_ENVIRONMENT no está configurado", async () => {
+    delete process.env["KLAP_ENVIRONMENT"];
+    global.fetch = vi.fn();
+
+    await expect(
+      new KlapProvider().createHostedOrder(params()),
+    ).rejects.toMatchObject({ kind: "config" });
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("valida montos CLP y rechaza entornos desconocidos", async () => {

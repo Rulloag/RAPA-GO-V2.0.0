@@ -175,7 +175,7 @@ function buildDefaultCallbackUrl(path: string): string {
 
 function getKlapConfig(): KlapConfig {
   const rawEnvironment = String(
-    process.env["KLAP_ENVIRONMENT"] ?? "sandbox",
+    process.env["KLAP_ENVIRONMENT"] ?? "",
   )
     .trim()
     .toLowerCase();
@@ -217,6 +217,14 @@ function getKlapConfig(): KlapConfig {
   const orderExpirationMinutes = Number(
     process.env["KLAP_ORDER_EXPIRATION_MINUTES"] ??
       DEFAULT_ORDER_EXPIRATION_MINUTES,
+  );
+
+  // RAPA GO no ofrece Apple Pay ni Google Pay en el checkout de tarjeta.
+  // Los customs usados abajo son los flags de compatibilidad que Klap expone
+  // en su modelo de Checkout para controlar billeteras y sus cuotas.
+  const disableWallets = parseBooleanEnv(
+    process.env["KLAP_DISABLE_WALLETS"],
+    true,
   );
 
   // No aparece en el Swagger entregado. V108 lo desactiva por defecto.
@@ -322,6 +330,7 @@ function getKlapConfig(): KlapConfig {
     webhookConfirmUrl,
     webhookRejectUrl,
     orderExpirationMinutes,
+    disableWallets,
     sendIdempotencyHeader,
     authorizationModeEnabled,
     captureContractConfirmed,
@@ -607,6 +616,19 @@ export class KlapProvider implements PaymentProvider {
         value: "typed",
       },
     ];
+
+    if (config.disableWallets) {
+      customs.push(
+        {
+          key: "internal_tarjetas_allows_wallets",
+          value: "false",
+        },
+        {
+          key: "internal_tarjetas_allows_quotas_wallets",
+          value: "false",
+        },
+      );
+    }
 
     if (config.authorizationModeEnabled) {
       customs.push({
