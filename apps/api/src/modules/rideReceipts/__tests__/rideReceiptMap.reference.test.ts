@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeReceiptRoute } from "../rideReceiptMap.service.js";
+import {
+  fitReceiptMapBounds,
+  normalizeReceiptRoute,
+} from "../rideReceiptMap.service.js";
 
 describe("RideReceiptMapService route fallback", () => {
   it("uses pickup and destination when recorded GPS trace is practically stationary", () => {
@@ -30,5 +33,16 @@ describe("RideReceiptMapService route fallback", () => {
 
     expect(route.length).toBeGreaterThanOrEqual(3);
     expect(route[1]).toEqual(middle);
+  });
+
+  it("fits a short Rapa Nui trip with enough span to show roads", () => {
+    const bounds = fitReceiptMapBounds([
+      { lat: -27.1549, lng: -109.4323 },
+      { lat: -27.1472, lng: -109.4251 },
+    ]);
+
+    expect(bounds.maxLat - bounds.minLat).toBeGreaterThan(0.007);
+    expect(bounds.minLng).toBeLessThan(-109.42);
+    expect(bounds.maxLng).toBeGreaterThan(-109.43);
   });
 });
