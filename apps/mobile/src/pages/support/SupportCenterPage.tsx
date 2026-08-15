@@ -277,19 +277,33 @@ export function SupportCenterPage(): JSX.Element {
           <section className="rp-card">
             <IonItem>
               <IonLabel position="stacked">Tipo</IonLabel>
-              <IonSelect value={category} onIonChange={(event) => { setCategory(event.detail.value as SupportCategory); setRideId(""); }}>
+              <IonSelect
+                value={category}
+                interfaceOptions={{ header: "Tipo de solicitud" }}
+                onIonChange={(event) => { setCategory(event.detail.value as SupportCategory); setRideId(""); }}
+              >
                 {Object.entries(CATEGORY_LABEL).map(([value, label]) => <IonSelectOption key={value} value={value}>{label}</IonSelectOption>)}
               </IonSelect>
             </IonItem>
             <IonItem style={{ marginTop: 10 }}>
               <IonLabel position="stacked">Prioridad</IonLabel>
-              <IonSelect value={category === "safety" ? "urgent" : priority} disabled={category === "safety"} onIonChange={(event) => setPriority(event.detail.value as SupportPriority)}>
+              <IonSelect
+                value={category === "safety" ? "urgent" : priority}
+                disabled={category === "safety"}
+                interfaceOptions={{ header: "Prioridad de la solicitud" }}
+                onIonChange={(event) => setPriority(event.detail.value as SupportPriority)}
+              >
                 <IonSelectOption value="low">Baja</IonSelectOption><IonSelectOption value="normal">Normal</IonSelectOption><IonSelectOption value="high">Alta</IonSelectOption><IonSelectOption value="urgent">Urgente</IonSelectOption>
               </IonSelect>
             </IonItem>
             <IonItem style={{ marginTop: 10 }}>
               <IonLabel position="stacked">Viaje relacionado</IonLabel>
-              <IonSelect value={rideId} placeholder="Sin viaje relacionado" onIonChange={(event) => setRideId(String(event.detail.value ?? ""))}>
+              <IonSelect
+                value={rideId}
+                placeholder="Sin viaje relacionado"
+                interfaceOptions={{ header: "Viaje relacionado" }}
+                onIonChange={(event) => setRideId(String(event.detail.value ?? ""))}
+              >
                 <IonSelectOption value="">Sin viaje relacionado</IonSelectOption>
                 {selectableRides.map((ride) => <IonSelectOption key={ride.id} value={ride.id}>{ride.originText} → {ride.destinationText} · {ride.status}</IonSelectOption>)}
               </IonSelect>
