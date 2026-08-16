@@ -105,13 +105,13 @@ describe("mergeRapaNuiAutocompletePredictions", () => {
     expect(merged[0].placeId).not.toBe("google-anakena");
   });
 
-  it("no devuelve más de ocho para no enterrar el resto de la pantalla", () => {
+  it("no devuelve más de dieciséis para no enterrar el resto de la pantalla", () => {
     const merged = mergeRapaNuiAutocompletePredictions(
       [local("Uno", 1200), local("Dos", 1200)],
-      Array.from({ length: 12 }, (_, i) => google(`Google ${i}`)),
+      Array.from({ length: 20 }, (_, i) => google(`Google ${i}`)),
     );
 
-    expect(merged).toHaveLength(8);
+    expect(merged).toHaveLength(16);
   });
 
   it("aguanta que una de las dos fuentes venga vacía", () => {
@@ -246,6 +246,33 @@ describe("DGAC encuentra el aeropuerto sin depender de la red", () => {
     expect(
       getRapaNuiLocalAutocompletePredictions("aeronautica")[0]?.mainText,
     ).toBe("Aeropuerto Internacional Mataveri");
+  });
+});
+
+describe("filtro desde una letra del abecedario", () => {
+  /* El pasajero escribe "h" y debe ver de inmediato los lugares de la isla
+     cuyo nombre empieza por H (Hospital, Hanga, Hare…), sin teclear el
+     nombre completo. */
+  it('"h" lista lugares cuyo nombre empieza por H', () => {
+    const names = getRapaNuiLocalAutocompletePredictions("h").map(
+      (item) => item.mainText,
+    );
+
+    expect(names.length).toBeGreaterThan(0);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "Hospital de Hanga Roa",
+        "Caleta Hanga Roa",
+        "Feria Artesanal Hare Umanga",
+      ]),
+    );
+    /* No debe colarse algo que solo tenga "h" en medio (p. ej. Tahai vía includes). */
+    expect(names).not.toContain("Ahu Tahai");
+  });
+
+  it("con el campo vacío no filtra (lista vacía del matcher)", () => {
+    expect(getRapaNuiLocalAutocompletePredictions("")).toEqual([]);
+    expect(getRapaNuiLocalAutocompletePredictions("   ")).toEqual([]);
   });
 });
 

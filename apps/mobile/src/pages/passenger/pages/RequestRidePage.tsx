@@ -2455,9 +2455,12 @@ export function getRapaNuiLocalAutocompleteMatches(
   input: string,
 ): LocalAutocompleteMatch[] {
   const query = normalizeRapaNuiAutocompleteText(input);
-  if (query.length < 2) return [];
+  /* Una sola letra ya filtra: "h" → Hospital, Hanga Roa, Hare Umanga…
+     Antes exigía 2 y el pasajero tenía que escribir de más para ver la lista. */
+  if (query.length < 1) return [];
 
   const queryWords = query.split(" ").filter(Boolean);
+  const singleLetter = query.length === 1;
 
   return RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.map((place) => {
     const values = [
@@ -2492,6 +2495,21 @@ export function getRapaNuiLocalAutocompleteMatches(
          LOCAL_STRONG_AUTOCOMPLETE_SCORE). Lo que sí sobrevive es escribir la
          dirección entera o su principio: ahí la intención está clara. */
       const isLocationField = index === 1 || index === 2;
+
+      /* Con una letra, "includes" encaja con casi todo (cualquier palabra con
+         esa letra dentro). Solo vale el prefijo del nombre o de sus palabras /
+         alias —nunca subtítulo ni dirección—. */
+      if (singleLetter) {
+        if (isLocationField) continue;
+
+        const words = value.split(" ").filter(Boolean);
+        if (value.startsWith(query)) {
+          score = Math.max(score, 1000);
+        } else if (words.some((word) => word.startsWith(query))) {
+          score = Math.max(score, 900);
+        }
+        continue;
+      }
 
       let literal = -1;
       if (value === query) literal = Math.max(literal, 1200);
@@ -2555,7 +2573,10 @@ export function getRapaNuiLocalAutocompleteMatches(
       (a, b) =>
         b.score - a.score || a.place.name.localeCompare(b.place.name, "es"),
     )
-    .slice(0, 8)
+    /* Una letra suele devolver más candidatos (todos los que empiezan igual);
+       se muestra una lista más larga para que el pasajero elija sin escribir
+       el nombre entero. */
+    .slice(0, singleLetter ? 24 : 8)
     .map(({ place, score }) => ({
       score,
       suggestion: {
@@ -2605,7 +2626,7 @@ export function mergeRapaNuiAutocompletePredictions(
     seen.add(key);
     merged.push(suggestion);
 
-    if (merged.length >= 8) break;
+    if (merged.length >= 16) break;
   }
 
   return merged;
@@ -5008,7 +5029,7 @@ export async function getGooglePredictions(
   const cleanInput = input.trim();
   const cacheKey = normalizeRapaNuiAutocompleteText(cleanInput);
 
-  if (cacheKey.length < 2) {
+  if (cacheKey.length < 1) {
     return [];
   }
 
@@ -7277,12 +7298,15 @@ function MapPointPicker({
     const value = searchText.trim();
     const sequence = ++pickerSearchSequenceRef.current;
 
-    if (!isOpen || normalizeRapaNuiAutocompleteText(value).length < 2) {
+    if (!isOpen || normalizeRapaNuiAutocompleteText(value).length < 1) {
       setPickerSuggestions([]);
       setSearchingPicker(false);
       if (value.length === 0) setScopeMessage(null);
       return;
     }
+
+    const instant = getRapaNuiLocalAutocompletePredictions(value);
+    if (instant.length > 0) setPickerSuggestions(instant);
 
     setSearchingPicker(true);
     setScopeMessage(null);
@@ -9027,7 +9051,7 @@ export default function RequestRidePage(): JSX.Element {
 
     if (
       isAirportScheduledRide ||
-      normalizeRapaNuiAutocompleteText(value).length < 2 ||
+      normalizeRapaNuiAutocompleteText(value).length < 1 ||
       originPoint?.text === value
     ) {
       setOriginSuggestions([]);
@@ -9064,7 +9088,7 @@ export default function RequestRidePage(): JSX.Element {
     const value = destInput.trim();
 
     if (
-      normalizeRapaNuiAutocompleteText(value).length < 2 ||
+      normalizeRapaNuiAutocompleteText(value).length < 1 ||
       destinationPoint?.text === value
     ) {
       setDestSuggestions([]);
@@ -9418,7 +9442,7 @@ export default function RequestRidePage(): JSX.Element {
      texto: antes este bloque traía su propia caja y el pasajero escribía ahí,
      separado de la fila; ahora el campo real es el de arriba (rq-field) y
      esto es sólo la respuesta que aparece debajo mientras se escribe, como en
-     Uber. Sin texto, lista los lugares disponibles; desde 2 caracteres,
+     Uber. Sin texto, lista los lugares disponibles; desde 1 carácter,
      muestra los resultados (locales + Google) que ya calculan los efectos
      existentes. */
   function renderRouteResults(target: PickerTarget): JSX.Element {
@@ -9426,7 +9450,7 @@ export default function RequestRidePage(): JSX.Element {
     const value = isOrigin ? originInput : destInput;
     const suggestions = isOrigin ? originSuggestions : destSuggestions;
     const searching = isOrigin ? searchingOrigin : searchingDest;
-    const showBaseList = normalizeRapaNuiAutocompleteText(value).length < 2;
+    const showBaseList = normalizeRapaNuiAutocompleteText(value).length < 1;
 
     return (
       <div
