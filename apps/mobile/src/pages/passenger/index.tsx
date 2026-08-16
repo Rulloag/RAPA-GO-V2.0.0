@@ -7036,6 +7036,14 @@ function TripsPage(): JSX.Element {
                             }
                             vehicleYear={driverDisplayRide.driverVehicleYear}
                             phone={driverDisplayRide.driverPhone ?? null}
+                            requestedVehicleCategory={
+                              (driverDisplayRide as { requestedVehicleCategory?: string | null })
+                                .requestedVehicleCategory ?? null
+                            }
+                            assignedVehicleCategory={
+                              (driverDisplayRide as { assignedVehicleCategory?: string | null })
+                                .assignedVehicleCategory ?? null
+                            }
                             waMessage={
                               driverDisplayRide.driverPhone && driverDisplayName
                                 ? WA_MESSAGES.passengerToDriver({

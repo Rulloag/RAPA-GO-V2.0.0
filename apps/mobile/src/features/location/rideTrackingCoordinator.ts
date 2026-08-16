@@ -35,8 +35,8 @@ const LIVE_LOCATION_KEY = "rapago_driver_live_locations_v1";
 const CURRENT_LOCATION_KEY = "rapago_current_driver_location";
 
 /** Ritmo mínimo de publicación cuando el publicador es la capa JS. */
-const PUBLISH_MIN_INTERVAL_MS = 3500;
-const PUBLISH_MIN_DISTANCE_M = 4;
+const PUBLISH_MIN_INTERVAL_MS = 2000;
+const PUBLISH_MIN_DISTANCE_M = 2;
 /** Red de seguridad: relee el estado real del nativo aunque nada haya cambiado. */
 const RECONCILE_INTERVAL_MS = 15_000;
 

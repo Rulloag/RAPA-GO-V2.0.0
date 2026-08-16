@@ -7,6 +7,10 @@ export const upsertDriverProfileSchema = z
     vehicleYear:     z.number().int().min(1990).max(2030).optional(),
     vehiclePlate:    z.string().trim().max(10).optional(),
     vehicleColor:    z.string().trim().max(30).optional(),
+    vehicleCategory: z
+      .enum(["standard", "xl", "extra_luggage", "luggage"])
+      .transform((v) => (v === "luggage" ? "extra_luggage" : v))
+      .optional(),
     profilePhotoUrl: z.string().url().optional(),
     vehiclePhotoUrl: z.string().url().optional(),
     bio:             z.string().trim().max(500).optional(),

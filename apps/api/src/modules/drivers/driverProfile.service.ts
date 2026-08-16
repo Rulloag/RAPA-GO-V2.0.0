@@ -40,6 +40,7 @@ function serializeProfile(profile: import("../../db/schema/index.js").DriverProf
     vehicleYear:     profile.vehicleYear     ?? null,
     vehiclePlate:    profile.vehiclePlate    ?? null,
     vehicleColor:    profile.vehicleColor    ?? null,
+    vehicleCategory: profile.vehicleCategory ?? "standard",
     licenseNumber:   profile.licenseNumber   ?? null,
     licenseExpiry:   profile.licenseExpiry   ?? null,
     profilePhotoUrl: profile.profilePhotoUrl ?? null,

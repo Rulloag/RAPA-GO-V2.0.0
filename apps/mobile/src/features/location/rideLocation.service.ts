@@ -285,8 +285,8 @@ export const rideLocationService = {
       rideId,
       accessToken,
       apiBaseUrl: baseUrl,
-      minUpdateIntervalMs: 4000,
-      minDistanceMeters: 5,
+      minUpdateIntervalMs: 2500,
+      minDistanceMeters: 3,
     });
   },
 

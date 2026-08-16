@@ -110,15 +110,15 @@ describe("rideQueueMatch — evaluateQueueEligibility", () => {
     expect(result.reasons).toContain("DRIVER_UNAVAILABLE");
   });
 
-  it("6. categoría de vehículo incompatible es rechazada", () => {
+  it("6. categoría de vehículo distinta NO bloquea (informa, no restringe)", () => {
     const result = evaluateQueueEligibility(
       baseInput({
-        newRideRequest: { id: "ride-b-1", originLat: ORIGIN_B_NEAR.lat, originLng: ORIGIN_B_NEAR.lng, vehicleCategory: "van" },
-        driverStatus: { ...baseInput().driverStatus, vehicleCategory: "sedan" },
+        newRideRequest: { id: "ride-b-1", originLat: ORIGIN_B_NEAR.lat, originLng: ORIGIN_B_NEAR.lng, vehicleCategory: "xl" },
+        driverStatus: { ...baseInput().driverStatus, vehicleCategory: "standard" },
       }),
     );
-    expect(result.eligible).toBe(false);
-    expect(result.reasons).toContain("VEHICLE_CATEGORY_MISMATCH");
+    expect(result.eligible).toBe(true);
+    expect(result.reasons).not.toContain("VEHICLE_CATEGORY_MISMATCH");
   });
 
   it("7. ubicación desactualizada (stale) es rechazada", () => {

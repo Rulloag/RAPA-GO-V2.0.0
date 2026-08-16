@@ -13,6 +13,8 @@ import { DriverComplianceService } from "../drivers/driverCompliance.service.js"
 import { rideReceiptsService } from "../rideReceipts/rideReceipts.service.js";
 import { attemptQueuedOffer } from "./rideQueueOfferProducer.service.js";
 import { haversineDistanceKm, estimateEtaMinutes, QUEUE_MATCH_CONFIG } from "./rideQueueMatch.js";
+import { filterGpsTrack } from "@rapa-go/shared";
+import { resolveRequestedVehicleCategory } from "@rapa-go/shared";
 import type {
   RideRequestResponse,
   RidesListResult,
@@ -884,6 +886,8 @@ function toResponse(
         toPolicyChargeResponse(charge),
       ) ?? [],
     assignmentMode: r.assignmentMode,
+    requestedVehicleCategory: r.requestedVehicleCategory ?? "standard",
+    assignedVehicleCategory: r.assignedVehicleCategory ?? null,
   };
 
   if (scheduleMeta?.isScheduled) {
@@ -948,6 +952,7 @@ function toAvailableResponse(r: RideRequest): AvailableRideResponse {
     status: r.status,
     requestedAt: r.requestedAt.toISOString(),
     createdAt: r.createdAt.toISOString(),
+    requestedVehicleCategory: r.requestedVehicleCategory ?? "standard",
   };
 }
 
@@ -1097,10 +1102,7 @@ export class RidesService {
       };
     }
 
-    const routeFrom =
-      ride.status === "completed"
-        ? ride.startedAt ?? ride.acceptedAt ?? ride.requestedAt
-        : ride.acceptedAt ?? ride.requestedAt;
+    const routeFrom = ride.acceptedAt ?? ride.requestedAt;
     const routeTo =
       ride.completedAt ?? ride.cancelledAt ?? ride.updatedAt ?? new Date();
     const points = await ridesRepo.listRouteHistory(
@@ -1108,15 +1110,23 @@ export class RidesService {
       routeFrom,
       routeTo,
     );
+    const filtered = filterGpsTrack(
+      points.map((point) => ({
+        lat: point.latitude,
+        lng: point.longitude,
+        capturedAt: point.capturedAt.toISOString(),
+        accuracyMeters: point.accuracyMeters ?? null,
+      })),
+    );
 
     return {
       ok: true,
       rideId,
-      points: points.map((point) => ({
-        lat: point.latitude,
-        lng: point.longitude,
+      points: filtered.map((point) => ({
+        lat: point.lat,
+        lng: point.lng,
         accuracyMeters: point.accuracyMeters ?? null,
-        capturedAt: point.capturedAt.toISOString(),
+        capturedAt: point.capturedAt ?? new Date().toISOString(),
       })),
     };
   }
@@ -1272,6 +1282,12 @@ export class RidesService {
           : {}),
         paymentProvider: input.paymentProvider ?? null,
         useWalletBenefit: input.useWalletBenefit === true,
+        requestedVehicleCategory: resolveRequestedVehicleCategory({
+          requestedVehicleCategory: input.requestedVehicleCategory,
+          vehicleCategory: input.vehicleCategory,
+          fareVehicleCategory: input.fareVehicleCategory,
+          notes: notesForStorage,
+        }),
       },
     );
 
@@ -2196,6 +2212,20 @@ export class RidesService {
       responseRide["requeuedAfterDriverCancellation"] = true;
       responseRide["passengerNotice"] =
         "Tu conductor canceló el viaje. Estamos buscando uno nuevo.";
+
+      // Señal persistente y real, visible aunque el pasajero esté en otro
+      // dispositivo — a diferencia del `responseRide` de arriba, que sólo
+      // llega al conductor que hizo esta llamada. Reutiliza el mecanismo de
+      // notificaciones existente (mismo que notifyPassengerDriverEnRoute),
+      // no crea infraestructura nueva.
+      import("../notifications/notifications.helpers.js")
+        .then(({ notifyPassengerDriverCancelledAndReassigning }) => {
+          notifyPassengerDriverCancelledAndReassigning({
+            passengerUserId: cancelled.passengerUserId,
+            rideId: cancelled.id,
+          });
+        })
+        .catch(() => {});
     } else {
       queueReceiptWithoutBlocking(
         rideReceiptsService.queueCancelledRide(

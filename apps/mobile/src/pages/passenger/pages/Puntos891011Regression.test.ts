@@ -39,6 +39,7 @@ describe("puntos 8, 10 y 11 solicitados para pasajero", () => {
     expect(ridesServiceSource).toContain("/rides/${rideId}/route-history");
     expect(tripsSource).toContain("PassengerHistoricalRouteMap");
     expect(tripsSource).toContain("Ruta GPS real registrada");
+    expect(tripsSource).toContain("No hay suficientes puntos GPS para reconstruir completamente este recorrido.");
     expect(tripsSource).toContain("Sin trazado GPS guardado");
     expect(tripsSource).toContain('data-final-trip-record="true"');
     expect(tripsSource).toContain("NO SHOW");
