@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { matchRapaNuiPlaceHint } from "./RequestRidePage";
 
 /* Ocho lugares de la isla que Google conoce pero a los que no se llegaba sin
-   teclear el nombre entero: la consulta era el texto tal cual más "Rapa Nui",
-   así que "haka" pedía «haka Rapa Nui» y no devolvía "Haka Piri Mana".
+   teclear el nombre entero, más Tahonga y Casa Silvio que un tester tuvo que
+   escribir completos.
 
    Estas pistas NO llevan coordenadas a propósito —las pone Google al
    seleccionar—, así que lo único que hay que fijar aquí es que reconozcan el
@@ -12,7 +12,7 @@ import { matchRapaNuiPlaceHint } from "./RequestRidePage";
    iba a otra parte. */
 
 describe("matchRapaNuiPlaceHint", () => {
-  it("reconoce los ocho nombres desde pocas letras", () => {
+  it("reconoce los nombres conocidos desde pocas letras", () => {
     expect(matchRapaNuiPlaceHint("haka")).toBe("Haka Piri Mana");
     expect(matchRapaNuiPlaceHint("maea")).toBe("Hotel Maea Hare Repa");
     expect(matchRapaNuiPlaceHint("omoto")).toBe("Omotohi");
@@ -23,6 +23,8 @@ describe("matchRapaNuiPlaceHint", () => {
       "DGAC Dirección General de Aeronáutica Civil",
     );
     expect(matchRapaNuiPlaceHint("o te ahi")).toBe("O Te Ahi");
+    expect(matchRapaNuiPlaceHint("tahonga")).toBe("Cabañas Tahonga");
+    expect(matchRapaNuiPlaceHint("silvio")).toBe("Casa Silvio");
   });
 
   it("reconoce el nombre completo tal como lo escribiría el pasajero", () => {
@@ -85,6 +87,8 @@ describe("matchRapaNuiPlaceHint", () => {
     expect(matchRapaNuiPlaceHint("mercado")).toBeNull();
     expect(matchRapaNuiPlaceHint("terevaka")).toBeNull();
     expect(matchRapaNuiPlaceHint("comisaria")).toBeNull();
+    /* "tah" es el alias de Ahu Tahai. No puede reescribirse a Tahonga. */
+    expect(matchRapaNuiPlaceHint("tah")).toBeNull();
   });
 
   it("no empareja por un trozo del medio de la palabra", () => {

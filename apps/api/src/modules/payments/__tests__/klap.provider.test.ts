@@ -147,6 +147,7 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
   });
 
   it("la orden siempre declara transaction_type=authorization (captura diferida, nunca controlada por el cliente)", async () => {
+    delete process.env["KLAP_DEFERRED_CAPTURE_ENABLED"];
     mockJson(201, {
       order_id: "test-order-123",
       redirect_url: CHECKOUT_URL,
@@ -553,7 +554,7 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
 });
 
 describe("KlapProvider safe deferred-capture gate", () => {
-  it("omite transaction_type y bloquea capture cuando el contrato no está confirmado", async () => {
+  it("siempre declara transaction_type=authorization y bloquea capture si el contrato no está confirmado", async () => {
     process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "false";
     process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"] = "false";
     mockJson(201, {
@@ -566,7 +567,10 @@ describe("KlapProvider safe deferred-capture gate", () => {
     const body = JSON.parse(String(request()[1].body)) as {
       customs: Array<{ key: string; value: string }>;
     };
-    expect(body.customs.some((item) => item.key === "transaction_type")).toBe(false);
+    expect(body.customs).toContainEqual({
+      key: "transaction_type",
+      value: "authorization",
+    });
 
     global.fetch = vi.fn();
     await expect(

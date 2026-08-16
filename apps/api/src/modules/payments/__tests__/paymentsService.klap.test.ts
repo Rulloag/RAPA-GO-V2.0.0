@@ -43,9 +43,20 @@ describe("PaymentsService Klap V108 — contrato de seguridad", () => {
 
   it("solo aprueba después de consultar la orden oficial o recibir webhook", () => {
     expect(serviceSource).toContain("getKlapProvider().getOrder(orderId)");
-    expect(serviceSource).toContain("markSuccessAndActivateRide");
+    expect(serviceSource).toContain("markAuthorizedAndActivateRide");
     expect(serviceSource).toContain("markRejected");
     expect(serviceSource).not.toContain("KLAP_SANDBOX_TEST_OUTCOME");
+  });
+
+  it("el confirm de Klap nunca marca success: solo authorized (retención)", () => {
+    const confirmStart = serviceSource.indexOf("async handleKlapConfirmWebhook(");
+    const rejectStart = serviceSource.indexOf("async handleKlapRejectWebhook(");
+    expect(confirmStart).toBeGreaterThanOrEqual(0);
+    expect(rejectStart).toBeGreaterThan(confirmStart);
+    const confirmSource = serviceSource.slice(confirmStart, rejectStart);
+    expect(confirmSource).toContain("markAuthorizedAndActivateRide");
+    expect(confirmSource).not.toContain("markSuccessAndActivateRide");
+    expect(providerSource).toContain("KLAP_TRANSACTION_TYPE_AUTHORIZATION");
   });
 
   it("mantiene return/cancel como señales no autoritativas", () => {

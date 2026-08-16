@@ -35,4 +35,14 @@ describe("experiencia del pasajero tipo Uber", () => {
     expect(tripsSource).toContain("SEÑAL ANTIGUA");
     expect(tripsSource).toContain("now - lastRouteRequestAtRef.current < 12_000");
   });
+
+  it("no abre el diálogo de devolución al cancelar y no llama Cancelar/devolución al botón activo", () => {
+    expect(tripsSource).toContain("AUTO_SHOW_CARD_REFUND_ALERT = false");
+    expect(tripsSource).toContain("openRapaGoCardCancelRefundWhatsApp(ride)");
+    expect(tripsSource).toContain("shouldShowRapaGoCardCancelRefundButton");
+    expect(tripsSource).toContain('if (provider.includes("klap")) return false');
+    expect(tripsSource).not.toMatch(
+      /\? "Cancelar\/devolución" : "Cancelar viaje"/,
+    );
+  });
 });

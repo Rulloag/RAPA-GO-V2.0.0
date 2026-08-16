@@ -67,5 +67,9 @@ describe("flujo de solicitud tipo Uber en Rapa Nui", () => {
     expect(requestRideSource).toContain(
       "Puedes escribir el origen o elegirlo manualmente en el mapa.",
     );
+    expect(requestRideSource).not.toContain(
+      "Viaje inmediato para moverte ahora por Rapa Nui.",
+    );
+    expect(requestRideSource).not.toContain("<strong>Solo ida</strong>");
   });
 });
