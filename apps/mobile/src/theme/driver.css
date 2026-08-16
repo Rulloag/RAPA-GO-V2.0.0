@@ -3298,6 +3298,17 @@ ion-tabs:has(
   margin-top: 12px;
 }
 
+/* En Inicio: bien visible, justo bajo disponibilidad */
+.rapago-driver-page .driver-switch-passenger--home {
+  margin: 0 0 14px;
+  border: var(--rp-border-w) solid color-mix(in srgb, var(--rp-btn-primary) 55%, var(--rp-border-c));
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--rp-btn-primary) 18%, transparent);
+}
+
+.rapago-driver-page .driver-switch-passenger--home .rapago-profile-card-title {
+  font-size: 1rem;
+}
+
 /* ==========================================================================
    MI PERFIL — ÁMBITO PROPIO (.rapago-driver-profile)
 

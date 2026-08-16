@@ -91,6 +91,7 @@ import { RapagoAppBar } from "../../components/RapagoAppBar";
 import { setDriverActiveRideFlag } from "../../features/rides/driverActiveRideFlag";
 import { ROUTE_METADATA } from "../../navigation/routeConfig";
 import { ROUTES } from "../../navigation/routes";
+import { activatePassengerMode } from "../../features/roles/appMode";
 import { useAuth } from "../../features/auth";
 import { ridesService } from "../../features/rides/rides.service";
 import { cashPaymentsService } from "../../features/cashPayments/cashPayments.service.js";
@@ -4996,6 +4997,55 @@ function DriverAvailabilityControl({
   );
 }
 
+/** Cambia a vista pasajero sin cerrar sesión. El rol de cuenta sigue siendo driver. */
+function switchDriverAppToPassengerMode(): void {
+  activatePassengerMode();
+  /* Ionic a veces conserva el layout anterior; navegación real a passenger/home. */
+  window.location.href = ROUTES.PASSENGER.HOME;
+}
+
+function DriverSwitchToPassengerCard({
+  disabled = false,
+  compact = false,
+}: {
+  disabled?: boolean;
+  /** En Inicio: tarjeta corta y bien visible. En Perfil: copy más completo. */
+  compact?: boolean;
+}): JSX.Element {
+  return (
+    <section
+      className={`rapago-profile-card driver-switch-passenger${
+        compact ? " driver-switch-passenger--home" : ""
+      }`}
+      aria-label="Cambiar a modo pasajero">
+      <div className="rapago-driver-switch">
+        <span className="rapago-driver-switch__icon" aria-hidden="true">
+          <IonIcon icon={personOutline} />
+        </span>
+        <div className="rapago-driver-switch__copy">
+          <div className="rapago-profile-card-title">
+            {compact ? "¿Necesitas un viaje?" : "¿Quieres pedir un Rapa Go?"}
+          </div>
+          <p className="rapago-profile-card-sub">
+            {compact
+              ? "Pasa a modo pasajero sin cerrar sesión."
+              : "Cambia temporalmente a la vista de pasajero sin cerrar sesión."}
+          </p>
+        </div>
+      </div>
+
+      <IonButton
+        expand="block"
+        color="warning"
+        className="rapago-driver-switch__btn"
+        onClick={switchDriverAppToPassengerMode}
+        disabled={disabled}>
+        Cambiar a modo pasajero
+      </IonButton>
+    </section>
+  );
+}
+
 type DriverVehicleOwnership = "own" | "borrowed";
 
 type DriverVehicleRecord = {
@@ -8954,6 +9004,8 @@ export function DriverHomePage(): JSX.Element {
               onChange={handleAvailabilityChange}
               disabled={availabilitySaving}
             />
+
+            <DriverSwitchToPassengerCard compact />
 
             <section className="driver-home-cta">
               <div className="driver-home-cta__icon" aria-hidden="true">
@@ -23259,35 +23311,6 @@ export function DriverProfilePage(): JSX.Element {
     }
   }
 
-  function handleSwitchToPassengerMode(): void {
-    try {
-      // Esta es la llave que debe leer AppRouter/RouteGuard.
-      // El usuario sigue teniendo rol driver, pero la vista activa cambia a pasajero.
-      localStorage.setItem("rapago_active_mode", "passenger");
-      localStorage.setItem("rapago_active_role", "passenger");
-      localStorage.setItem("rapago_selected_role", "passenger");
-      localStorage.setItem("rapago_view_mode", "passenger");
-
-      sessionStorage.setItem("rapago_active_mode", "passenger");
-      sessionStorage.setItem("rapago_active_role", "passenger");
-      sessionStorage.setItem("rapago_selected_role", "passenger");
-      sessionStorage.setItem("rapago_view_mode", "passenger");
-
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: "rapago_active_mode",
-          newValue: "passenger",
-        }),
-      );
-    } catch {
-      // Si storage falla, igual forzamos navegación.
-    }
-
-    // Ionic/React a veces mantiene el layout anterior por caché.
-    // Por eso se fuerza navegación real a passenger/home.
-    window.location.href = ROUTES.PASSENGER.HOME;
-  }
-
   function selectLanguage(value: string): void {
     setLanguages(normalizeDriverLanguages([value]));
   }
@@ -23690,6 +23713,10 @@ export function DriverProfilePage(): JSX.Element {
                   </p>
                 )}
               </header>
+
+              {canSwitchToPassengerMode && (
+                <DriverSwitchToPassengerCard disabled={saving} />
+              )}
 
               {error && (
                 <div
@@ -24370,34 +24397,6 @@ export function DriverProfilePage(): JSX.Element {
               </IonButton>
 
               <p className="rapago-profile-section-label">Cuenta</p>
-
-              {canSwitchToPassengerMode && (
-                <section className="rapago-profile-card">
-                  <div className="rapago-driver-switch">
-                    <span className="rapago-driver-switch__icon">
-                      <IonIcon icon={personOutline} aria-hidden="true" />
-                    </span>
-                    <div className="rapago-driver-switch__copy">
-                      <div className="rapago-profile-card-title">
-                        ¿Quieres pedir un Rapa Go?
-                      </div>
-                      <p className="rapago-profile-card-sub">
-                        Cambia temporalmente a la vista de pasajero sin cerrar
-                        sesión.
-                      </p>
-                    </div>
-                  </div>
-
-                  <IonButton
-                    expand="block"
-                    color="warning"
-                    className="rapago-driver-switch__btn"
-                    onClick={handleSwitchToPassengerMode}
-                    disabled={saving}>
-                    Cambiar a modo pasajero
-                  </IonButton>
-                </section>
-              )}
 
               <div className="rapago-profile-danger-slot">
                 <AccountDeletionCard
