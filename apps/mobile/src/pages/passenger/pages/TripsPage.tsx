@@ -39,6 +39,11 @@ import { ROUTES } from "../../../navigation/routes.js";
 import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
 import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
+import {
+  getPassengerCancellationPolicyClockStartMs,
+  isPassengerQueuedOfferAssignment,
+  isPassengerQueuedOfferFreeCancel,
+} from "./passengerCancellationPolicy.js";
 
 const PAGE_SIZE = 20;
 const RAPAGO_SUPPORT_WHATSAPP_PHONE = "56947964171";
@@ -292,10 +297,13 @@ const RAPAGO_FAST_SEARCH_STORAGE_KEY = "rapago_passenger_fast_search_rides_v1";
 const RAPAGO_FAST_SEARCH_EVENT = "rapago:passenger-fast-search-updated";
 const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
 const RAPAGO_FAST_SEARCH_PROMPT_AFTER_MS = 2 * 60 * 1000;
-// Política comercial RAPA GO:
+// Política comercial RAPA GO (alineada con shouldCreatePassengerCancellationCharge):
 // - Sin conductor asignado: cancelación gratuita en cualquier momento.
-// - Con conductor asignado: cancelación gratuita durante 1 minuto desde acceptedAt.
-// - Desde 1 minuto cumplido: 30% de la tarifa aplicable, con tope de $3.000.
+// - Viaje normal: cancelación gratuita durante 1 minuto desde acceptedAt.
+// - queued_offer + accepted (o sin enRouteAt): siempre $0 — el conductor aún
+//   termina otro viaje; el minuto de cortesía NO usa acceptedAt de la cola.
+// - queued_offer ya activado: 1 minuto desde enRouteAt (cuando B pasa a
+//   driver_en_route), después 30% con tope $3.000.
 // - No show después de 5 minutos desde arrivedAt: 50% de la tarifa, tope $5.000.
 // - Si el conductor cancela, el viaje se reasigna y el reloj comienza de nuevo
 //   cuando el nuevo conductor queda efectivamente asignado.
@@ -954,7 +962,26 @@ function getPassengerDriverAcceptedCountdownState(
   remainingFreeMs: number;
   isFree: boolean;
 } {
-  const acceptedAtMs = getPassengerDriverAcceptedPolicyTimestampMs(ride, nowMs);
+  if (
+    isPassengerQueuedOfferFreeCancel({
+      assignmentMode: ride.assignmentMode,
+      status: ride.status,
+      enRouteAt: ride.enRouteAt,
+    })
+  ) {
+    return {
+      elapsedMs: 0,
+      remainingFreeMs: RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS,
+      isFree: true,
+    };
+  }
+
+  const acceptedAtMs = getPassengerCancellationPolicyClockStartMs({
+    assignmentMode: ride.assignmentMode,
+    status: ride.status,
+    acceptedAtMs: getPassengerDriverAcceptedPolicyTimestampMs(ride, nowMs),
+    enRouteAt: ride.enRouteAt,
+  });
   const elapsedMs = acceptedAtMs == null ? 0 : Math.max(0, nowMs - acceptedAtMs);
   const remainingFreeMs = Math.max(0, RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS - elapsedMs);
 
@@ -1720,7 +1747,18 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
   const record = ride as RideRequestData & Record<string, unknown>;
   const effectiveStatus = getEffectivePassengerRideStatus(ride);
   const nowMs = Date.now();
-  const acceptedAtMs = getPassengerDriverAcceptedPolicyTimestampMs(record, nowMs);
+  const isQueuedAssignment = isPassengerQueuedOfferAssignment(record.assignmentMode);
+  const isQueuedFreeCancel = isPassengerQueuedOfferFreeCancel({
+    assignmentMode: record.assignmentMode,
+    status: ride.status,
+    enRouteAt: record.enRouteAt,
+  });
+  const acceptedAtMs = getPassengerCancellationPolicyClockStartMs({
+    assignmentMode: record.assignmentMode,
+    status: ride.status,
+    acceptedAtMs: getPassengerDriverAcceptedPolicyTimestampMs(record, nowMs),
+    enRouteAt: record.enRouteAt,
+  });
   const arrivedAtMs = getPassengerCancellationTimeMs(record, ["arrivedAt", "driverArrivedAt", "driverReachedPickupAt"]);
   const acceptedElapsedMs = acceptedAtMs == null ? null : Math.max(0, nowMs - acceptedAtMs);
   const arrivedElapsedMs = arrivedAtMs == null ? null : Math.max(0, nowMs - arrivedAtMs);
@@ -1768,10 +1806,18 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
   }
 
   if (
+    isQueuedFreeCancel ||
     acceptedAtMs == null ||
     acceptedElapsedMs == null ||
     acceptedElapsedMs < RAPAGO_FREE_CANCEL_AFTER_ACCEPTANCE_MS
   ) {
+    const queuedFreeMessage =
+      "Puedes cancelar sin cargo mientras tu conductor finaliza el viaje actual. El minuto de cortesía comienza cuando se dirija hacia ti.";
+    const queuedEnRouteFreeMessage =
+      "Puedes cancelar gratuitamente durante el primer minuto desde que el conductor se dirige hacia ti. Se libera el 100% de la retención Klap.";
+    const assignedFreeMessage =
+      "Puedes cancelar gratuitamente durante el primer minuto desde que el conductor queda asignado al viaje. Se libera el 100% de la retención Klap.";
+
     return {
       type: "free",
       feeClp: 0,
@@ -1780,7 +1826,11 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       feePercent: 0,
       feeCapClp: 0,
       title: "Cancelación gratuita",
-      message: "Puedes cancelar gratuitamente durante el primer minuto desde que el conductor queda asignado al viaje. Se libera el 100% de la retención Klap.",
+      message: isQueuedFreeCancel
+        ? queuedFreeMessage
+        : isQueuedAssignment
+          ? queuedEnRouteFreeMessage
+          : assignedFreeMessage,
       detail: "No corresponde cargo por cancelación.",
       acceptedElapsedMs,
       arrivedElapsedMs,
@@ -1798,8 +1848,12 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
     feePercent: RAPAGO_LATE_CANCEL_PERCENT,
     feeCapClp: RAPAGO_CANCEL_FEE_CAP_CLP,
     title: "Cancelación después de 1 minuto",
-    message: `Finalizó el minuto gratuito desde la asignación. El cargo referencial es ${formatClp(fee)}.`,
-    detail: `Después de 1 minuto desde la asignación: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Se captura solo esa multa y se libera el resto de la retención.`,
+    message: isQueuedAssignment
+      ? `Finalizó el minuto gratuito desde que el conductor se dirigió hacia ti. El cargo referencial es ${formatClp(fee)}.`
+      : `Finalizó el minuto gratuito desde la asignación. El cargo referencial es ${formatClp(fee)}.`,
+    detail: isQueuedAssignment
+      ? `Después de 1 minuto desde que el conductor va en camino: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Se captura solo esa multa y se libera el resto de la retención.`
+      : `Después de 1 minuto desde la asignación: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Se captura solo esa multa y se libera el resto de la retención.`,
     acceptedElapsedMs,
     arrivedElapsedMs,
     requiresAdminReview: true,
@@ -8630,10 +8684,13 @@ function PassengerRideCard({
   }, [effectiveStatus, ride.id]);
 
   useEffect(() => {
-    if (passengerStatusStartsAcceptedTimer(effectiveStatus)) {
+    if (
+      passengerStatusStartsAcceptedTimer(effectiveStatus) &&
+      !isQueuedOfferAwaitingActivation
+    ) {
       ensurePassengerDriverAcceptedTimerStartMs(ride as RideRequestData & Record<string, unknown>);
     }
-  }, [effectiveStatus, ride.id]);
+  }, [effectiveStatus, ride.id, isQueuedOfferAwaitingActivation]);
 
   useEffect(() => {
     if (effectiveStatus !== "driver_arrived") return;
@@ -8751,6 +8808,7 @@ function PassengerRideCard({
                 </>
               )}
               <br />Tu conductor comenzará a dirigirse hacia ti cuando termine el viaje actual.
+              <br />Puedes cancelar sin cargo ahora. No se aplica el 30% ni el tope de $3.000 mientras el conductor termina el otro viaje.
             </div>
           )}
 
@@ -9487,7 +9545,7 @@ function PassengerRideCard({
             </div>
           )}
 
-          {passengerDriverAcceptedState && ["accepted", "driver_en_route"].includes(effectiveStatus) && (
+          {passengerDriverAcceptedState && ["accepted", "driver_en_route"].includes(effectiveStatus) && !isQueuedOfferAwaitingActivation && (
             <div
               style={{
                 marginTop: 12,

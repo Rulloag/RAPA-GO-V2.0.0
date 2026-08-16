@@ -44,6 +44,23 @@ describe("UI del pasajero — preasignación encadenada (Fase 5)", () => {
     );
   });
 
+  it("cancelar en cola es gratis: no muestra 30% / $3000 y el reloj no usa acceptedAt", () => {
+    expect(tripsSource).toContain("isPassengerQueuedOfferFreeCancel");
+    expect(tripsSource).toContain("getPassengerCancellationPolicyClockStartMs");
+    expect(tripsSource).toContain(
+      "Puedes cancelar sin cargo ahora. No se aplica el 30% ni el tope de $3.000 mientras el conductor termina el otro viaje.",
+    );
+    expect(tripsSource).toContain(
+      "Puedes cancelar sin cargo mientras tu conductor finaliza el viaje actual. El minuto de cortesía comienza cuando se dirija hacia ti.",
+    );
+    expect(tripsSource).toContain(
+      "!isQueuedOfferAwaitingActivation &&",
+    );
+    expect(tripsSource).toContain(
+      'passengerDriverAcceptedState && ["accepted", "driver_en_route"].includes(effectiveStatus) && !isQueuedOfferAwaitingActivation && (',
+    );
+  });
+
   it("no declara un hook de polling adicional junto al cálculo del estado 'queued'", () => {
     const queuedBlockIndex = tripsSource.indexOf("isQueuedOfferAwaitingActivation =");
     const nearbySlice = tripsSource.slice(Math.max(0, queuedBlockIndex - 200), queuedBlockIndex);
