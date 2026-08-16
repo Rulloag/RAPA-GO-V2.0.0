@@ -1,3 +1,4 @@
+import { isImpossibleGpsJump, isValidRideMapPoint } from "@rapa-go/shared";
 import { TokenService } from "../auth/token.service.js";
 import { SessionService } from "../auth/session.service.js";
 import { UsersRepository } from "../users/users.repository.js";
@@ -253,6 +254,15 @@ export class RideTrackingService {
     );
     if (!auth.ok) return auth;
 
+    if (!isValidRideMapPoint(input.lat, input.lng)) {
+      return {
+        ok: false,
+        code: "RIDE_TRACKING_INVALID_POINT",
+        message: "The location is outside the Rapa Nui service area.",
+        statusCode: 400,
+      };
+    }
+
     const capturedAt = new Date(input.capturedAt);
     const now = new Date();
     if (Math.abs(now.getTime() - capturedAt.getTime()) > MAX_CLOCK_SKEW_MS) {
@@ -273,6 +283,16 @@ export class RideTrackingService {
       );
 
       if (elapsed >= 0 && elapsed < MIN_POINT_INTERVAL_MS && moved < MIN_DISTANCE_METERS) {
+        return { ok: true, data: toResponse(latest) };
+      }
+
+      if (
+        isImpossibleGpsJump(
+          { lat: latest.latitude, lng: latest.longitude },
+          { lat: input.lat, lng: input.lng },
+          elapsed,
+        )
+      ) {
         return { ok: true, data: toResponse(latest) };
       }
     }
@@ -377,6 +397,11 @@ export class RideTrackingService {
         continue;
       }
 
+      if (!isValidRideMapPoint(entry.input.lat, entry.input.lng)) {
+        rejected.push({ index: entry.index, code: "INVALID_POINT" });
+        continue;
+      }
+
       if (cursor) {
         const elapsed = entry.at - cursor.at;
         const moved = distanceMeters(
@@ -390,6 +415,17 @@ export class RideTrackingService {
           moved < MIN_DISTANCE_METERS
         ) {
           rejected.push({ index: entry.index, code: "TOO_CLOSE" });
+          continue;
+        }
+
+        if (
+          isImpossibleGpsJump(
+            { lat: cursor.lat, lng: cursor.lng },
+            { lat: entry.input.lat, lng: entry.input.lng },
+            elapsed,
+          )
+        ) {
+          rejected.push({ index: entry.index, code: "GPS_OUTLIER" });
           continue;
         }
       }

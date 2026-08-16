@@ -49,6 +49,7 @@ const mockNotifyAssigned = vi.fn();
 const mockNotifyEnRoute = vi.fn();
 const mockNotifyArrived = vi.fn();
 const mockNotifyCompleted = vi.fn();
+const mockNotifyDriverCancelledReassigning = vi.fn();
 
 vi.mock("../../auth/token.service.js", () => ({
   TokenService: vi.fn().mockImplementation(() => ({
@@ -166,6 +167,8 @@ vi.mock("../../notifications/notifications.helpers.js", () => ({
   notifyPassengerDriverEnRoute: mockNotifyEnRoute,
   notifyPassengerDriverArrived: mockNotifyArrived,
   notifyPassengerRideCompleted: mockNotifyCompleted,
+  notifyPassengerDriverCancelledAndReassigning:
+    mockNotifyDriverCancelledReassigning,
 }));
 
 vi.mock("../../rideReceipts/rideReceipts.service.js", () => ({
@@ -434,6 +437,7 @@ describe("RidesService - contrato actual", () => {
           paymentMethod: "cash",
           paymentProvider: null,
           useWalletBenefit: false,
+          requestedVehicleCategory: "standard",
         },
       );
     });
@@ -464,6 +468,7 @@ describe("RidesService - contrato actual", () => {
           paymentMethod: "card",
           paymentProvider: "mercadopago",
           useWalletBenefit: false,
+          requestedVehicleCategory: "standard",
         },
       );
     });
@@ -1649,6 +1654,216 @@ describe("RidesService - contrato actual", () => {
         expect(mockResolveQueuedRideOnAbnormalEnd).not.toHaveBeenCalled();
         expect(mockReleaseDriverAfterRide).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe("reasignacion cuando el conductor cancela (DRIVER-CANCEL-REASSIGN-01)", () => {
+    function makeDriverCancelledRow(overrides: Record<string, unknown> = {}) {
+      return makeRide({
+        status: "requested",
+        driverUserId: null,
+        acceptedAt: null,
+        enRouteAt: null,
+        arrivedAt: null,
+        cancelledAt: null,
+        cancelledByUserId: null,
+        cancelledByRole: null,
+        cancellationReason: null,
+        ...overrides,
+      });
+    }
+
+    beforeEach(() => {
+      mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    });
+
+    it("TEST_1/2 — D1 cancela un ride 'accepted': vuelve a requested, driver null, fee 0", async () => {
+      const existing = makeRide({
+        status: "accepted",
+        driverUserId: "driver-1",
+        acceptedAt: NOW,
+      });
+      mockFindById.mockResolvedValue(existing);
+      mockCancelAccepted.mockResolvedValue(makeDriverCancelledRow());
+
+      const result = await service.cancelAcceptedRide("token", "ride-1", {});
+
+      expect(result.ok).toBe(true);
+      expect(mockCancelAccepted).toHaveBeenCalledWith(
+        "ride-1",
+        "driver-1",
+        "driver",
+        null,
+        expect.any(Object),
+      );
+      if (!result.ok) return;
+      expect(result.ride.status).toBe("requested");
+      expect(result.ride.driverUserId).toBeNull();
+      expect(mockCreatePolicyCharge).not.toHaveBeenCalled();
+      expect(mockRefundCardPaymentForCancelledRide).not.toHaveBeenCalled();
+    });
+
+    it("CASO 2 — D1 cancela en driver_en_route: mismo resultado, fee 0", async () => {
+      const existing = makeRide({
+        status: "driver_en_route",
+        driverUserId: "driver-1",
+        acceptedAt: NOW,
+        enRouteAt: NOW,
+      });
+      mockFindById.mockResolvedValue(existing);
+      mockCancelAccepted.mockResolvedValue(makeDriverCancelledRow());
+
+      const result = await service.cancelAcceptedRide("token", "ride-1", {});
+
+      expect(result.ok).toBe(true);
+      expect(mockCreatePolicyCharge).not.toHaveBeenCalled();
+    });
+
+    it("CASO 3 — D1 cancela en driver_arrived (no no-show): mismo resultado, fee 0", async () => {
+      const existing = makeRide({
+        status: "driver_arrived",
+        driverUserId: "driver-1",
+        acceptedAt: NOW,
+        arrivedAt: NOW,
+      });
+      mockFindById.mockResolvedValue(existing);
+      mockCancelAccepted.mockResolvedValue(makeDriverCancelledRow());
+
+      const result = await service.cancelAcceptedRide("token", "ride-1", {});
+
+      expect(result.ok).toBe(true);
+      expect(mockCreatePolicyCharge).not.toHaveBeenCalled();
+    });
+
+    it("TEST_6/7/8/9/10 — Klap: misma autorizacion, sin captura, sin refund, sin nueva orden", async () => {
+      const existing = makeRide({
+        status: "accepted",
+        driverUserId: "driver-1",
+        acceptedAt: NOW,
+        notes: "PaymentMethod: card\nPaymentProvider: klap",
+        paymentMethod: "card",
+        paymentProvider: "klap",
+      });
+      mockFindById.mockResolvedValue(existing);
+      mockCancelAccepted.mockResolvedValue(
+        makeDriverCancelledRow({
+          notes: existing.notes,
+          paymentMethod: "card",
+          paymentProvider: "klap",
+        }),
+      );
+
+      const result = await service.cancelAcceptedRide("token", "ride-1", {});
+
+      expect(result.ok).toBe(true);
+      expect(mockCaptureAuthorizedKlapPayment).not.toHaveBeenCalled();
+      expect(mockRefundCardPaymentForCancelledRide).not.toHaveBeenCalled();
+      expect(mockCreatePolicyCharge).not.toHaveBeenCalled();
+      expect(result.ride.id).toBe("ride-1");
+    });
+
+    it("TEST_13 — pasajero recibe senal de reasignacion via notificacion persistente", async () => {
+      const existing = makeRide({ status: "accepted", driverUserId: "driver-1" });
+      mockFindById.mockResolvedValue(existing);
+      mockCancelAccepted.mockResolvedValue(makeDriverCancelledRow());
+
+      await service.cancelAcceptedRide("token", "ride-1", {});
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockNotifyDriverCancelledReassigning).toHaveBeenCalledWith({
+        passengerUserId: "user-123",
+        rideId: "ride-1",
+      });
+    });
+
+    it("no dispara la notificacion cuando cancela el pasajero (no cuando cancela D1)", async () => {
+      mockFindUserById.mockResolvedValue({ id: "user-123", role: "passenger" });
+      const existing = makeRide({ status: "accepted", driverUserId: "driver-1" });
+      mockFindById.mockResolvedValue(existing);
+      mockCancelAccepted.mockResolvedValue(
+        makeRide({ status: "cancelled", cancelledByRole: "passenger" }),
+      );
+
+      await service.cancelAcceptedRide("token", "ride-1", {});
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockNotifyDriverCancelledReassigning).not.toHaveBeenCalled();
+    });
+
+    it("TEST_14 — datos de D1 desaparecen del ride reutilizado (misma fila, mismo id)", async () => {
+      const existing = makeRide({ status: "accepted", driverUserId: "driver-1" });
+      mockFindById.mockResolvedValue(existing);
+      mockCancelAccepted.mockResolvedValue(makeDriverCancelledRow());
+
+      const result = await service.cancelAcceptedRide("token", "ride-1", {});
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.ride.driverUserId).toBeNull();
+      expect(result.ride.id).toBe("ride-1");
+    });
+
+    it("TEST_19 — sin D2 disponible de inmediato: R permanece requested y sigue siendo recuperable por el matching normal", async () => {
+      const existing = makeRide({ status: "accepted", driverUserId: "driver-1" });
+      mockFindById.mockResolvedValue(existing);
+      const requeued = makeDriverCancelledRow();
+      mockCancelAccepted.mockResolvedValue(requeued);
+      mockFindAvailable.mockResolvedValue([requeued]);
+
+      const cancelResult = await service.cancelAcceptedRide("token", "ride-1", {});
+      expect(cancelResult.ok).toBe(true);
+
+      mockFindUserById.mockResolvedValue({ id: "driver-2", role: "driver" });
+      const listResult = await service.listAvailableRides("token");
+
+      expect(listResult.ok).toBe(true);
+      if (!listResult.ok) return;
+      expect(listResult.rides.some((r) => r.id === "ride-1")).toBe(true);
+    });
+
+    it("TEST_17/CASO_D — No Show mantiene su propio camino, sin pasar por cancelAccepted", async () => {
+      mockFindById.mockResolvedValue(
+        makeRide({
+          status: "driver_arrived",
+          driverUserId: "driver-1",
+          arrivedAt: new Date(Date.now() - 6 * 60 * 1000),
+        }),
+      );
+      mockMarkNoShow.mockResolvedValue(
+        makeRide({ status: "no_show", driverUserId: "driver-1" }),
+      );
+
+      await service.declareNoShow("token", "ride-1");
+
+      expect(mockCancelAccepted).not.toHaveBeenCalled();
+      expect(mockNotifyDriverCancelledReassigning).not.toHaveBeenCalled();
+    });
+
+    it("TEST_18 — evento tardio de D1 tras reasignacion no puede modificar el ride ya asignado a D2 (CAS por status)", async () => {
+      mockFindById.mockResolvedValue(
+        makeRide({ status: "accepted", driverUserId: "driver-2" }),
+      );
+
+      const result = await service.cancelAcceptedRide("token", "ride-1", {});
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("AUTH_FORBIDDEN");
+      expect(mockCancelAccepted).not.toHaveBeenCalled();
+    });
+
+    it("TEST_16 — carrera D1-cancel vs D2-accept: si el repositorio ya no encuentra el status esperado, se rechaza sin datos falsos", async () => {
+      const existing = makeRide({ status: "accepted", driverUserId: "driver-1" });
+      mockFindById
+        .mockResolvedValueOnce(existing)
+        .mockResolvedValueOnce(makeRide({ status: "in_progress", driverUserId: "driver-1" }));
+      mockCancelAccepted.mockResolvedValue(null);
+
+      const result = await service.cancelAcceptedRide("token", "ride-1", {});
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("RIDE_CANNOT_CANCEL");
     });
   });
 

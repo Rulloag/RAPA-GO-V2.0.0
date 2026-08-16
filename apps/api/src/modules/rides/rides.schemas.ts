@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+const vehicleCategorySchema = z
+  .enum(["standard", "xl", "extra_luggage", "luggage"])
+  .transform((v) => (v === "luggage" ? "extra_luggage" : v));
+
 export const createRideRequestSchema = z.object({
   originText: z
     .string()
@@ -53,6 +57,11 @@ export const createRideRequestSchema = z.object({
   // recargo calculado por el cliente.
   airportWelcomeOption: z.enum(["none", "flower_lei"]).optional(),
   flowerLeiQuantity: z.number().int().min(1).max(20).nullable().optional(),
+
+  // Categoría solicitada por el pasajero. Informa; no restringe matching.
+  requestedVehicleCategory: vehicleCategorySchema.optional(),
+  vehicleCategory: vehicleCategorySchema.optional(),
+  fareVehicleCategory: vehicleCategorySchema.optional(),
 });
 
 export type CreateRideRequestInput = z.infer<

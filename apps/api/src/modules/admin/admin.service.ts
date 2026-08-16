@@ -73,6 +73,8 @@ function toRideResponse(r: AdminRideRow): AdminRideResponse {
     priorityFeeClp:         r.priorityFeeClp ?? null,
     flightNumber:           r.flightNumber ?? null,
     preferredDriverGender:  (r.preferredDriverGender as "female" | null | undefined) ?? null,
+    requestedVehicleCategory: r.requestedVehicleCategory ?? "standard",
+    assignedVehicleCategory: r.assignedVehicleCategory ?? null,
   };
 }
 
@@ -395,14 +397,35 @@ export class AdminService {
         driverUserId:   input.driverUserId,
         previousStatus: "requested",
         newStatus:      "accepted",
+        requestedVehicleCategory:
+          existing.requestedVehicleCategory ?? "standard",
+        assignedVehicleCategory:
+          updated.assignedVehicleCategory ?? null,
+        vehicleCategoryMismatch:
+          Boolean(
+            existing.requestedVehicleCategory &&
+              updated.assignedVehicleCategory &&
+              existing.requestedVehicleCategory !==
+                updated.assignedVehicleCategory,
+          ),
       },
     });
 
     const ride = await adminRepo.findRideById(rideId);
     if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found after update.", statusCode: 404 };
 
+    const response = toRideResponse(ride) as ReturnType<typeof toRideResponse> &
+      Record<string, unknown>;
+    if (
+      ride.requestedVehicleCategory &&
+      ride.assignedVehicleCategory &&
+      ride.requestedVehicleCategory !== ride.assignedVehicleCategory
+    ) {
+      response["vehicleCategoryMismatchWarning"] =
+        "El vehículo seleccionado está registrado en una categoría diferente a la solicitada.";
+    }
 
-    return { ok: true, ride: toRideResponse(ride) };
+    return { ok: true, ride: response };
   }
 
   async adminCancelRide(

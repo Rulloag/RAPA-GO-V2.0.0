@@ -14,8 +14,18 @@ function nullableBoundedMetric(min: number, max: number) {
 }
 
 export const rideLocationUpdateSchema = z.object({
-  lat: z.number().finite().min(-90).max(90),
-  lng: z.number().finite().min(-180).max(180),
+  lat: z
+    .number()
+    .finite()
+    .min(-90)
+    .max(90)
+    .refine((value) => Math.abs(value) >= 1e-5, "Latitude cannot be Null Island."),
+  lng: z
+    .number()
+    .finite()
+    .min(-180)
+    .max(180)
+    .refine((value) => Math.abs(value) >= 1e-5, "Longitude cannot be Null Island."),
   accuracyMeters: nullableBoundedMetric(0, 10000),
   headingDegrees: nullableBoundedMetric(0, 360),
   speedMetersPerSecond: nullableBoundedMetric(0, 150),

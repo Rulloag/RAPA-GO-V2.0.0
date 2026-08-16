@@ -9,6 +9,8 @@ export interface DriverProfileData {
   vehicleYear:     number | null;
   vehiclePlate:    string | null;
   vehicleColor:    string | null;
+  /** Categoría registrada: standard | xl | extra_luggage */
+  vehicleCategory?: string | null;
   licenseNumber:   string | null;
   licenseExpiry:   string | null;
   profilePhotoUrl: string | null;
@@ -85,6 +87,7 @@ export interface UpsertDriverProfilePayload {
   vehicleYear?:     number;
   vehiclePlate?:    string;
   vehicleColor?:    string;
+  vehicleCategory?: "standard" | "xl" | "extra_luggage" | "luggage";
   profilePhotoUrl?: string;
   vehiclePhotoUrl?: string;
   bio?:             string;

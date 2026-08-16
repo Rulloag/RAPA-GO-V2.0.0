@@ -8,10 +8,8 @@ import type { DriverStatus } from "../../db/schema/index.js";
  * Candidato a preasignación encadenada: conductor con viaje activo (A) en un
  * estado donde ya tiene sentido ofrecerle un viaje en cola (B).
  *
- * NOTA: la plataforma no tiene hoy un campo real de "categoría de vehículo"
- * en el schema (ni en driver_statuses ni en driver_profiles). Se expone
- * `vehicleCategory: null` de forma explícita para que rideQueueMatch() lo
- * trate como "sin restricción" en vez de inventar un dato que no existe.
+ * `vehicleCategory` es informativa (desde driver_profiles). Un mismatch NO
+ * bloquea elegibilidad — solo sirve para scoring/UI.
  */
 export interface QueueCandidateRow {
   driverUserId:            string;
@@ -22,7 +20,7 @@ export interface QueueCandidateRow {
   currentLat:              number;
   currentLng:              number;
   locationUpdatedAt:       Date | null;
-  vehicleCategory:         null;
+  vehicleCategory:         string | null;
 }
 
 export interface AvailableDriverCandidate {
@@ -233,9 +231,11 @@ export class DriverStatusRepository {
           currentLat:                driverStatuses.currentLat,
           currentLng:                driverStatuses.currentLng,
           locationUpdatedAt:         driverStatuses.locationUpdatedAt,
+          vehicleCategory:           driverProfiles.vehicleCategory,
         })
         .from(driverStatuses)
         .innerJoin(rideRequests, eq(driverStatuses.currentRideId, rideRequests.id))
+        .leftJoin(driverProfiles, eq(driverProfiles.userId, driverStatuses.driverUserId))
         .where(and(...conditions));
 
       return rows
@@ -249,7 +249,7 @@ export class DriverStatusRepository {
           currentLat:                r.currentLat as number,
           currentLng:                r.currentLng as number,
           locationUpdatedAt:         r.locationUpdatedAt,
-          vehicleCategory:           null,
+          vehicleCategory:           r.vehicleCategory ?? null,
         }));
     } catch (err) {
       throw AppError.internal(`Failed to query queue candidates: ${String(err)}`);

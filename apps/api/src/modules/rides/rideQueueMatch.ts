@@ -182,7 +182,8 @@ export function evaluateQueueEligibility(
     driverStatus.vehicleCategory != null &&
     newRideRequest.vehicleCategory !== driverStatus.vehicleCategory
   ) {
-    reasons.push("VEHICLE_CATEGORY_MISMATCH");
+    // Informativo: NO bloquea elegibilidad. Las categorías advierten en UI,
+    // nunca restringen ofertas en cola.
   }
 
   const locationAgeSeconds =

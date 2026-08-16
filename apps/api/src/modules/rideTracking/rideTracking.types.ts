@@ -26,7 +26,9 @@ export interface RideLocationPointResponse {
 export type RideLocationRejectionCode =
   | "TOO_CLOSE"
   | "FUTURE_TIMESTAMP"
-  | "OUT_OF_RIDE_WINDOW";
+  | "OUT_OF_RIDE_WINDOW"
+  | "INVALID_POINT"
+  | "GPS_OUTLIER";
 
 export interface RideLocationBatchRejection {
   /** Posición en el array `points` tal como lo mandó el cliente. */

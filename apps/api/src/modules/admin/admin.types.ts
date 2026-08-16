@@ -51,6 +51,9 @@ export interface AdminRideResponse {
   priorityFeeClp:     number | null;
   flightNumber:           string | null;
   preferredDriverGender?: "female" | null;
+  requestedVehicleCategory?: string | null;
+  assignedVehicleCategory?: string | null;
+  vehicleCategoryMismatchWarning?: string | null;
 }
 
 export interface ActiveDriverResponse {

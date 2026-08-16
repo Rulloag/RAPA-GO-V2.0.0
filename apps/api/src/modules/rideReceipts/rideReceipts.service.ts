@@ -573,9 +573,7 @@ export class RideReceiptsService {
           receiptsRepository.findLatestPayment(ride.id),
           receiptsRepository.listRoutePoints(
             ride.id,
-            type === "completed_ride"
-              ? ride.startedAt ?? ride.acceptedAt ?? ride.requestedAt
-              : ride.acceptedAt ?? ride.requestedAt,
+            ride.acceptedAt ?? ride.requestedAt,
             ride.completedAt ?? ride.cancelledAt ?? new Date(),
           ),
         ]);

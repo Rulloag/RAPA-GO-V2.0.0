@@ -169,7 +169,7 @@ export async function attemptQueuedOffer(
           id: ride.id,
           originLat: ride.originLat ?? 0,
           originLng: ride.originLng ?? 0,
-          vehicleCategory: null,
+          vehicleCategory: ride.requestedVehicleCategory ?? null,
         },
         driverStatus: {
           availability: "busy",

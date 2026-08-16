@@ -10512,14 +10512,22 @@ export default function RequestRidePage(): JSX.Element {
           input as CreateRideInput & {
             fareVehicleCategory?: VehicleCategory;
             vehicleCategory?: VehicleCategory;
+            requestedVehicleCategory?: string;
           }
         ).fareVehicleCategory = vehicleCategory;
         (
           input as CreateRideInput & {
             fareVehicleCategory?: VehicleCategory;
             vehicleCategory?: VehicleCategory;
+            requestedVehicleCategory?: string;
           }
         ).vehicleCategory = vehicleCategory;
+        (
+          input as CreateRideInput & {
+            requestedVehicleCategory?: string;
+          }
+        ).requestedVehicleCategory =
+          vehicleCategory === "luggage" ? "extra_luggage" : vehicleCategory;
         (input as CreateRideInput & { paymentMethod?: string }).paymentMethod =
           activePaymentMethod;
         (
