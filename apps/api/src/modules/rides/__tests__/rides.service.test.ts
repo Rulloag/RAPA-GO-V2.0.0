@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockVerifyAccessToken = vi.fn();
 const mockHashToken = vi.fn();
@@ -246,7 +246,7 @@ function makeNoShowCharge(overrides: Record<string, unknown> = {}) {
     feeCapClp: 5000,
     calculatedAmountClp: 5000,
     approvedAmountClp: null,
-    reason: "Pasajero no se presentÃ³ despuÃ©s de 5 minutos.",
+    reason: "Pasajero no se presentó después de 5 minutos.",
     adminDecisionReason: null,
     reviewedByUserId: null,
     reviewedAt: null,
@@ -310,10 +310,6 @@ describe("RidesService - contrato actual", () => {
     mockFindAvailable.mockResolvedValue([]);
     mockReleaseDriverAfterRide.mockResolvedValue(undefined);
     mockAssertDriverCanAcceptRide.mockResolvedValue(undefined);
-    mockCanReceiveNewOffers.mockResolvedValue({
-      allowed: true,
-      state: { message: "" },
-    });
     mockActivateQueuedRideOrClearStale.mockResolvedValue({ decision: "NO_QUEUED_RIDE" });
     mockDriverStatusFindByDriverId.mockResolvedValue(null);
     mockReleaseQueuedRideClaim.mockResolvedValue(undefined);
@@ -961,7 +957,7 @@ describe("RidesService - contrato actual", () => {
     });
   });
 
-  describe("completar viaje â€” transiciÃ³n Aâ†’B de preasignaciÃ³n encadenada (Fase 3)", () => {
+  describe("completar viaje — transición A→B de preasignación encadenada (Fase 3)", () => {
     beforeEach(() => {
       mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
       mockFindById.mockImplementation((rideId: string) => {
@@ -987,7 +983,7 @@ describe("RidesService - contrato actual", () => {
       );
     });
 
-    it("TEST A: A termina normalmente con B vÃ¡lido en cola â†’ B se activa y el conductor no queda momentÃ¡neamente disponible", async () => {
+    it("TEST A: A termina normalmente con B válido en cola → B se activa y el conductor no queda momentáneamente disponible", async () => {
       mockActivateQueuedRideOrClearStale.mockResolvedValue({ decision: "TRANSITIONED", activatedRideId: "ride-b" });
 
       const result = await service.completeRide("token", "ride-a");
@@ -997,7 +993,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockReleaseDriverAfterRide).not.toHaveBeenCalled();
     });
 
-    it("TEST A (notificaciÃ³n): notifica al pasajero de B reciÃ©n despuÃ©s de la transiciÃ³n, reutilizando notifyPassengerDriverEnRoute", async () => {
+    it("TEST A (notificación): notifica al pasajero de B recién después de la transición, reutilizando notifyPassengerDriverEnRoute", async () => {
       mockActivateQueuedRideOrClearStale.mockResolvedValue({ decision: "TRANSITIONED", activatedRideId: "ride-b" });
 
       await service.completeRide("token", "ride-a");
@@ -1008,7 +1004,7 @@ describe("RidesService - contrato actual", () => {
       );
     });
 
-    it("TEST B: A termina sin B en cola â†’ comportamiento actual intacto (libera al conductor)", async () => {
+    it("TEST B: A termina sin B en cola → comportamiento actual intacto (libera al conductor)", async () => {
       mockActivateQueuedRideOrClearStale.mockResolvedValue({ decision: "NO_QUEUED_RIDE" });
 
       const result = await service.completeRide("token", "ride-a");
@@ -1018,7 +1014,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockNotifyEnRoute).not.toHaveBeenCalled();
     });
 
-    it("TEST C/TEST F: B ya no es vÃ¡lido (cancelado/reasignado) â†’ no se activa, conductor queda disponible normalmente", async () => {
+    it("TEST C/TEST F: B ya no es válido (cancelado/reasignado) → no se activa, conductor queda disponible normalmente", async () => {
       mockActivateQueuedRideOrClearStale.mockResolvedValue({ decision: "QUEUED_RIDE_INVALID", staleRideId: "ride-b" });
 
       const result = await service.completeRide("token", "ride-a");
@@ -1028,7 +1024,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockNotifyEnRoute).not.toHaveBeenCalled();
     });
 
-    it("TEST G: B pertenece a otro conductor â†’ la transiciÃ³n no ocurre a nivel de repositorio (contrato: decision distinto de TRANSITIONED se respeta igual que casos invÃ¡lidos)", async () => {
+    it("TEST G: B pertenece a otro conductor → la transición no ocurre a nivel de repositorio (contrato: decision distinto de TRANSITIONED se respeta igual que casos inválidos)", async () => {
       mockActivateQueuedRideOrClearStale.mockResolvedValue({ decision: "QUEUED_RIDE_INVALID", staleRideId: "ride-b" });
 
       const result = await service.completeRide("token", "ride-a");
@@ -1037,7 +1033,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockReleaseDriverAfterRide).toHaveBeenCalledWith("driver-1");
     });
 
-    it("TEST H: repositorio reporta STATUS_MISMATCH (segunda ejecuciÃ³n/estado ya movido) â†’ no repite transiciÃ³n ni notifica", async () => {
+    it("TEST H: repositorio reporta STATUS_MISMATCH (segunda ejecución/estado ya movido) → no repite transición ni notifica", async () => {
       mockActivateQueuedRideOrClearStale.mockResolvedValue({ decision: "STATUS_MISMATCH" });
 
       const result = await service.completeRide("token", "ride-a");
@@ -1047,7 +1043,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockNotifyEnRoute).not.toHaveBeenCalled();
     });
 
-    it("TEST I: si falla la notificaciÃ³n al pasajero de B, la transiciÃ³n ya confirmada en BD no se ve afectada", async () => {
+    it("TEST I: si falla la notificación al pasajero de B, la transición ya confirmada en BD no se ve afectada", async () => {
       mockActivateQueuedRideOrClearStale.mockResolvedValue({ decision: "TRANSITIONED", activatedRideId: "ride-b" });
       mockNotifyEnRoute.mockImplementation(() => {
         throw new Error("push provider down");
@@ -1061,7 +1057,7 @@ describe("RidesService - contrato actual", () => {
       expect(result.ride.status).toBe("completed");
     });
 
-    it("TEST J: si falla la captura Klap de A, la activaciÃ³n de B ya realizada no se revierte", async () => {
+    it("TEST J: si falla la captura Klap de A, la activación de B ya realizada no se revierte", async () => {
       mockFindById.mockImplementation((rideId: string) => {
         if (rideId === "ride-a") {
           return Promise.resolve(
@@ -1093,7 +1089,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockReleaseDriverAfterRide).not.toHaveBeenCalled();
     });
 
-    it("no dispara ninguna operaciÃ³n de pagos ni Klap adicional por el sÃ³lo hecho de activar B", async () => {
+    it("no dispara ninguna operación de pagos ni Klap adicional por el sólo hecho de activar B", async () => {
       mockActivateQueuedRideOrClearStale.mockResolvedValue({ decision: "TRANSITIONED", activatedRideId: "ride-b" });
       mockFindPaymentByRideId.mockResolvedValue(null);
 
@@ -1103,8 +1099,8 @@ describe("RidesService - contrato actual", () => {
     });
   });
 
-  describe("aceptar viaje â€” guard de viaje activo (Fase 0)", () => {
-    it("NORMAL_ACCEPT_NO_ACTIVE_RIDE=PASS â€” reclama el slot y acepta el viaje", async () => {
+  describe("aceptar viaje — guard de viaje activo (Fase 0)", () => {
+    it("NORMAL_ACCEPT_NO_ACTIVE_RIDE=PASS — reclama el slot y acepta el viaje", async () => {
       mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
       mockFindById.mockResolvedValue(makeRide({ status: "requested" }));
       mockAccept.mockResolvedValue(
@@ -1119,7 +1115,7 @@ describe("RidesService - contrato actual", () => {
       expect(result.ok).toBe(true);
     });
 
-    it("NORMAL_ACCEPT_WITH_ACTIVE_RIDE=REJECT â€” el claim en BD rechaza antes de tocar el ride", async () => {
+    it("NORMAL_ACCEPT_WITH_ACTIVE_RIDE=REJECT — el claim en BD rechaza antes de tocar el ride", async () => {
       mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
       mockFindById.mockResolvedValue(makeRide({ status: "requested" }));
       mockClaimCurrentRide.mockResolvedValue(null);
@@ -1130,7 +1126,7 @@ describe("RidesService - contrato actual", () => {
       if (result.ok) return;
       expect(result.code).toBe("DRIVER_ALREADY_HAS_ACTIVE_RIDE");
       expect(result.statusCode).toBe(409);
-      // Nunca debe intentar tomar el ride si el claim de BD ya rechazÃ³.
+      // Nunca debe intentar tomar el ride si el claim de BD ya rechazó.
       expect(mockAccept).not.toHaveBeenCalled();
     });
 
@@ -1146,16 +1142,16 @@ describe("RidesService - contrato actual", () => {
       expect(result.ok).toBe(false);
       if (result.ok) return;
       expect(result.code).toBe("RIDE_ALREADY_ACCEPTED");
-      // El claim se liberÃ³ â€” el conductor no queda bloqueado por un viaje
-      // que nunca tomÃ³ de verdad.
+      // El claim se liberó — el conductor no queda bloqueado por un viaje
+      // que nunca tomó de verdad.
       expect(mockReleaseCurrentRideClaim).toHaveBeenCalledWith("driver-1", "ride-1");
     });
 
-    it("CONCURRENT_NORMAL_ACCEPTS â€” solo uno gana: el segundo ve el claim ya ocupado", async () => {
+    it("CONCURRENT_NORMAL_ACCEPTS — solo uno gana: el segundo ve el claim ya ocupado", async () => {
       mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
       mockFindById.mockResolvedValue(makeRide({ status: "requested" }));
 
-      // Primer intento: el claim atÃ³mico en BD gana.
+      // Primer intento: el claim atómico en BD gana.
       mockClaimCurrentRide.mockResolvedValueOnce({ driverUserId: "driver-1", currentRideId: "ride-1" });
       mockAccept.mockResolvedValueOnce(makeRide({ status: "accepted", driverUserId: "driver-1" }));
       const first = await service.acceptRideRequest("token", "ride-1");
@@ -1247,7 +1243,7 @@ describe("RidesService - contrato actual", () => {
     });
   });
 
-  describe("cancelaciÃ³n de pasajero B en preasignaciÃ³n encadenada (Fase 5.1)", () => {
+  describe("cancelación de pasajero B en preasignación encadenada (Fase 5.1)", () => {
     function makeQueuedRide(overrides: Record<string, unknown> = {}) {
       return makeRide({
         status: "accepted",
@@ -1260,7 +1256,7 @@ describe("RidesService - contrato actual", () => {
       });
     }
 
-    it("TEST_1: aceptada hace 30s â†’ sin penalizaciÃ³n (penalty=0)", async () => {
+    it("TEST_1: aceptada hace 30s → sin penalización (penalty=0)", async () => {
       const existing = makeQueuedRide({
         acceptedAt: new Date(Date.now() - 30 * 1000),
       });
@@ -1273,7 +1269,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockCreatePolicyCharge).not.toHaveBeenCalled();
     });
 
-    it("TEST_2: aceptada hace 5 minutos â†’ sin penalizaciÃ³n", async () => {
+    it("TEST_2: aceptada hace 5 minutos → sin penalización", async () => {
       const existing = makeQueuedRide({
         acceptedAt: new Date(Date.now() - 5 * 60 * 1000),
       });
@@ -1286,7 +1282,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockCreatePolicyCharge).not.toHaveBeenCalled();
     });
 
-    it("TEST_3: aceptada hace 20 minutos â†’ sin penalizaciÃ³n", async () => {
+    it("TEST_3: aceptada hace 20 minutos → sin penalización", async () => {
       const existing = makeQueuedRide({
         acceptedAt: new Date(Date.now() - 20 * 60 * 1000),
       });
@@ -1300,9 +1296,9 @@ describe("RidesService - contrato actual", () => {
     });
 
     it("TEST_4: una vez driver_en_route, vuelve a aplicar la regla normal usando enRouteAt (no acceptedAt antiguo)", async () => {
-      // acceptedAt quedÃ³ 20 minutos atrÃ¡s (aceptaciÃ³n de la oferta en cola),
-      // pero enRouteAt (transiciÃ³n real de Fase 3) fue hace apenas 5s â€” la
-      // cancelaciÃ³n debe ser gratuita porque el conductor reciÃ©n arrancÃ³.
+      // acceptedAt quedó 20 minutos atrás (aceptación de la oferta en cola),
+      // pero enRouteAt (transición real de Fase 3) fue hace apenas 5s — la
+      // cancelación debe ser gratuita porque el conductor recién arrancó.
       const existing = makeQueuedRide({
         status: "driver_en_route",
         acceptedAt: new Date(Date.now() - 20 * 60 * 1000),
@@ -1317,7 +1313,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockCreatePolicyCharge).not.toHaveBeenCalled();
     });
 
-    it("TEST_4b: driver_en_route con enRouteAt de hace 2 minutos â†’ SÃ aplica penalizaciÃ³n normal", async () => {
+    it("TEST_4b: driver_en_route con enRouteAt de hace 2 minutos → SÍ aplica penalización normal", async () => {
       const existing = makeQueuedRide({
         status: "driver_en_route",
         acceptedAt: new Date(Date.now() - 20 * 60 * 1000),
@@ -1335,7 +1331,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockCreatePolicyCharge).toHaveBeenCalled();
     });
 
-    it("TEST_5: cancelar B en cola libera sÃ³lo el slot de cola â€” current_ride_id de A no se toca", async () => {
+    it("TEST_5: cancelar B en cola libera sólo el slot de cola — current_ride_id de A no se toca", async () => {
       const existing = makeQueuedRide();
       mockFindById.mockResolvedValue(existing);
       mockCancelAccepted.mockResolvedValue({ ...existing, status: "cancelled" });
@@ -1348,7 +1344,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockMarkCancelledByRideId).toHaveBeenCalledWith("ride-1");
     });
 
-    it("TEST_6: Klap authorized en queued cancel â†’ nunca captura (refund normal de cancelaciÃ³n gratuita)", async () => {
+    it("TEST_6: Klap authorized en queued cancel → nunca captura (refund normal de cancelación gratuita)", async () => {
       const existing = makeQueuedRide({
         notes: "PaymentMethod: card\nPaymentProvider: klap",
         paymentMethod: "card",
@@ -1366,7 +1362,7 @@ describe("RidesService - contrato actual", () => {
       );
     });
 
-    it("TEST_7: cash queued cancellation â†’ sin cargo", async () => {
+    it("TEST_7: cash queued cancellation → sin cargo", async () => {
       const existing = makeQueuedRide({
         notes: "PaymentMethod: cash",
         paymentMethod: "cash",
@@ -1380,7 +1376,7 @@ describe("RidesService - contrato actual", () => {
       expect(mockCreatePolicyCharge).not.toHaveBeenCalled();
     });
 
-    it("TEST_8: si el repositorio ya no encuentra el ride en 'accepted' (perdiÃ³ la carrera contra la transiciÃ³n Aâ†’B), se rechaza sin cobrar con datos viejos", async () => {
+    it("TEST_8: si el repositorio ya no encuentra el ride en 'accepted' (perdió la carrera contra la transición A→B), se rechaza sin cobrar con datos viejos", async () => {
       const existing = makeQueuedRide();
       mockFindById
         .mockResolvedValueOnce(existing)
@@ -1416,7 +1412,7 @@ describe("RidesService - contrato actual", () => {
     });
   });
 
-  describe("resoluciÃ³n de queued ride cuando A termina anormalmente (Fase 5.2)", () => {
+  describe("resolución de queued ride cuando A termina anormalmente (Fase 5.2)", () => {
     function makeRideA(overrides: Record<string, unknown> = {}) {
       return makeRide({
         id: "ride-a",
@@ -1437,8 +1433,8 @@ describe("RidesService - contrato actual", () => {
       });
     }
 
-    describe("Caso 1 â€” A cancela con B en cola (TEST_5_2_1)", () => {
-      it("resuelve B a travÃ©s de la nueva primitiva antes de liberar al conductor", async () => {
+    describe("Caso 1 — A cancela con B en cola (TEST_5_2_1)", () => {
+      it("resuelve B a través de la nueva primitiva antes de liberar al conductor", async () => {
         const existingA = makeRideA({ status: "accepted" });
         mockFindById.mockResolvedValue(existingA);
         mockCancelAccepted.mockResolvedValue({ ...existingA, status: "cancelled" });
@@ -1469,7 +1465,7 @@ describe("RidesService - contrato actual", () => {
       });
     });
 
-    describe("Caso 2 â€” no-show de A con B en cola (TEST_5_2_2)", () => {
+    describe("Caso 2 — no-show de A con B en cola (TEST_5_2_2)", () => {
       it("resuelve B antes de liberar al conductor tras no-show", async () => {
         mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
         const arrivedAt = new Date(Date.now() - 6 * 60 * 1000);
@@ -1493,7 +1489,7 @@ describe("RidesService - contrato actual", () => {
       });
     });
 
-    describe("Caso 4 â€” conductor cancela sÃ³lo B, A permanece intacto (TEST_5_2_8)", () => {
+    describe("Caso 4 — conductor cancela sólo B, A permanece intacto (TEST_5_2_8)", () => {
       it("A no se toca; B vuelve a requested; metadata de queued_offer se limpia; se reintenta ofrecer", async () => {
         const existingB = makeQueuedOfferRideB();
         mockFindById.mockResolvedValue(existingB);
@@ -1529,7 +1525,7 @@ describe("RidesService - contrato actual", () => {
       });
     });
 
-    describe("TEST_5_2_6 â€” pasajero B nunca es cobrado por una terminaciÃ³n anormal de A", () => {
+    describe("TEST_5_2_6 — pasajero B nunca es cobrado por una terminación anormal de A", () => {
       it("Klap authorized en B reasignada: sin captura, sin refund con fee > 0", async () => {
         const existingA = makeRideA({ status: "accepted" });
         mockFindById.mockResolvedValue(existingA);
@@ -1541,14 +1537,14 @@ describe("RidesService - contrato actual", () => {
 
         await service.cancelAcceptedRide("token", "ride-a", {});
 
-        // La primitiva de Fase 5.2 no toca payments/Klap en absoluto â€” sÃ³lo
-        // BD de rides/driver_statuses. NingÃºn cargo se origina desde aquÃ­.
+        // La primitiva de Fase 5.2 no toca payments/Klap en absoluto — sólo
+        // BD de rides/driver_statuses. Ningún cargo se origina desde aquí.
         expect(mockCaptureAuthorizedKlapPayment).not.toHaveBeenCalled();
       });
     });
 
-    describe("TEST_5_2_9 â€” idempotencia del resolver", () => {
-      it("segunda ejecuciÃ³n del mismo escenario no falla ni duplica efectos (STATUS_MISMATCH)", async () => {
+    describe("TEST_5_2_9 — idempotencia del resolver", () => {
+      it("segunda ejecución del mismo escenario no falla ni duplica efectos (STATUS_MISMATCH)", async () => {
         const existingA = makeRideA({ status: "accepted" });
         mockFindById.mockResolvedValue(existingA);
         mockCancelAccepted.mockResolvedValue({ ...existingA, status: "cancelled" });
@@ -1561,7 +1557,7 @@ describe("RidesService - contrato actual", () => {
         expect(mockReleaseDriverAfterRide).toHaveBeenCalledWith("driver-1");
       });
 
-      it("QUEUED_RIDE_ALREADY_INVALID (carrera: otro proceso ya resolviÃ³ B) no duplica el markCancelledByRideId", async () => {
+      it("QUEUED_RIDE_ALREADY_INVALID (carrera: otro proceso ya resolvió B) no duplica el markCancelledByRideId", async () => {
         const existingA = makeRideA({ status: "accepted" });
         mockFindById.mockResolvedValue(existingA);
         mockCancelAccepted.mockResolvedValue({ ...existingA, status: "cancelled" });
@@ -1578,11 +1574,11 @@ describe("RidesService - contrato actual", () => {
       });
     });
 
-    describe("TEST_5_2_4 â€” B nunca puede resucitar tras un viaje C no relacionado", () => {
+    describe("TEST_5_2_4 — B nunca puede resucitar tras un viaje C no relacionado", () => {
       it("completar un viaje C posterior nunca referencia la antigua B ya resuelta", async () => {
-        // 1) A cancela con B en cola â€” resolveQueuedRideOnAbnormalEnd limpia
-        //    current_ride_id Y queued_ride_id en la MISMA transacciÃ³n (por
-        //    diseÃ±o de la primitiva â€” ver driverStatus.repository.ts).
+        // 1) A cancela con B en cola — resolveQueuedRideOnAbnormalEnd limpia
+        //    current_ride_id Y queued_ride_id en la MISMA transacción (por
+        //    diseño de la primitiva — ver driverStatus.repository.ts).
         const existingA = makeRideA({ status: "accepted" });
         mockFindById.mockResolvedValue(existingA);
         mockCancelAccepted.mockResolvedValue({ ...existingA, status: "cancelled" });
@@ -1593,10 +1589,10 @@ describe("RidesService - contrato actual", () => {
         await service.cancelAcceptedRide("token", "ride-a", {});
 
         // 2) El conductor acepta y completa un viaje C totalmente distinto.
-        //    activateQueuedRideOrClearStale (Fase 3) es la Ãºnica puerta para
-        //    promover una queued ride â€” se le pasa el id de C, nunca el de
+        //    activateQueuedRideOrClearStale (Fase 3) es la única puerta para
+        //    promover una queued ride — se le pasa el id de C, nunca el de
         //    la B ya resuelta, y su propia guarda (current_ride_id === C)
-        //    ya estÃ¡ probada en la suite de Fase 3.
+        //    ya está probada en la suite de Fase 3.
         mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
         mockFindById.mockResolvedValue(
           makeRide({ id: "ride-c", status: "in_progress", driverUserId: "driver-1", notes: "PaymentMethod: cash" }),
@@ -1613,8 +1609,8 @@ describe("RidesService - contrato actual", () => {
       });
     });
 
-    describe("TEST_5_2_5 â€” B reasignada es elegible para un nuevo conductor", () => {
-      it("tras la resoluciÃ³n, se reintenta attemptQueuedOffer(B) â€” el mismo mecanismo que ya ofrece rides 'requested' a nuevos candidatos", async () => {
+    describe("TEST_5_2_5 — B reasignada es elegible para un nuevo conductor", () => {
+      it("tras la resolución, se reintenta attemptQueuedOffer(B) — el mismo mecanismo que ya ofrece rides 'requested' a nuevos candidatos", async () => {
         const existingA = makeRideA({ status: "accepted" });
         mockFindById.mockResolvedValue(existingA);
         mockCancelAccepted.mockResolvedValue({ ...existingA, status: "cancelled" });
@@ -1626,17 +1622,17 @@ describe("RidesService - contrato actual", () => {
         await service.cancelAcceptedRide("token", "ride-a", {});
         await new Promise((resolve) => setImmediate(resolve));
 
-        // attemptQueuedOffer es la misma primitiva de Fase 2 que ya estÃ¡
+        // attemptQueuedOffer es la misma primitiva de Fase 2 que ya está
         // probada en rideQueueOfferProducer.service.test.ts (TEST_2: "un
-        // conductor elegible â†’ una oferta pending") para encontrar un nuevo
-        // conductor a partir de un ride en 'requested' â€” no se invocÃ³
-        // ninguna lÃ³gica de matching nueva.
+        // conductor elegible → una oferta pending") para encontrar un nuevo
+        // conductor a partir de un ride en 'requested' — no se invocó
+        // ninguna lógica de matching nueva.
         expect(mockMarkCancelledByRideId).toHaveBeenCalledWith("ride-b");
       });
     });
 
-    describe("TEST_5_2_7 â€” completeRide(A) normal permanece intacto", () => {
-      it("con B vÃ¡lida en cola, sigue usando activateQueuedRideOrClearStale (Fase 3), nunca resolveQueuedRideOnAbnormalEnd", async () => {
+    describe("TEST_5_2_7 — completeRide(A) normal permanece intacto", () => {
+      it("con B válida en cola, sigue usando activateQueuedRideOrClearStale (Fase 3), nunca resolveQueuedRideOnAbnormalEnd", async () => {
         mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
         mockFindById.mockResolvedValue(
           makeRideA({ status: "in_progress", notes: "PaymentMethod: cash" }),
@@ -1869,7 +1865,6 @@ describe("RidesService - contrato actual", () => {
     });
   });
 
-
   describe("no show", () => {
     it("rechaza no show antes de marcar llegada", async () => {
       mockFindUserById.mockResolvedValue({
@@ -2072,7 +2067,7 @@ describe("RidesService - contrato actual", () => {
       expect(result.rides[0]?.status).toBe("pending_payment");
     });
 
-    describe("preasignaciÃ³n encadenada â€” UI pasajero B (Fase 5)", () => {
+    describe("preasignación encadenada — UI pasajero B (Fase 5)", () => {
       it("expone assignmentMode en la respuesta del viaje", async () => {
         mockFindByPassengerIdWithDriver.mockResolvedValue([
           makeRide({ assignmentMode: "queued_offer" }),
@@ -2085,7 +2080,7 @@ describe("RidesService - contrato actual", () => {
         expect(result.rides[0]?.assignmentMode).toBe("queued_offer");
       });
 
-      it("calcula estimatedWaitMinutes para accepted+queued_offer cuando hay datos de ubicaciÃ³n", async () => {
+      it("calcula estimatedWaitMinutes para accepted+queued_offer cuando hay datos de ubicación", async () => {
         mockFindByPassengerIdWithDriver.mockResolvedValue([
           makeRide({
             id: "ride-b",
@@ -2130,7 +2125,7 @@ describe("RidesService - contrato actual", () => {
         expect(mockDriverStatusFindByDriverId).not.toHaveBeenCalled();
       });
 
-      it("estimatedWaitMinutes es null (best-effort) si falta informaciÃ³n de ubicaciÃ³n, sin romper la respuesta", async () => {
+      it("estimatedWaitMinutes es null (best-effort) si falta información de ubicación, sin romper la respuesta", async () => {
         mockFindByPassengerIdWithDriver.mockResolvedValue([
           makeRide({ status: "accepted", assignmentMode: "queued_offer", driverUserId: "driver-1" }),
         ]);
