@@ -8572,10 +8572,21 @@ function PassengerRideCard({
     (nav.destinationLat != null && nav.destinationLng != null) ||
     getDriverPointForPassengerMap(ride, null) !== null;
   const passengerCanTrackDriver = ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveStatus);
+  // Preasignación encadenada (Fase 5): mientras el conductor sigue en otro
+  // viaje (queued_offer), su ubicación en vivo pertenece a ESE viaje, no a un
+  // desplazamiento hacia B — mostrarla induciría a pensar que ya viene en
+  // camino. Sin mapa ni navegación paralela hasta la transición real a
+  // driver_en_route (Fase 3).
+  const isQueuedOfferAwaitingActivation =
+    effectiveStatus === "accepted" &&
+    (ride as RideRequestData & Record<string, unknown>).assignmentMode === "queued_offer";
 
   // En viajes activos se mantiene el mapa en vivo. En estados finales se muestra
   // la ruta GPS histórica realmente registrada por el conductor.
-  const showLiveMap = passengerCanTrackDriver && (hasDriver || navHasMapPoints || effectiveStatus === "driver_scheduled");
+  const showLiveMap =
+    !isQueuedOfferAwaitingActivation &&
+    passengerCanTrackDriver &&
+    (hasDriver || navHasMapPoints || effectiveStatus === "driver_scheduled");
   const showHistoricalMap = ["completed", "cancelled"].includes(effectiveStatus);
   const showMap = showLiveMap || showHistoricalMap;
   const label = isPassengerNoShowCompletedRide(ride)
@@ -8694,6 +8705,35 @@ function PassengerRideCard({
               <IonIcon icon={hourglassOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
               <strong>En espera de aprobación del pago.</strong>
               <br />El proveedor de tarjeta está verificando el cobro. Apenas lo apruebe, RAPA GO enviará automáticamente la solicitud a los conductores disponibles.
+            </div>
+          )}
+
+          {/* Preasignación encadenada (Fase 5): mientras el conductor sigue
+              terminando otro viaje, NUNCA se muestra "va en camino" — eso
+              sólo es cierto desde que el backend (Fase 3) hace la transición
+              real a driver_en_route. Sólo datos agregados de B: nada del
+              otro viaje ni de su pasajero. */}
+          {isQueuedOfferAwaitingActivation && (
+            <div
+              style={{
+                marginBottom: 12,
+                background: "var(--rp-warn-bg)",
+                borderRadius: 18,
+                padding: "12px",
+                border: "1px solid rgba(210,164,58,.62)",
+                color: "var(--rp-warn-fg)",
+                fontWeight: 900,
+                lineHeight: 1.35,
+              }}
+            >
+              <IonIcon icon={hourglassOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
+              <strong>Tu conductor está finalizando un viaje cercano.</strong>
+              {ride.estimatedWaitMinutes != null && (
+                <>
+                  <br />Tiempo estimado para recogerte: ~{Math.max(0, Math.round(ride.estimatedWaitMinutes))} min
+                </>
+              )}
+              <br />Tu conductor comenzará a dirigirse hacia ti cuando termine el viaje actual.
             </div>
           )}
 

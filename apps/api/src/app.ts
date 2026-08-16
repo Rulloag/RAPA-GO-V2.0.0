@@ -24,6 +24,7 @@ import { supportRoutes, adminSupportRoutes } from "./modules/support/support.rou
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 import { driverStatusRoutes } from "./modules/drivers/driverStatus.routes.js";
 import { driverProfileRoutes } from "./modules/drivers/driverProfile.routes.js";
+import { driverOffersRoutes } from "./modules/drivers/driverOffers.routes.js";
 import { passengerProfileRoutes } from "./modules/passengers/passengerProfile.routes.js";
 import { offlineRoutes } from "./modules/offline/offline.routes.js";
 import { walletRoutes } from "./modules/wallet/wallet.routes.js";
@@ -55,6 +56,7 @@ import { db } from "./db/client.js";
 import { releaseFeatures } from "./config/features.js";
 import { RetentionJob } from "./jobs/retention.job.js";
 import { RideReceiptsJob } from "./jobs/rideReceipts.job.js";
+import { QueueOfferExpiryJob } from "./jobs/queueOfferExpiry.job.js";
 
 async function checkDbConnection(): Promise<"connected" | "disconnected"> {
   try {
@@ -184,6 +186,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(adminSupportRoutes, { prefix: "/api/admin/support" });
   await fastify.register(adminRoutes, { prefix: "/api/admin" });
   await fastify.register(driverStatusRoutes, { prefix: "/api/drivers" });
+  await fastify.register(driverOffersRoutes, { prefix: "/api/drivers" });
   await fastify.register(offlineRoutes, { prefix: "/api" });
   await fastify.register(driverProfileRoutes, { prefix: "/api" });
   await fastify.register(passengerProfileRoutes, { prefix: "/api" });
@@ -211,15 +214,18 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   const retentionJob = new RetentionJob(fastify.log);
   const rideReceiptsJob = new RideReceiptsJob(fastify.log);
+  const queueOfferExpiryJob = new QueueOfferExpiryJob(fastify.log);
 
   fastify.addHook("onReady", async () => {
     retentionJob.start();
     rideReceiptsJob.start();
+    queueOfferExpiryJob.start();
   });
 
   fastify.addHook("onClose", async () => {
     retentionJob.stop();
     rideReceiptsJob.stop();
+    queueOfferExpiryJob.stop();
   });
 
   return fastify;

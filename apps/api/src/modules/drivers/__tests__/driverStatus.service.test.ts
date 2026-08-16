@@ -6,15 +6,36 @@ const mockFindCompletedByDriverIdOnDate = vi.fn();
 const mockFindDriverStatusById          = vi.fn();
 const mockIsSessionValid                = vi.fn().mockResolvedValue(true);
 const mockFindUserById                  = vi.fn();
+const mockClearStaleCurrentRide         = vi.fn();
+const mockUpsertDriverStatus            = vi.fn();
+const mockResolveQueuedRideOnAbnormalEnd = vi.fn();
+const mockMarkCancelledByRideId         = vi.fn();
+const mockAttemptQueuedOffer            = vi.fn();
+const mockFindActiveRideIdForDriver     = vi.fn();
+const mockSetUnavailableForRest         = vi.fn();
+const mockCanReceiveNewOffers           = vi.fn();
 
 vi.mock("../driverStatus.repository.js", () => ({
   DriverStatusRepository: vi.fn().mockImplementation(() => ({
     findByDriverId:  mockFindDriverStatusById,
-    upsert:          vi.fn(),
+    upsert:          mockUpsertDriverStatus,
     setBusy:         vi.fn(),
     setAvailable:    vi.fn(),
     updateLocation:  vi.fn(),
+    clearStaleCurrentRide: mockClearStaleCurrentRide,
+    resolveQueuedRideOnAbnormalEnd: mockResolveQueuedRideOnAbnormalEnd,
+    setUnavailableForRest: mockSetUnavailableForRest,
   })),
+}));
+
+vi.mock("../../rides/rideAssignmentOffers.repository.js", () => ({
+  RideAssignmentOffersRepository: vi.fn().mockImplementation(() => ({
+    markCancelledByRideId: mockMarkCancelledByRideId,
+  })),
+}));
+
+vi.mock("../../rides/rideQueueOfferProducer.service.js", () => ({
+  attemptQueuedOffer: mockAttemptQueuedOffer,
 }));
 
 vi.mock("../../rides/rides.repository.js", () => ({
@@ -48,13 +69,13 @@ vi.mock("../../users/users.repository.js", () => ({
 // Este test de ganancias debe permanecer aislado de la base de datos real.
 vi.mock("../driverCompliance.service.js", () => ({
   DriverComplianceService: vi.fn().mockImplementation(() => ({
-    canReceiveNewOffers: vi.fn(),
+    canReceiveNewOffers: mockCanReceiveNewOffers,
   })),
 }));
 
 vi.mock("../driverCompliance.repository.js", () => ({
   DriverComplianceRepository: vi.fn().mockImplementation(() => ({
-    findActiveRideIdForDriver: vi.fn(),
+    findActiveRideIdForDriver: mockFindActiveRideIdForDriver,
   })),
 }));
 const { DriverStatusService } = await import("../driverStatus.service.js");
@@ -182,5 +203,56 @@ describe("DriverStatusService.getTodayEarnings", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.earnings.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe("DriverStatusService.getMyStatus — reconciliación de estado stale (Fase 5.2, TEST_5_2_3)", () => {
+  let service: InstanceType<typeof DriverStatusService>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsSessionValid.mockResolvedValue(true);
+    mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    mockClearStaleCurrentRide.mockResolvedValue(undefined);
+    mockUpsertDriverStatus.mockResolvedValue({ driverUserId: "driver-1", availability: "unavailable", currentRideId: null, queuedRideId: null, currentZone: null, lastSeenAt: null });
+    mockResolveQueuedRideOnAbnormalEnd.mockResolvedValue({ decision: "NO_QUEUED_RIDE" });
+    mockMarkCancelledByRideId.mockResolvedValue(1);
+    mockAttemptQueuedOffer.mockResolvedValue({ decision: "NO_ELIGIBLE_CANDIDATE", offerId: null, candidateDriverId: null, attemptOrder: null });
+    service = new DriverStatusService();
+  });
+
+  it("current_ride_id apunta a una ride A ya no activa, sin B en cola → sólo se limpia current_ride_id (comportamiento previo intacto)", async () => {
+    mockFindDriverStatusById
+      .mockResolvedValueOnce({ driverUserId: "driver-1", availability: "busy", currentRideId: "ride-a", queuedRideId: null, currentZone: null, lastSeenAt: null })
+      .mockResolvedValueOnce({ driverUserId: "driver-1", availability: "unavailable", currentRideId: null, queuedRideId: null, currentZone: null, lastSeenAt: null });
+    mockFindActiveRideIdForDriver.mockResolvedValue(null);
+
+    const result = await service.getMyStatus("token");
+
+    expect(result.ok).toBe(true);
+    expect(mockResolveQueuedRideOnAbnormalEnd).toHaveBeenCalledWith("driver-1", "ride-a");
+    expect(mockClearStaleCurrentRide).toHaveBeenCalledWith("driver-1");
+    expect(mockMarkCancelledByRideId).not.toHaveBeenCalled();
+  });
+
+  it("TEST_5_2_3: current_ride_id stale CON B en cola → resuelve B antes de limpiar, nunca deja al conductor available con queued_ride_id colgando", async () => {
+    mockFindDriverStatusById
+      .mockResolvedValueOnce({ driverUserId: "driver-1", availability: "busy", currentRideId: "ride-a", queuedRideId: "ride-b", currentZone: null, lastSeenAt: null })
+      .mockResolvedValueOnce({ driverUserId: "driver-1", availability: "unavailable", currentRideId: null, queuedRideId: null, currentZone: null, lastSeenAt: null });
+    mockFindActiveRideIdForDriver.mockResolvedValue(null);
+    mockResolveQueuedRideOnAbnormalEnd.mockResolvedValue({ decision: "RESOLVED", releasedRideId: "ride-b" });
+
+    const result = await service.getMyStatus("token");
+
+    expect(result.ok).toBe(true);
+    expect(mockResolveQueuedRideOnAbnormalEnd).toHaveBeenCalledWith("driver-1", "ride-a");
+    // La resolución de B ocurre ANTES de clearStaleCurrentRide.
+    const resolveOrder = mockResolveQueuedRideOnAbnormalEnd.mock.invocationCallOrder[0];
+    const clearOrder = mockClearStaleCurrentRide.mock.invocationCallOrder[0];
+    expect(resolveOrder).toBeLessThan(clearOrder as number);
+    expect(mockMarkCancelledByRideId).toHaveBeenCalledWith("ride-b");
+    expect(mockAttemptQueuedOffer).toHaveBeenCalledWith("ride-b");
+    if (!result.ok) return;
+    expect(result.status.queuedRideId).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 const mockFindPendingByDriver = vi.fn();
+const mockFindOfferById       = vi.fn();
 const mockMarkExpired         = vi.fn();
 const mockMarkAccepted        = vi.fn();
 const mockMarkRejected        = vi.fn();
@@ -11,7 +12,10 @@ const mockMarkCancelledByRide = vi.fn();
 const mockFindRideById    = vi.fn();
 const mockAcceptAsQueued  = vi.fn();
 
-const mockSetQueuedRide   = vi.fn();
+const mockSetQueuedRide          = vi.fn();
+const mockClaimQueuedRide        = vi.fn();
+const mockReleaseQueuedRideClaim = vi.fn();
+const mockFindByDriverId         = vi.fn();
 
 const mockIsSessionValid  = vi.fn().mockResolvedValue(true);
 const mockFindUserById    = vi.fn();
@@ -19,6 +23,7 @@ const mockFindUserById    = vi.fn();
 vi.mock("../../../modules/rides/rideAssignmentOffers.repository.js", () => ({
   RideAssignmentOffersRepository: vi.fn().mockImplementation(() => ({
     findPendingByDriverId:  mockFindPendingByDriver,
+    findById:               mockFindOfferById,
     markExpired:            mockMarkExpired,
     markAccepted:           mockMarkAccepted,
     markRejected:           mockMarkRejected,
@@ -36,6 +41,9 @@ vi.mock("../../../modules/rides/rides.repository.js", () => ({
 vi.mock("../driverStatus.repository.js", () => ({
   DriverStatusRepository: vi.fn().mockImplementation(() => ({
     setQueuedRide: mockSetQueuedRide,
+    claimQueuedRide: mockClaimQueuedRide,
+    releaseQueuedRideClaim: mockReleaseQueuedRideClaim,
+    findByDriverId: mockFindByDriverId,
   })),
 }));
 
@@ -202,6 +210,9 @@ describe("DriverOffersService.acceptOffer", () => {
     vi.clearAllMocks();
     mockIsSessionValid.mockResolvedValue(true);
     mockFindUserById.mockResolvedValue({ id: "driver-1", role: "driver" });
+    mockFindOfferById.mockResolvedValue(makeOffer());
+    mockClaimQueuedRide.mockResolvedValue({ driverUserId: "driver-1", queuedRideId: "ride-1" });
+    mockReleaseQueuedRideClaim.mockResolvedValue(undefined);
     service = new DriverOffersService();
   });
 
@@ -249,14 +260,13 @@ describe("DriverOffersService.acceptOffer", () => {
   });
 
   // Test 7
-  it("calls setQueuedRide on driver_statuses", async () => {
+  it("claims the queued ride slot atomically on driver_statuses (Fase 0)", async () => {
     mockMarkAccepted.mockResolvedValue(makeOffer({ status: "accepted" }));
     mockAcceptAsQueued.mockResolvedValue(makeRide({ status: "accepted", id: "ride-1" }));
-    mockSetQueuedRide.mockResolvedValue(undefined);
 
     await service.acceptOffer("token", "offer-1");
 
-    expect(mockSetQueuedRide).toHaveBeenCalledWith("driver-1", "ride-1");
+    expect(mockClaimQueuedRide).toHaveBeenCalledWith("driver-1", "ride-1");
   });
 
   // Test 8
@@ -265,11 +275,90 @@ describe("DriverOffersService.acceptOffer", () => {
     // setBusy is NOT in the mock — if it were called, it would throw; confirming it's absent
     mockMarkAccepted.mockResolvedValue(makeOffer({ status: "accepted" }));
     mockAcceptAsQueued.mockResolvedValue(makeRide({ status: "accepted" }));
-    mockSetQueuedRide.mockResolvedValue(undefined);
 
     await service.acceptOffer("token", "offer-1");
 
     expect(mockSetBusy).not.toHaveBeenCalled();
+  });
+
+  // ── Fase 0: guards de cola ──────────────────────────────────────────────────
+
+  it("QUEUED_ACCEPT_WITH_ACTIVE_AND_EMPTY_QUEUE=PASS — reclama la cola y acepta", async () => {
+    mockMarkAccepted.mockResolvedValue(makeOffer({ status: "accepted" }));
+    mockAcceptAsQueued.mockResolvedValue(makeRide({ status: "accepted", assignmentMode: "queued_offer" }));
+
+    const result = await service.acceptOffer("token", "offer-1");
+
+    expect(mockClaimQueuedRide).toHaveBeenCalledWith("driver-1", "ride-1");
+    expect(mockMarkAccepted).toHaveBeenCalled();
+    expect(mockReleaseQueuedRideClaim).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+  });
+
+  it("QUEUED_ACCEPT_WITHOUT_ACTIVE_RIDE=REJECT — el claim en BD rechaza (sin current_ride_id)", async () => {
+    mockClaimQueuedRide.mockResolvedValue(null);
+
+    const result = await service.acceptOffer("token", "offer-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("DRIVER_QUEUE_UNAVAILABLE");
+    expect(result.statusCode).toBe(409);
+    // Nunca debe tocar la oferta si el claim de BD ya rechazó.
+    expect(mockMarkAccepted).not.toHaveBeenCalled();
+  });
+
+  it("QUEUED_ACCEPT_WITH_EXISTING_QUEUE=REJECT — el claim en BD rechaza (queued_ride_id ya ocupado)", async () => {
+    mockClaimQueuedRide.mockResolvedValue(null);
+
+    const result = await service.acceptOffer("token", "offer-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("DRIVER_QUEUE_UNAVAILABLE");
+    expect(mockAcceptAsQueued).not.toHaveBeenCalled();
+  });
+
+  it("libera el claim de cola si la oferta ya no estaba disponible tras reclamarla", async () => {
+    mockClaimQueuedRide.mockResolvedValue({ driverUserId: "driver-1", queuedRideId: "ride-1" });
+    mockMarkAccepted.mockResolvedValue(null);
+
+    const result = await service.acceptOffer("token", "offer-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("OFFER_EXPIRED_OR_UNAVAILABLE");
+    expect(mockReleaseQueuedRideClaim).toHaveBeenCalledWith("driver-1", "ride-1");
+  });
+
+  it("libera el claim de cola si el ride ya no estaba disponible tras aceptar la oferta (carrera)", async () => {
+    mockClaimQueuedRide.mockResolvedValue({ driverUserId: "driver-1", queuedRideId: "ride-1" });
+    mockMarkAccepted.mockResolvedValue(makeOffer({ status: "accepted" }));
+    mockAcceptAsQueued.mockResolvedValue(null);
+
+    const result = await service.acceptOffer("token", "offer-1");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("RIDE_ALREADY_ASSIGNED");
+    expect(mockMarkCancelledByRide).toHaveBeenCalledWith("ride-1");
+    expect(mockReleaseQueuedRideClaim).toHaveBeenCalledWith("driver-1", "ride-1");
+  });
+
+  it("CONCURRENT_QUEUED_ACCEPTS — solo uno gana: el segundo ve el claim ya ocupado", async () => {
+    mockMarkAccepted.mockResolvedValue(makeOffer({ status: "accepted" }));
+    mockAcceptAsQueued.mockResolvedValue(makeRide({ status: "accepted", assignmentMode: "queued_offer" }));
+
+    mockClaimQueuedRide.mockResolvedValueOnce({ driverUserId: "driver-1", queuedRideId: "ride-1" });
+    const first = await service.acceptOffer("token", "offer-1");
+
+    mockClaimQueuedRide.mockResolvedValueOnce(null);
+    const second = await service.acceptOffer("token", "offer-1");
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(false);
+    if (second.ok) return;
+    expect(second.code).toBe("DRIVER_QUEUE_UNAVAILABLE");
   });
 
   // Test 9

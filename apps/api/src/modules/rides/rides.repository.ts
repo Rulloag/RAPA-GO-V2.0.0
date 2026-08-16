@@ -678,6 +678,27 @@ export class RidesRepository {
   }
 
   /**
+   * Fase 5.2 (caso "conductor cancela sólo B"): cancelAccepted() ya devuelve
+   * el ride a 'requested' con driverUserId=null cuando cancela el conductor
+   * — este método sólo termina la limpieza dejando atrás el rastro de la
+   * oferta en cola (assignment_mode/queued_offer_driver_id), que
+   * cancelAccepted() no toca porque es lógica compartida con cancelaciones
+   * normales (no-queued). Idempotente: sólo escribe si sigue en
+   * queued_offer, así que correrlo dos veces no tiene efecto extra.
+   */
+  async clearQueuedOfferMetadata(rideId: string): Promise<void> {
+    try {
+      await db
+        .update(rideRequests)
+        .set({ assignmentMode: "automatic", queuedOfferDriverId: null, updatedAt: new Date() })
+        .where(and(eq(rideRequests.id, rideId), eq(rideRequests.assignmentMode, "queued_offer")));
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to clear queued offer metadata: ${String(err)}`);
+    }
+  }
+
+  /**
    * Atomically accept a ride only when it is still in 'requested' status.
    * Returns null if no row was updated (status already changed — race condition).
    */
