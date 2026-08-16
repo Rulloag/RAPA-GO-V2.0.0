@@ -64,7 +64,7 @@ export function isVehicleCategory(value: unknown): value is VehicleCategory {
  * a la categoría canónica. Devuelve null si no reconoce.
  */
 export function normalizeVehicleCategory(
-  value: VehicleCategoryInput,
+  value: unknown,
 ): VehicleCategory | null {
   if (value == null) return null;
   const raw = String(value)
