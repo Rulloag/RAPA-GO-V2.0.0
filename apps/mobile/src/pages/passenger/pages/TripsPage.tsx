@@ -1780,7 +1780,7 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
       feePercent: 0,
       feeCapClp: 0,
       title: "Cancelación gratuita",
-      message: "Puedes cancelar gratuitamente durante el primer minuto desde que el conductor queda asignado al viaje.",
+      message: "Puedes cancelar gratuitamente durante el primer minuto desde que el conductor queda asignado al viaje. Se libera el 100% de la retención Klap.",
       detail: "No corresponde cargo por cancelación.",
       acceptedElapsedMs,
       arrivedElapsedMs,
@@ -1799,7 +1799,7 @@ function getPassengerCancellationPolicyForRide(ride: RideRequestData): Passenger
     feeCapClp: RAPAGO_CANCEL_FEE_CAP_CLP,
     title: "Cancelación después de 1 minuto",
     message: `Finalizó el minuto gratuito desde la asignación. El cargo referencial es ${formatClp(fee)}.`,
-    detail: `Después de 1 minuto desde la asignación: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Backend calcula el monto aplicable.`,
+    detail: `Después de 1 minuto desde la asignación: ${RAPAGO_LATE_CANCEL_PERCENT}% de la tarifa aplicable, con tope de ${formatClp(RAPAGO_CANCEL_FEE_CAP_CLP)}. Se captura solo esa multa y se libera el resto de la retención.`,
     acceptedElapsedMs,
     arrivedElapsedMs,
     requiresAdminReview: true,
@@ -2637,7 +2637,8 @@ function isPassengerCancellationCardPaymentForRefundAction(
   ride: Partial<RideRequestData> & Record<string, unknown>,
 ): boolean {
   // Regla RAPA GO:
-  // El botón “Cancelar/devolución” es únicamente para pagos con tarjeta.
+  // El botón de cancelar en tarjeta/Klap no dice “devolución”: el checkout
+  // retiene, no cobra. La liberación o captura parcial la hace el backend.
   // Si el viaje fue efectivo, jamás debe aparecer aunque un registro antiguo
   // haya quedado con flags de refund en localStorage.
   if (isPassengerCancellationCashPaymentForRefundAction(ride)) return false;
@@ -2700,8 +2701,8 @@ function buildPassengerCancelledRide(
     mercadoPagoRefundStatus: isCardPayment ? "pending_backend_refund" : null,
     cardRefundNotice: isCardPayment
       ? candidateFeeClp > 0
-        ? `El backend procesa automáticamente con Klap el cargo de ${formatClp(candidateFeeClp)}. No se agrega nuevamente al próximo viaje.`
-        : "Cancelación gratuita: el backend procesa automáticamente con Klap la liberación de la autorización. No ingreses tarjeta, claves ni códigos bancarios."
+        ? `El backend captura con Klap solo ${formatClp(candidateFeeClp)} y libera el resto de la retención. No se agrega al próximo viaje.`
+        : "Cancelación gratuita: el backend libera el 100% de la retención Klap. No hubo cobro definitivo."
       : null,
     cardWalletCreditRequested: false,
     cardWalletCreditClp: 0,
@@ -7832,6 +7833,11 @@ function openRapaGoCardCancelRefundWhatsApp(ride: RideRequestData): void {
   }
 }
 
+/* El diálogo largo de Cancelar/devolución se conserva (WhatsApp + texto
+   legal), pero ya no salta solo al cancelar: tapa Mis Viajes y el pasajero
+   no lo pidió. La devolución sigue en el botón del viaje cancelado. */
+const AUTO_SHOW_CARD_REFUND_ALERT = false;
+
 function shouldShowRapaGoCardCancelRefundButton(
   ride: RideRequestData,
   effectiveStatus?: string | null,
@@ -7843,11 +7849,22 @@ function shouldShowRapaGoCardCancelRefundButton(
 
   if (!isPassengerCancellationCardPaymentForRefundAction(record)) return false;
 
+  const provider = [
+    record.paymentProvider,
+    record.paymentMethod,
+    record.notes,
+  ]
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
+
+  // Klap retiene y el backend libera o captura la multa solo. No mostrar un
+  // diálogo de "devolución" como si el cobro ya hubiera sido definitivo.
+  if (provider.includes("klap")) return false;
+
   return (
     Boolean(record.cardRefundRequested) ||
     Boolean(record.mercadoPagoRefundRequested) ||
-    Boolean(record.mercadoPagoRefundStatus) ||
-    isPassengerCancellationCardPaymentForRefundAction(record)
+    Boolean(record.mercadoPagoRefundStatus)
   );
 }
 
@@ -8823,7 +8840,7 @@ function PassengerRideCard({
             >
               <IonIcon icon={cardOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
               <strong>Cancelación gratuita.</strong>
-              <br />El backend procesa automáticamente con Klap la liberación de la autorización. No se convierte en Beneficios y no debes ingresar claves ni datos de tu tarjeta.
+              <br />El backend libera automáticamente con Klap el 100% de la retención. No hubo cobro definitivo.
             </div>
           )}
 
@@ -9491,7 +9508,7 @@ function PassengerRideCard({
                 disabled={cancelling}
                 onClick={() => onCancel(ride.id)}
               >
-                {cancelling ? <IonSpinner name="dots" /> : isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>) ? "Cancelar/devolución" : isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) ? "Cancelar recogida" : scheduleInfo.isScheduled ? "Cancelar reserva" : "Cancelar"}
+                {cancelling ? <IonSpinner name="dots" /> : isRoundTripReturnPickupRide(ride as RideRequestData & Record<string, unknown>) ? "Cancelar recogida" : scheduleInfo.isScheduled ? "Cancelar reserva" : "Cancelar"}
               </IonButton>
             )}
 
@@ -9503,7 +9520,7 @@ function PassengerRideCard({
                 disabled={cancelling}
                 onClick={() => onCancelAccepted(ride.id)}
               >
-                {cancelling ? <IonSpinner name="dots" /> : isPassengerCancellationCardPaymentForRefundAction(ride as RideRequestData & Record<string, unknown>) ? "Cancelar/devolución" : "Cancelar viaje"}
+                {cancelling ? <IonSpinner name="dots" /> : "Cancelar viaje"}
               </IonButton>
             )}
 
@@ -9516,6 +9533,17 @@ function PassengerRideCard({
               >
                 <IonIcon icon={alertCircleOutline} slot="start" aria-hidden="true" />
                 Emergencia / WhatsApp
+              </IonButton>
+            )}
+
+            {effectiveStatus === "cancelled" && shouldShowRapaGoCardCancelRefundButton(ride, effectiveStatus) && (
+              <IonButton
+                size="small"
+                fill="outline"
+                color="warning"
+                onClick={() => openRapaGoCardCancelRefundWhatsApp(ride)}
+              >
+                Devolución
               </IonButton>
             )}
 
@@ -10336,7 +10364,7 @@ export default function TripsPage(): JSX.Element {
       message: [
         "Tu viaje fue cancelado correctamente.",
         "",
-        "Como el pago fue con tarjeta, el saldo restante se gestiona como devolución al medio de pago original mediante backend y el proveedor original. No se convierte en Beneficios. Esta opción no aplica para efectivo.",
+        "El pago con tarjeta fue una retención, no un cobro definitivo. El backend libera o captura la multa según la política. No se convierte en Beneficios.",
         "",
         "No debes ingresar tarjeta, claves ni códigos bancarios.",
         "",
@@ -10440,12 +10468,16 @@ export default function TripsPage(): JSX.Element {
         );
       }
 
-      showMercadoPagoRefundAlert(targetRide);
+      if (AUTO_SHOW_CARD_REFUND_ALERT) {
+        showMercadoPagoRefundAlert(targetRide);
+      }
       setCancelError(null);
     } catch {
       // Aunque el backend responda 404/409/500, ya cancelamos en localStorage
       // para que el pasajero no quede atrapado con el viaje reencolado activo.
-      showMercadoPagoRefundAlert(targetRide);
+      if (AUTO_SHOW_CARD_REFUND_ALERT) {
+        showMercadoPagoRefundAlert(targetRide);
+      }
       setCancelError(null);
     } finally {
       setCancelling(null);

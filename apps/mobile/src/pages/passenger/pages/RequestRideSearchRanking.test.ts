@@ -174,6 +174,53 @@ describe("coincidir con la dirección no es coincidir con el nombre", () => {
   });
 });
 
+describe("búsqueda corta: 1–2 palabras, no el nombre oficial entero", () => {
+  it('encuentra el lugar por el principio de una palabra ("hanga", "mataveri")', () => {
+    expect(
+      getRapaNuiLocalAutocompletePredictions("hanga").map(
+        (item) => item.mainText,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "Hospital de Hanga Roa",
+        "Caleta Hanga Roa",
+      ]),
+    );
+    expect(
+      getRapaNuiLocalAutocompletePredictions("mataveri")[0]?.mainText,
+    ).toBe("Aeropuerto Internacional Mataveri");
+  });
+
+  it('encuentra Cabañas Tahonga sin escribir el nombre completo', () => {
+    for (const query of ["tahonga", "taho", "cabanas tahonga"]) {
+      expect(
+        getRapaNuiLocalAutocompletePredictions(query)[0]?.mainText,
+      ).toBe("Cabañas Tahonga");
+    }
+  });
+
+  it('encuentra Casa Silvio escribiendo solo "silvio"', () => {
+    for (const query of ["silvio", "silv", "casa silvio"]) {
+      expect(
+        getRapaNuiLocalAutocompletePredictions(query)[0]?.mainText,
+      ).toBe("Casa Silvio");
+    }
+  });
+
+  it("antepone el nombre a la dirección también en estas fichas nuevas", () => {
+    const silvio = getRapaNuiLocalAutocompleteMatches("hanga").find(
+      (match) => match.suggestion.mainText === "Casa Silvio",
+    );
+    const hospital = getRapaNuiLocalAutocompleteMatches("hanga").find(
+      (match) => match.suggestion.mainText === "Hospital de Hanga Roa",
+    );
+
+    if (silvio && hospital) {
+      expect(silvio.score).toBeLessThan(hospital.score);
+    }
+  });
+});
+
 describe("DGAC encuentra el aeropuerto sin depender de la red", () => {
   /* "DGAC" solo reescribía la búsqueda para pedírsela a Google con el nombre
      oficial completo ("DGAC Dirección General de Aeronáutica Civil"), y Google

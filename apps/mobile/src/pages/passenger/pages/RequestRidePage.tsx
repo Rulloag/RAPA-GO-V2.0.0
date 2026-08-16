@@ -1943,6 +1943,19 @@ const RAPA_NUI_PLACE_HINTS: readonly RapaNuiPlaceHint[] = [
     query: "Haka Piri Mana",
     keywords: ["haka piri", "haka piri mana", "piri mana", "haka"],
   },
+  {
+    query: "Cabañas Tahonga",
+    keywords: [
+      "tahonga",
+      "cabanas tahonga",
+      "cabana tahonga",
+      "tahonga rapa nui",
+    ],
+  },
+  {
+    query: "Casa Silvio",
+    keywords: ["silvio", "casa silvio"],
+  },
 ];
 
 /** Nombre completo que pedirle a Google, o null si nada encaja con confianza.
@@ -1973,8 +1986,15 @@ export function matchRapaNuiPlaceHint(input: string): string | null {
     for (const candidate of candidatesFor(hint)) {
       if (!candidate) continue;
 
-      /* Va escribiendo el principio del nombre. */
-      if (candidate.startsWith(query)) return hint.query;
+      /* Va escribiendo el principio del nombre. Con tres letras, una clave
+         larga ("tahonga") también empieza por "tah", que es el alias de Ahu
+         Tahai: reescribir ahí escondería el sitio que el pasajero ya tenía.
+         Las claves cortas (haka, maea, dgac) sí pueden resolverse enteras
+         desde tres o cuatro letras. */
+      if (candidate.startsWith(query)) {
+        const shortKeyword = candidate.length <= 4;
+        if (shortKeyword || query.length >= 4) return hint.query;
+      }
 
       /* Ya escribió la clave entera y sigue: "hotel maea" + " hare repa". */
       if (
@@ -2190,6 +2210,26 @@ const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace
       lng: -109.382,
       aliases: ["terevaka", "tere vaka", "cerro", "maunga terevaka"],
       placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
+    },
+    {
+      id: "cabanas-tahonga",
+      name: "Cabañas Tahonga",
+      subtitle: "Alojamiento",
+      address: "Cabañas Tahonga, Rapa Nui, Chile",
+      lat: -27.1647,
+      lng: -109.4218,
+      aliases: ["tahonga", "cabanas tahonga", "cabana tahonga"],
+      placeTypes: ["lodging", "point_of_interest", "establishment"],
+    },
+    {
+      id: "casa-silvio",
+      name: "Casa Silvio",
+      subtitle: "Punto de recogida",
+      address: "Casa Silvio, Hanga Roa, Rapa Nui, Chile",
+      lat: -27.1478,
+      lng: -109.4296,
+      aliases: ["silvio", "casa silvio"],
+      placeTypes: ["point_of_interest", "establishment"],
     },
   ] as const;
 
@@ -2458,8 +2498,24 @@ export function getRapaNuiLocalAutocompleteMatches(
       if (value.startsWith(query)) literal = Math.max(literal, 1000);
 
       const words = value.split(" ").filter(Boolean);
+      const tightValue = value.replace(/ /g, "");
+      const tightQuery = query.replace(/ /g, "");
+
       if (words.some((word) => word.startsWith(query))) {
         literal = Math.max(literal, 900);
+      }
+
+      /* Cada palabra escrita como principio de una del nombre: "caba tahon"
+         encuentra Cabañas Tahonga sin el nombre oficial completo. */
+      if (
+        queryWords.length > 0 &&
+        queryWords.every(
+          (word) =>
+            word.length >= 2 &&
+            words.some((valueWord) => valueWord.startsWith(word)),
+        )
+      ) {
+        literal = Math.max(literal, queryWords.length > 1 ? 860 : 900);
       }
 
       if (
@@ -2469,7 +2525,9 @@ export function getRapaNuiLocalAutocompleteMatches(
         literal = Math.max(literal, 820);
       }
 
-      if (value.includes(query)) literal = Math.max(literal, 720);
+      if (value.includes(query) || tightValue.includes(tightQuery)) {
+        literal = Math.max(literal, 720);
+      }
 
       if (literal >= 0) {
         score = Math.max(
@@ -2497,7 +2555,7 @@ export function getRapaNuiLocalAutocompleteMatches(
       (a, b) =>
         b.score - a.score || a.place.name.localeCompare(b.place.name, "es"),
     )
-    .slice(0, 5)
+    .slice(0, 8)
     .map(({ place, score }) => ({
       score,
       suggestion: {
@@ -4922,8 +4980,8 @@ function consumeAutocompleteSessionToken(): google.maps.places.AutocompleteSessi
  *  pintaron sin esperar a nadie. */
 export function autocompleteDebounceMs(query: string): number {
   const normalized = normalizeRapaNuiAutocompleteText(query);
-  if (normalized.length <= 3) return 260;
-  return 140;
+  if (normalized.length <= 3) return 180;
+  return 90;
 }
 
 /** Carga el SDK de Google por adelantado, sin bloquear a nadie.
@@ -10120,7 +10178,7 @@ export default function RequestRidePage(): JSX.Element {
           "Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000.",
         );
         notes.push(
-          "Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.",
+          "Si se cancela con tarjeta, Klap retiene el 100% al pedir el viaje. Sin conductor o dentro de 1 minuto se libera toda la retención. Después se captura min(30% tarifa, $3.000) y se libera el resto. No es un cobro inmediato ni un reembolso de Beneficios.",
         );
       }
       if (pendingPassengerChargeTotalClp > 0) {
@@ -10749,7 +10807,7 @@ export default function RequestRidePage(): JSX.Element {
             "Política cancelación: sin conductor asignado es gratis; desde 1 minuto después de la asignación se cobra 30% con tope $3.000.",
           );
           localNotes.push(
-            "Si se cancela con tarjeta, la penalización aprobada se descuenta del pago y el saldo restante se gestiona como devolución al medio de pago original. No se convierte en Beneficios ni en saldo transferible.",
+            "Si se cancela con tarjeta, Klap retiene el 100% al pedir el viaje. Sin conductor o dentro de 1 minuto se libera toda la retención. Después se captura min(30% tarifa, $3.000) y se libera el resto. No es un cobro inmediato ni un reembolso de Beneficios.",
           );
         }
         if (pendingPassengerChargeTotalClp > 0) {
@@ -11851,37 +11909,11 @@ export default function RequestRidePage(): JSX.Element {
                     </button>
                   </div>
                 )}
-                {/* Este grupo tiene UNA sola opción, y en modo "ahora" está
-                siempre seleccionada, así que como "elección" no elige nada: su
-                único uso real es volver a solo-ida cuando hay una experiencia
-                de ida y vuelta activa. Se conserva el botón y su handler tal
-                cual —sigue haciendo falta en ese caso— pero baja de tarjeta de
-                72px centrada a una fila discreta, para que deje de competir
-                con el selector de vehículo, que es la decisión de verdad. */}
-                {rideMode === "now" && (
-                  <>
-                    <div className="rq-tripmode">
-                      <button
-                        type="button"
-                        className="rq-tripmode__btn"
-                        aria-pressed={!selectedRoundTripPromotion}
-                        onClick={() => {
-                          clearRoundTripPromotion();
-                        }}>
-                        <IonIcon
-                          icon={arrowForwardOutline}
-                          aria-hidden="true"
-                        />
-                        <span className="rq-tripmode__copy">
-                          <strong>Solo ida</strong>
-                          <small>
-                            Viaje inmediato para moverte ahora por Rapa Nui.
-                          </small>
-                        </span>
-                      </button>
-                    </div>
-                  </>
-                )}
+                {/* El producto en "ahora" es siempre solo ida (tripFareMode
+                queda en one_way). La tarjeta "Solo ida" y su texto de viaje
+                inmediato se ocultaron: no elegían nada y tapaban el selector
+                de vehículo. Volver desde una experiencia de ida y vuelta sigue
+                en el botón de Mataveri, más abajo. */}
 
                 <div className="rp-request-vehicle-heading">
                   <div>
