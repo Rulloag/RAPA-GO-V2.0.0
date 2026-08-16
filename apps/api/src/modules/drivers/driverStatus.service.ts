@@ -6,6 +6,8 @@ import { RidesRepository } from "../rides/rides.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { DriverComplianceService } from "./driverCompliance.service.js";
 import { DriverComplianceRepository } from "./driverCompliance.repository.js";
+import { RideAssignmentOffersRepository } from "../rides/rideAssignmentOffers.repository.js";
+import { attemptQueuedOffer } from "../rides/rideQueueOfferProducer.service.js";
 
 const tokenService     = new TokenService();
 const sessionService   = new SessionService();
@@ -13,6 +15,32 @@ const usersRepo        = new UsersRepository();
 const driverStatusRepo = new DriverStatusRepository();
 const ridesRepo        = new RidesRepository();
 const complianceService = new DriverComplianceService();
+const offersRepo        = new RideAssignmentOffersRepository();
+
+/**
+ * Fase 5.2 — resuelve cualquier B en cola antes de dejar que
+ * clearStaleCurrentRide() limpie current_ride_id, para que nunca quede
+ * current_ride_id=NULL con queued_ride_id todavía apuntando a una B
+ * accepted/queued_offer. Best-effort en la parte externa (oferta/matching);
+ * la parte de BD es atómica dentro de resolveQueuedRideOnAbnormalEnd().
+ */
+async function resolveQueuedRideBeforeClearingStale(
+  driverUserId: string,
+  staleCurrentRideId: string,
+): Promise<void> {
+  const resolution = await driverStatusRepo.resolveQueuedRideOnAbnormalEnd(
+    driverUserId,
+    staleCurrentRideId,
+  );
+
+  if (resolution.decision === "RESOLVED") {
+    await offersRepo.markCancelledByRideId(resolution.releasedRideId);
+    void attemptQueuedOffer(resolution.releasedRideId).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[RAPA GO] No se pudo reasignar B ${resolution.releasedRideId} tras reconciliación de estado stale: ${message.slice(0, 300)}`);
+    });
+  }
+}
 const complianceRepo = new DriverComplianceRepository();
 
 type AuthResult =
@@ -50,6 +78,7 @@ export class DriverStatusService {
     );
 
     if (status.currentRideId && !activeRideId) {
+      await resolveQueuedRideBeforeClearingStale(auth.userId, status.currentRideId);
       await driverStatusRepo.clearStaleCurrentRide(auth.userId);
       status =
         (await driverStatusRepo.findByDriverId(auth.userId)) ??
@@ -63,6 +92,11 @@ export class DriverStatusService {
         currentZone:   status.currentZone ?? null,
         lastSeenAt:    status.lastSeenAt?.toISOString() ?? null,
         currentRideId: status.currentRideId ?? null,
+        // Preasignación encadenada (Fase 4.1): expone el estado real de BD
+        // para que la UI reconstruya "Próximo viaje reservado" al reabrir la
+        // app, en vez de depender únicamente de un flag en memoria que se
+        // pierde al cerrar/reabrir.
+        queuedRideId:  status.queuedRideId ?? null,
       },
     };
   }
@@ -102,6 +136,7 @@ export class DriverStatusService {
       }
 
       if (current?.currentRideId) {
+        await resolveQueuedRideBeforeClearingStale(auth.userId, current.currentRideId);
         await driverStatusRepo.clearStaleCurrentRide(auth.userId);
       }
 

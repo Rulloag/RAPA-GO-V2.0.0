@@ -15583,6 +15583,105 @@ function AssignedRidesPage({
     return () => setDriverActiveRideFlag(null);
   }, [activeRide?.id]);
 
+  /* Preasignación encadenada (Fase 4): mientras el conductor tiene un viaje A
+     activo, hace polling de la oferta en cola real del backend
+     (GET /drivers/me/offers/active — Fase 2). Mismo intervalo (15s) que el
+     resto de los pollers de esta página; nada de WebSocket/SSE nuevo.
+     `driverQueuedOfferReserved` es un flag LOCAL: una vez aceptada la oferta
+     el backend ya no la devuelve como pending (queda 'accepted'), así que sin
+     este flag la tarjeta desaparecería sola en el siguiente poll en vez de
+     mostrar "Próximo viaje reservado". Se resetea cuando cambia el viaje A. */
+  const [driverQueuedOffer, setDriverQueuedOffer] =
+    useState<ActiveRideOfferData | null>(null);
+  const [driverQueuedOfferReserved, setDriverQueuedOfferReserved] =
+    useState(false);
+  const [driverQueuedOfferActionLoading, setDriverQueuedOfferActionLoading] =
+    useState(false);
+
+  useEffect(() => {
+    setDriverQueuedOffer(null);
+    setDriverQueuedOfferReserved(false);
+  }, [activeRide?.id]);
+
+  useEffect(() => {
+    if (!activeRide || !session?.accessToken) return;
+
+    let cancelled = false;
+
+    const tick = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const offer = await ridesService.getActiveDriverOffer(
+          session.accessToken,
+        );
+        if (cancelled) return;
+        setDriverQueuedOffer(offer);
+      } catch {
+        // Best-effort: no debe interrumpir la pantalla de viaje activo.
+      }
+
+      // El estado "reservado" se deriva de BD (driver_statuses.queued_ride_id
+      // vía GET /drivers/me/status), no sólo del flag en memoria que dejaba
+      // el accept — así sobrevive a cerrar/reabrir la app, sin depender de
+      // que el usuario haya visto la respuesta del accept en esta sesión.
+      try {
+        const status = await driverStatusService.getMyStatus(
+          session.accessToken,
+        );
+        if (cancelled) return;
+        setDriverQueuedOfferReserved(status.queuedRideId != null);
+      } catch {
+        // Best-effort: conserva el último estado conocido si falla.
+      }
+    };
+
+    void tick();
+    const intervalId = window.setInterval(tick, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activeRide?.id, session?.accessToken]);
+
+  const handleAcceptDriverQueuedOffer = useCallback(async () => {
+    if (!driverQueuedOffer || !session?.accessToken || driverQueuedOfferActionLoading) return;
+    setDriverQueuedOfferActionLoading(true);
+    try {
+      // acceptDriverOffer sólo reserva B como queued_ride_id — no cambia
+      // current_ride_id, no toca la navegación de A (Fase 0/2 en el backend).
+      await ridesService.acceptDriverOffer(
+        session.accessToken,
+        driverQueuedOffer.offer.id,
+      );
+      setDriverQueuedOfferReserved(true);
+    } catch {
+      // Se mantiene la tarjeta visible para reintentar; el backend sigue
+      // siendo la autoridad final (índices únicos + revalidación).
+    } finally {
+      setDriverQueuedOfferActionLoading(false);
+    }
+  }, [driverQueuedOffer, session?.accessToken, driverQueuedOfferActionLoading]);
+
+  const handleRejectDriverQueuedOffer = useCallback(async () => {
+    if (!driverQueuedOffer || !session?.accessToken || driverQueuedOfferActionLoading) return;
+    setDriverQueuedOfferActionLoading(true);
+    try {
+      await ridesService.rejectDriverOffer(
+        session.accessToken,
+        driverQueuedOffer.offer.id,
+      );
+      setDriverQueuedOffer(null);
+    } catch {
+      // Deja la tarjeta visible para reintentar.
+    } finally {
+      setDriverQueuedOfferActionLoading(false);
+    }
+  }, [driverQueuedOffer, session?.accessToken, driverQueuedOfferActionLoading]);
+
+  const handleDriverQueuedOfferExpire = useCallback(() => {
+    setDriverQueuedOffer(null);
+  }, []);
+
   /* Reloj de la espera de No show. Vive AQUÍ, en el componente de página, y no
      dentro de ActiveRideScreen, por una razón que no es de estilo:
      ActiveRideScreen se declara en el cuerpo de este componente, así que en
@@ -18616,7 +18715,23 @@ La reserva fue retirada. No continúes hacia la recogida.`,
     setError("Reporte de accidente guardado. Se abrió WhatsApp soporte.");
   }
 
-  function ActiveRideScreen({ ride }: { ride: DriverRideData }): JSX.Element {
+  function ActiveRideScreen({
+    ride,
+    driverQueuedOffer,
+    driverQueuedOfferReserved,
+    driverQueuedOfferActionLoading,
+    onAcceptDriverQueuedOffer,
+    onRejectDriverQueuedOffer,
+    onDriverQueuedOfferExpire,
+  }: {
+    ride: DriverRideData;
+    driverQueuedOffer: ActiveRideOfferData | null;
+    driverQueuedOfferReserved: boolean;
+    driverQueuedOfferActionLoading: boolean;
+    onAcceptDriverQueuedOffer: () => void;
+    onRejectDriverQueuedOffer: () => void;
+    onDriverQueuedOfferExpire: () => void;
+  }): JSX.Element {
     const nextOfferWhileActive = !nextQueuedRide
       ? (availableRides.find(
           (item) =>
@@ -18782,6 +18897,33 @@ La reserva fue retirada. No continúes hacia la recogida.`,
        sobre fondo claro, es decir invisibles. */
     const sheetBody = (
       <>
+        {/* Preasignación encadenada (Fase 4) — oferta REAL del backend
+            (ride_assignment_offers vía Fase 2/3), distinta del mecanismo
+            local `nextQueuedRide`/`nextOfferWhileActive` de más abajo. */}
+        {driverQueuedOfferReserved && (
+          <div className="rapago-driver-sheet-note rapago-driver-sheet-note--queued">
+            <span className="rapago-driver-sheet-note__icon" aria-hidden="true">
+              <IonIcon icon={timeOutline} />
+            </span>
+            <div className="rapago-driver-sheet-note__text">
+              <strong>Próximo viaje reservado</strong>
+              <small>
+                Se activará automáticamente cuando termines el viaje actual.
+              </small>
+            </div>
+          </div>
+        )}
+
+        {!driverQueuedOfferReserved && driverQueuedOffer && (
+          <QueuedOfferModal
+            offer={driverQueuedOffer}
+            onAccept={onAcceptDriverQueuedOffer}
+            onReject={onRejectDriverQueuedOffer}
+            onExpire={onDriverQueuedOfferExpire}
+            loading={driverQueuedOfferActionLoading}
+          />
+        )}
+
         {nextQueuedRide && (
           <div className="rapago-driver-sheet-note rapago-driver-sheet-note--queued">
             <span className="rapago-driver-sheet-note__icon" aria-hidden="true">
@@ -18986,7 +19128,15 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           // remontaría todo el subárbol —recreando el mapa de Google entero— en
           // cada ciclo. Invocada, su salida se integra en este mismo árbol y el
           // mapa conserva su instancia.
-          ActiveRideScreen({ ride: activeRide })
+          ActiveRideScreen({
+            ride: activeRide,
+            driverQueuedOffer,
+            driverQueuedOfferReserved,
+            driverQueuedOfferActionLoading,
+            onAcceptDriverQueuedOffer: () => void handleAcceptDriverQueuedOffer(),
+            onRejectDriverQueuedOffer: () => void handleRejectDriverQueuedOffer(),
+            onDriverQueuedOfferExpire: handleDriverQueuedOfferExpire,
+          })
         ) : showActiveRideOnly ? (
           <div
             style={{
@@ -19943,7 +20093,7 @@ function QueuedOfferModal({
           Próximo viaje disponible
         </div>
         <div style={{ fontSize: "0.8rem", opacity: 0.9, marginTop: "2px" }}>
-          Este viaje comenzará después de terminar tu viaje actual.
+          Este viaje comenzará cuando termines el actual.
         </div>
       </div>
 
@@ -19968,10 +20118,26 @@ function QueuedOfferModal({
           padding: "12px 14px",
           marginBottom: "12px",
         }}>
-        <div
-          style={{ fontWeight: 600, fontSize: "0.92rem", marginBottom: "6px" }}>
-          {getDriverRideRouteDisplayLabel(ride)}
+        <div style={{ fontSize: "0.85rem", marginBottom: "4px" }}>
+          <strong>Recogida:</strong>{" "}
+          {getDriverRidePointDisplayLabel(ride, "origin")}
         </div>
+        <div style={{ fontSize: "0.85rem", marginBottom: "6px" }}>
+          <strong>Destino:</strong>{" "}
+          {getDriverRidePointDisplayLabel(ride, "destination")}
+        </div>
+
+        {ride.estimatedWaitMinutes != null && (
+          <div
+            style={{
+              fontSize: "0.85rem",
+              fontWeight: 600,
+              color: "var(--ion-color-primary)",
+              marginBottom: "6px",
+            }}>
+            Tiempo estimado para comenzar: ~{Math.max(0, Math.round(ride.estimatedWaitMinutes))} min
+          </div>
+        )}
 
         <div
           style={{
@@ -19995,6 +20161,9 @@ function QueuedOfferModal({
           )}
           {ride.durationSeconds != null && (
             <span>~{Math.round(ride.durationSeconds / 60)} min</span>
+          )}
+          {ride.pickupDistanceKm != null && (
+            <span>Recogida a {ride.pickupDistanceKm.toFixed(1)} km</span>
           )}
         </div>
 

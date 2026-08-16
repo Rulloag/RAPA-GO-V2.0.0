@@ -11,6 +11,8 @@ import { WalletRepository } from "../wallet/wallet.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { DriverComplianceService } from "../drivers/driverCompliance.service.js";
 import { rideReceiptsService } from "../rideReceipts/rideReceipts.service.js";
+import { attemptQueuedOffer } from "./rideQueueOfferProducer.service.js";
+import { haversineDistanceKm, estimateEtaMinutes, QUEUE_MATCH_CONFIG } from "./rideQueueMatch.js";
 import type {
   RideRequestResponse,
   RidesListResult,
@@ -50,6 +52,7 @@ const usersRepo = new UsersRepository();
 const ridesRepo = new RidesRepository();
 const driverComplianceService = new DriverComplianceService();
 const driverStatusRepo = new DriverStatusRepository();
+const offersRepo = new RideAssignmentOffersRepository();
 
 const SCHEDULE_ACTIVATION_MINUTES = 30;
 const AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP = 4000;
@@ -103,6 +106,50 @@ async function estimateFare(
   return roundFareUpTo500(
     Math.min(Math.max(raw, minFareCLP), 50000),
   );
+}
+
+/**
+ * Espera estimada (min) para el pasajero de un ride B en
+ * accepted+queued_offer: cuánto falta para que su conductor termine el
+ * viaje actual (A) y llegue hasta el origen de B. Misma estimación de
+ * Fase 1 (Haversine + velocidad promedio) — nunca expone nada del viaje A
+ * más allá de este número agregado. best-effort: null si falta información
+ * de ubicación.
+ */
+async function estimateQueuedPassengerWaitMinutes(
+  driverUserId: string,
+  rideB: { originLat: number | null; originLng: number | null },
+): Promise<number | null> {
+  try {
+    if (rideB.originLat == null || rideB.originLng == null) return null;
+
+    const driverStatus = await driverStatusRepo.findByDriverId(driverUserId);
+    if (
+      !driverStatus?.currentRideId ||
+      driverStatus.currentLat == null ||
+      driverStatus.currentLng == null
+    ) {
+      return null;
+    }
+
+    const currentRide = await ridesRepo.findById(driverStatus.currentRideId);
+    if (currentRide?.destinationLat == null || currentRide?.destinationLng == null) {
+      return null;
+    }
+
+    const remainingTripMin = estimateEtaMinutes(
+      haversineDistanceKm(driverStatus.currentLat, driverStatus.currentLng, currentRide.destinationLat, currentRide.destinationLng),
+      QUEUE_MATCH_CONFIG,
+    );
+    const pickupMin = estimateEtaMinutes(
+      haversineDistanceKm(currentRide.destinationLat, currentRide.destinationLng, rideB.originLat, rideB.originLng),
+      QUEUE_MATCH_CONFIG,
+    );
+
+    return Math.round(remainingTripMin + pickupMin);
+  } catch {
+    return null;
+  }
 }
 
 type ScheduleMeta = {
@@ -666,6 +713,25 @@ function toPolicyChargeResponse(
 function shouldCreatePassengerCancellationCharge(
   ride: RideRequest,
 ): boolean {
+  // Preasignación encadenada (Fase 5.1): mientras B sigue 'accepted' con
+  // assignment_mode='queued_offer', el conductor todavía está terminando
+  // otro viaje y jamás empezó a desplazarse hacia B — no importa cuántos
+  // minutos lleve aceptada la oferta en cola, la cancelación es SIEMPRE
+  // gratuita. No reutilizar acceptedAt aquí: ese timestamp se fija en el
+  // momento en que el conductor aceptó la oferta (Fase 2), que puede ser
+  // muy anterior al inicio real del desplazamiento.
+  if (ride.assignmentMode === "queued_offer" && ride.status === "accepted") {
+    return false;
+  }
+
+  // Una vez que Fase 3 activa B (driver_en_route), el reloj de gracia debe
+  // arrancar en ESE momento real — enRouteAt —, no en el acceptedAt de la
+  // aceptación en cola, que ya quedó minutos atrás y penalizaría de más.
+  const clockStartMs =
+    ride.assignmentMode === "queued_offer"
+      ? (ride.enRouteAt?.getTime() ?? null)
+      : (ride.acceptedAt?.getTime() ?? null);
+
   // La penalidad comienza únicamente desde la asignación efectiva del
   // conductor. Sin acceptedAt (incluidas reservas aún sin conductor), la
   // cancelación del pasajero es gratuita. Cuando un conductor cancela, el
@@ -673,7 +739,7 @@ function shouldCreatePassengerCancellationCharge(
   return isPassengerCancellationChargeable({
     isScheduled: false,
     scheduledPickupAtMs: null,
-    acceptedAtMs: ride.acceptedAt?.getTime() ?? null,
+    acceptedAtMs: clockStartMs,
   });
 }
 
@@ -817,6 +883,7 @@ function toResponse(
       policyInfo?.appliedCharges.map((charge) =>
         toPolicyChargeResponse(charge),
       ) ?? [],
+    assignmentMode: r.assignmentMode,
   };
 
   if (scheduleMeta?.isScheduled) {
@@ -959,7 +1026,7 @@ export class RidesService {
     const rows = await ridesRepo.findByPassengerIdWithDriver(auth.userId);
     const responses = await Promise.all(
       rows.map(async (ride) => {
-        const response = toResponse(ride);
+        let response = toResponse(ride);
 
         // Compatibilidad con solicitudes antiguas creadas antes de que existiera
         // pending_payment. Aunque su fila diga requested, el pasajero nunca debe
@@ -970,6 +1037,26 @@ export class RidesService {
           !(await rideHasApprovedCardPayment(ride))
         ) {
           return { ...response, status: "pending_payment" };
+        }
+
+        // Preasignación encadenada (Fase 5): mientras el ride sigue
+        // 'accepted' vía assignmentMode='queued_offer', el conductor ya está
+        // asignado pero todavía termina otro viaje — nunca se le muestra al
+        // pasajero como "en camino" hasta que Fase 3 haga la transición real
+        // a driver_en_route. Se agrega sólo una estimación agregada (minutos
+        // de espera), nunca datos del otro viaje (A) ni de su pasajero.
+        if (
+          ride.status === "accepted" &&
+          ride.assignmentMode === "queued_offer" &&
+          ride.driverUserId
+        ) {
+          response = {
+            ...response,
+            estimatedWaitMinutes: await estimateQueuedPassengerWaitMinutes(
+              ride.driverUserId,
+              ride,
+            ),
+          };
         }
 
         return response;
@@ -1188,6 +1275,17 @@ export class RidesService {
       },
     );
 
+    // Disparador de la Fase 2 (preasignación encadenada): sólo para rides
+    // inmediatos ya en 'requested' (no scheduled, no pending_payment). Best
+    // effort — nunca debe bloquear ni fallar la creación del ride si el
+    // productor de ofertas encuentra un problema.
+    if (created.ride.status === "requested") {
+      queueReceiptWithoutBlocking(
+        attemptQueuedOffer(created.ride.id),
+        `No se pudo generar oferta de preasignación encadenada para ${created.ride.id}`,
+      );
+    }
+
     return {
       ok: true,
       ride: toResponse(
@@ -1402,9 +1500,30 @@ export class RidesService {
       return paymentNotApprovedResult();
     }
 
+    // Reclama el slot de viaje ACTIVO ANTES de tocar el ride. Nunca se confía
+    // en la UI para impedir que un conductor termine con dos viajes activos:
+    // la garantía real es este UPDATE condicional en BD (current_ride_id debe
+    // estar libre). Si el conductor ya tenía un viaje activo, se rechaza aquí
+    // mismo, sin siquiera intentar tomar el ride.
+    const claimed = await driverStatusRepo.claimCurrentRide(auth.userId, rideId);
+
+    if (!claimed) {
+      return {
+        ok: false,
+        code: "DRIVER_ALREADY_HAS_ACTIVE_RIDE",
+        message: "You already have an active ride and cannot accept another.",
+        statusCode: 409,
+      };
+    }
+
     const accepted = await ridesRepo.accept(rideId, auth.userId);
 
     if (!accepted) {
+      // El slot se reclamó pero el ride ya no estaba disponible (otro
+      // conductor ganó la carrera). Liberar el claim para no dejar al
+      // conductor bloqueado por un viaje que nunca tomó.
+      await driverStatusRepo.releaseCurrentRideClaim(auth.userId, rideId);
+
       const existing = await ridesRepo.findById(rideId);
 
       if (!existing) {
@@ -1433,8 +1552,6 @@ export class RidesService {
         statusCode: 409,
       };
     }
-
-    await driverStatusRepo.setBusy(auth.userId, accepted.id);
 
     const acceptedResp = toResponse(accepted);
 
@@ -1509,10 +1626,31 @@ export class RidesService {
       };
     }
 
+    // Preasignación encadenada (Fase 3): si el conductor tenía un viaje B en
+    // cola, la transición A→B se intenta en su propia transacción DB antes
+    // de decidir el destino normal de disponibilidad del conductor. Nunca
+    // dos operaciones sueltas: activar B (o limpiar la referencia stale si
+    // ya no es válido) y mover current_ride_id/queued_ride_id ocurren como
+    // una sola unidad atómica dentro de activateQueuedRideOrClearStale().
+    let queuedTransition: Awaited<ReturnType<typeof driverStatusRepo.activateQueuedRideOrClearStale>> | null = null;
     if (completed.driverUserId) {
-      await driverComplianceService.releaseDriverAfterRide(
+      queuedTransition = await driverStatusRepo.activateQueuedRideOrClearStale(
         completed.driverUserId,
+        completed.id,
       );
+
+      if (queuedTransition.decision !== "TRANSITIONED") {
+        // Sin B válido que activar (no había cola, o quedó stale y ya se
+        // limpió dentro de la transacción anterior) — comportamiento actual
+        // intacto: el conductor sigue el flujo normal de disponibilidad.
+        await driverComplianceService.releaseDriverAfterRide(
+          completed.driverUserId,
+        );
+      }
+      // Si TRANSITIONED: el conductor ya quedó busy con current_ride_id=B
+      // dentro de la transacción — nunca pasa momentáneamente por
+      // "available", evitando la carrera que activaría un nuevo viaje A
+      // distinto para el mismo conductor.
     }
 
     import("../notifications/notifications.helpers.js")
@@ -1525,6 +1663,29 @@ export class RidesService {
         });
       })
       .catch(() => {});
+
+    // Notificación al pasajero B — SOLO si la transición realmente ocurrió,
+    // reutilizando el mismo mecanismo que markEnRoute() usa para el flujo
+    // normal. Best-effort, después de que la transacción ya confirmó.
+    if (queuedTransition?.decision === "TRANSITIONED") {
+      const activatedRideId = queuedTransition.activatedRideId;
+      ridesRepo
+        .findById(activatedRideId)
+        .then((activatedRide) => {
+          if (!activatedRide) return;
+          const activatedResp = toResponse(activatedRide);
+          return import("../notifications/notifications.helpers.js").then(
+            ({ notifyPassengerDriverEnRoute }) => {
+              notifyPassengerDriverEnRoute({
+                passengerUserId: activatedResp.passengerUserId,
+                driverName: activatedResp.driverName ?? "Tu conductor",
+                rideId: activatedResp.id,
+              });
+            },
+          );
+        })
+        .catch(() => {});
+    }
 
     queueReceiptWithoutBlocking(
       rideReceiptsService.queueCompletedRide(completed.id),
@@ -1923,7 +2084,59 @@ export class RidesService {
       };
     }
 
-    if (existing.driverUserId) {
+    // Preasignación encadenada (Fase 5.1): si B todavía era sólo una oferta
+    // en cola (accepted + queued_offer), el conductor sigue con su viaje
+    // ACTIVO en curso (current_ride_id=A) — jamás liberarlo con
+    // releaseDriverAfterRide() aquí, porque eso lo dejaría erróneamente
+    // "available" (o en descanso) en medio de A. Sólo se limpia el slot de
+    // cola y se cancela cualquier oferta pendiente asociada a B; A queda
+    // intacto.
+    const wasQueuedOffer =
+      existing.assignmentMode === "queued_offer" &&
+      existing.status === "accepted";
+
+    if (wasQueuedOffer && existing.driverUserId) {
+      await driverStatusRepo.releaseQueuedRideClaim(
+        existing.driverUserId,
+        existing.id,
+      );
+      await offersRepo.markCancelledByRideId(existing.id);
+
+      // Fase 5.2 — Caso 4 (conductor cancela sólo B, A sigue activo):
+      // ridesRepo.cancelAccepted() ya devolvió B a 'requested' con
+      // driverUserId=null (rama compartida con cancelaciones normales).
+      // Sólo falta limpiar el rastro de assignment_mode/queued_offer_driver_id
+      // y volver a intentar ofrecerla — nunca releaseDriverAfterRide() aquí,
+      // porque A sigue current_ride_id y liberarlo lo dejaría "available" en
+      // medio de un viaje en curso.
+      if (cancellationActorRole === "driver") {
+        await ridesRepo.clearQueuedOfferMetadata(existing.id);
+        void attemptQueuedOffer(existing.id).catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[RAPA GO] No se pudo reintentar oferta para ${existing.id} tras cancelación del conductor: ${message.slice(0, 300)}`);
+        });
+      }
+    } else if (existing.driverUserId) {
+      // Fase 5.2 — Casos 1/3 (A termina anormalmente por cancelación o por
+      // reconciliación de estado stale detectada aquí): resolver cualquier
+      // B en cola ANTES de liberar al conductor, para no dejar
+      // current_ride_id=NULL con queued_ride_id todavía apuntando a B.
+      const resolution = await driverStatusRepo.resolveQueuedRideOnAbnormalEnd(
+        existing.driverUserId,
+        existing.id,
+      );
+
+      if (resolution.decision === "RESOLVED") {
+        await offersRepo.markCancelledByRideId(resolution.releasedRideId);
+        void attemptQueuedOffer(resolution.releasedRideId).catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[RAPA GO] No se pudo reasignar B ${resolution.releasedRideId} tras terminación anormal de A: ${message.slice(0, 300)}`);
+        });
+      } else if (resolution.decision === "QUEUED_RIDE_ALREADY_INVALID") {
+        // Otro proceso ya la había resuelto (carrera) — driver_statuses ya
+        // quedó limpio dentro de la misma transacción, nada más que hacer.
+      }
+
       await driverComplianceService.releaseDriverAfterRide(
         existing.driverUserId,
       );
@@ -2422,6 +2635,22 @@ export class RidesService {
         message: "Ride could not be closed as no show.",
         statusCode: 409,
       };
+    }
+
+    // Fase 5.2 — Caso 2 (A termina anormalmente por no-show): resolver
+    // cualquier B en cola antes de liberar al conductor.
+    const noShowResolution =
+      await driverStatusRepo.resolveQueuedRideOnAbnormalEnd(
+        auth.userId,
+        rideId,
+      );
+
+    if (noShowResolution.decision === "RESOLVED") {
+      await offersRepo.markCancelledByRideId(noShowResolution.releasedRideId);
+      void attemptQueuedOffer(noShowResolution.releasedRideId).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[RAPA GO] No se pudo reasignar B ${noShowResolution.releasedRideId} tras no-show de A: ${message.slice(0, 300)}`);
+      });
     }
 
     await driverComplianceService.releaseDriverAfterRide(auth.userId);

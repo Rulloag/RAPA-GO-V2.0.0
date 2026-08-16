@@ -14,12 +14,39 @@ import type {
   DriverRestSchedule,
 } from "../../db/schema/index.js";
 import type { UpsertDriverRestScheduleInput } from "./driverCompliance.schemas.js";
+import { RideAssignmentOffersRepository } from "../rides/rideAssignmentOffers.repository.js";
+import { attemptQueuedOffer } from "../rides/rideQueueOfferProducer.service.js";
 
 const tokenService = new TokenService();
 const sessionService = new SessionService();
 const usersRepo = new UsersRepository();
 const complianceRepo = new DriverComplianceRepository();
 const driverStatusRepo = new DriverStatusRepository();
+const offersRepo = new RideAssignmentOffersRepository();
+
+/**
+ * Fase 5.2 — mismo tratamiento que en driverStatus.service.ts: resolver
+ * cualquier B en cola antes de dejar que clearStaleCurrentRide() limpie
+ * current_ride_id, para nunca dejar queued_ride_id apuntando a una B
+ * huérfana.
+ */
+async function resolveQueuedRideBeforeClearingStale(
+  driverUserId: string,
+  staleCurrentRideId: string,
+): Promise<void> {
+  const resolution = await driverStatusRepo.resolveQueuedRideOnAbnormalEnd(
+    driverUserId,
+    staleCurrentRideId,
+  );
+
+  if (resolution.decision === "RESOLVED") {
+    await offersRepo.markCancelledByRideId(resolution.releasedRideId);
+    void attemptQueuedOffer(resolution.releasedRideId).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[RAPA GO] No se pudo reasignar B ${resolution.releasedRideId} tras reconciliación de estado stale: ${message.slice(0, 300)}`);
+    });
+  }
+}
 
 export const DRIVER_REST_TIMEZONE = "Pacific/Easter";
 export const DRIVER_REST_DURATION_MINUTES = 12 * 60;
@@ -470,6 +497,7 @@ export class DriverComplianceService {
     }
 
     if (driverStatus?.currentRideId) {
+      await resolveQueuedRideBeforeClearingStale(driverUserId, driverStatus.currentRideId);
       await driverStatusRepo.clearStaleCurrentRide(driverUserId);
     }
 

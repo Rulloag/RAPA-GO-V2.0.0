@@ -5,6 +5,8 @@ export interface DriverStatusData {
   currentZone:   string | null;
   lastSeenAt:    string | null;
   currentRideId: string | null;
+  /** Viaje en cola (Fase 0/2) — no nulo cuando el conductor ya reservó un próximo viaje mientras termina el actual. */
+  queuedRideId?: string | null;
 }
 
 export const driverStatusService = {
