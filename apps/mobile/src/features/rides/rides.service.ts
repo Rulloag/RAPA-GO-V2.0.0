@@ -115,6 +115,10 @@ export interface RideRequestData {
   walletBenefitReversedAt?: string | null;
   baseFareClp?: number | null;
   policyChargesAppliedClp?: number;
+  /** automatic | manual | queued_offer — nunca expone datos de otro viaje del mismo conductor. */
+  assignmentMode?: string;
+  /** Sólo presente cuando assignmentMode === 'queued_offer': espera estimada (min), no es ETA de ruta real. */
+  estimatedWaitMinutes?: number | null;
 }
 
 export interface RideRouteHistoryPoint {
@@ -190,6 +194,9 @@ export interface ActiveRideOfferRideData {
   scheduledPickupAt: string | null;
   priorityFeeClp:   number | null;
   flightNumber:     string | null;
+  /** Espera estimada (min) hasta poder iniciar este viaje — no es un ETA de ruta real, ver rideQueueMatch en el backend. */
+  estimatedWaitMinutes?: number | null;
+  pickupDistanceKm?:     number | null;
 }
 
 export interface ActiveRideOfferData {

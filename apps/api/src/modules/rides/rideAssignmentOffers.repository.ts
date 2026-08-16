@@ -231,10 +231,58 @@ export class RideAssignmentOffersRepository {
   }
 
   /**
+   * IDs de conductores que ya tuvieron una oferta (en cualquier estado) para
+   * este ride. Se usa para no volver a ofrecerle el mismo ride B a un
+   * conductor que ya la rechazó, la dejó expirar, o ya la tiene pending —
+   * y para calcular el siguiente attemptOrder.
+   */
+  async findDriverIdsByRideId(rideRequestId: string): Promise<string[]> {
+    try {
+      const rows = await db
+        .select({ driverUserId: rideAssignmentOffers.driverUserId })
+        .from(rideAssignmentOffers)
+        .where(eq(rideAssignmentOffers.rideRequestId, rideRequestId));
+      return rows.map((r) => r.driverUserId);
+    } catch (err) {
+      throw AppError.internal(`Failed to query offer driver ids for ride: ${String(err)}`);
+    }
+  }
+
+  /**
    * Bulk-expire all pending offers whose expiresAt <= now.
    * Used by a lazy cleanup pass when a new ride request is processed.
    * Returns the number of rows updated.
    */
+  /**
+   * Igual que expireStale(), pero devuelve el rideRequestId de cada oferta
+   * vencida (con duplicados si hubiera más de una por ride, aunque el
+   * índice único parcial lo impide en la práctica). Se usa por el sweep
+   * autónomo (Fase 2.1) para saber a qué rides hay que intentar ofrecerles
+   * el siguiente candidato tras la expiración.
+   */
+  async expireStaleReturningRideIds(now: Date = new Date()): Promise<string[]> {
+    try {
+      const rows = await db
+        .update(rideAssignmentOffers)
+        .set({
+          status:         "expired",
+          responseSource: "system_expire" as OfferResponseSource,
+          updatedAt:      now,
+        })
+        .where(
+          and(
+            eq(rideAssignmentOffers.status, "pending"),
+            lte(rideAssignmentOffers.expiresAt, now),
+          ),
+        )
+        .returning({ rideRequestId: rideAssignmentOffers.rideRequestId });
+      return rows.map((r) => r.rideRequestId);
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(`Failed to expire stale offers: ${String(err)}`);
+    }
+  }
+
   async expireStale(now: Date = new Date()): Promise<number> {
     try {
       const rows = await db
