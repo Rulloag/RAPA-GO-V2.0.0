@@ -90,6 +90,12 @@ export interface RideRequestResponse {
   preferredDriverGender?: "female" | null;
   /** automatic | manual | queued_offer — sin datos privados de ningún otro viaje. */
   assignmentMode?:       string;
+
+  /** Categoría pedida por el pasajero (standard | xl | extra_luggage). */
+  requestedVehicleCategory?: string | null;
+  /** Snapshot de la categoría del vehículo del conductor al aceptar. */
+  assignedVehicleCategory?: string | null;
+
   /**
    * Espera estimada (min) para 'accepted' + assignmentMode='queued_offer':
    * el conductor ya está asignado pero sigue terminando otro viaje. Misma
@@ -184,6 +190,8 @@ export interface AvailableRideResponse {
   status:           string;
   requestedAt:      string;
   createdAt:        string;
+  /** Categoría pedida — visible para todos los conductores; no filtra. */
+  requestedVehicleCategory?: string | null;
 }
 
 export type AvailableRidesResult =

@@ -1,5 +1,10 @@
 import { IonIcon, IonText } from "@ionic/react";
 import { carOutline, starOutline, star } from "ionicons/icons";
+import {
+  needsVehicleCategoryConfirmation,
+  normalizeVehicleCategory,
+  vehicleCategoryDisplay,
+} from "@rapa-go/shared";
 import { WhatsAppButton } from "./WhatsAppButton.js";
 
 interface DriverInfoCardProps {
@@ -14,6 +19,8 @@ interface DriverInfoCardProps {
   vehicleYear?: number | null;
   phone?: string | null;
   waMessage?: string | null;
+  requestedVehicleCategory?: string | null;
+  assignedVehicleCategory?: string | null;
 }
 
 function StarRating({ value }: { value: number }): JSX.Element {
@@ -42,8 +49,18 @@ export function DriverInfoCard({
   vehicleYear,
   phone,
   waMessage,
+  requestedVehicleCategory,
+  assignedVehicleCategory,
 }: DriverInfoCardProps): JSX.Element {
   const initials = name.trim().split(/\s+/).map((p) => p[0] ?? "").slice(0, 2).join("").toUpperCase() || "C";
+  const requested = normalizeVehicleCategory(requestedVehicleCategory);
+  const assigned =
+    normalizeVehicleCategory(assignedVehicleCategory) ??
+    normalizeVehicleCategory(requestedVehicleCategory);
+  const mismatch =
+    requested != null &&
+    assigned != null &&
+    needsVehicleCategoryConfirmation(requested, assigned);
 
   return (
     <div style={{
@@ -54,7 +71,6 @@ export function DriverInfoCard({
       gap: "14px",
       alignItems: "flex-start",
     }}>
-      {/* Avatar */}
       <div style={{
         width: "52px", height: "52px", borderRadius: "50%", flexShrink: 0,
         background: photo ? "transparent" : "var(--ion-color-primary-tint)",
@@ -67,7 +83,6 @@ export function DriverInfoCard({
         }
       </div>
 
-      {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--ion-color-dark)" }}>{name}</div>
         {rating != null && (
@@ -89,6 +104,38 @@ export function DriverInfoCard({
               {vehicleColor ? ` · ${vehicleColor}` : ""}
               {vehiclePlate ? ` · ` : ""}
               {vehiclePlate && <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{vehiclePlate}</span>}
+            </div>
+          </div>
+        )}
+        {(requested || assigned) && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: "0.78rem",
+              lineHeight: 1.35,
+              color: "var(--ion-color-dark)",
+            }}
+          >
+            {assigned ? (
+              <div>
+                Categoría del vehículo: {vehicleCategoryDisplay(assigned)}
+              </div>
+            ) : null}
+            {requested ? (
+              <div style={{ marginTop: 2 }}>
+                Tu solicitud: {vehicleCategoryDisplay(requested)}
+              </div>
+            ) : null}
+            <div
+              style={{
+                marginTop: 4,
+                fontWeight: 700,
+                color: mismatch ? "#b45309" : "var(--ion-color-success-shade, #146c43)",
+              }}
+            >
+              {mismatch
+                ? "⚠ El vehículo asignado es de otra categoría"
+                : "✓ El vehículo coincide con tu solicitud"}
             </div>
           </div>
         )}

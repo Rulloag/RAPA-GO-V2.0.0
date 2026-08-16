@@ -78,6 +78,13 @@ import {
   type DriverProfileData,
 } from "../../features/drivers/driverProfile.service";
 import { driverVehiclePhotoService } from "../../features/drivers/driverVehiclePhoto.service";
+import {
+  needsVehicleCategoryConfirmation,
+  normalizeVehicleCategory,
+  vehicleCategoryDisplay,
+  vehicleCategoryMismatchCopy,
+  type VehicleCategory,
+} from "@rapa-go/shared";
 import { driverStatusService } from "../../features/drivers/driverStatus.service";
 import { ActionCard } from "../../components/ActionCard";
 import { RapagoAppBar } from "../../components/RapagoAppBar";
@@ -6046,8 +6053,11 @@ function hydrateApprovedDriverProfileLocally(
   const year = profile.vehicleYear != null ? String(profile.vehicleYear) : "";
 
   if (!brand && !model && !plate && !color && !year) {
+    rememberDriverVehicleCategory(profile.vehicleCategory);
     return null;
   }
+
+  rememberDriverVehicleCategory(profile.vehicleCategory);
 
   const ownerKey = getDriverVehicleOwnerKey(user);
   const currentVehicles = purgeExpiredDriverVehicles(user);
@@ -11240,6 +11250,45 @@ function extractFareFromNotes(notes: string | null | undefined): number | null {
 
 type RideVehicleCategoryForDriver = "standard" | "xl" | "luggage";
 
+const DRIVER_VEHICLE_CATEGORY_STORAGE_KEY =
+  "rapago_driver_vehicle_category_v1";
+
+function toCanonicalVehicleCategory(
+  category: RideVehicleCategoryForDriver,
+): VehicleCategory {
+  return category === "luggage" ? "extra_luggage" : category;
+}
+
+function getDriverRegisteredVehicleCategory(
+  user?: unknown,
+): VehicleCategory {
+  try {
+    const stored = normalizeVehicleCategory(
+      localStorage.getItem(DRIVER_VEHICLE_CATEGORY_STORAGE_KEY),
+    );
+    if (stored) return stored;
+  } catch {
+    /* ignore */
+  }
+
+  const selected = readSelectedDriverVehicle(user);
+  const fromSelected = normalizeVehicleCategory(
+    (selected as { vehicleCategory?: string } | null)?.vehicleCategory,
+  );
+  if (fromSelected) return fromSelected;
+
+  return "standard";
+}
+
+function rememberDriverVehicleCategory(category: unknown): void {
+  const normalized = normalizeVehicleCategory(category) ?? "standard";
+  try {
+    localStorage.setItem(DRIVER_VEHICLE_CATEGORY_STORAGE_KEY, normalized);
+  } catch {
+    /* ignore */
+  }
+}
+
 type RideWithFarePayload = {
   estimatedFareClp?: number | string | null;
   fareClp?: number | string | null;
@@ -13459,33 +13508,10 @@ function getRideTripTypeEmoji(notes: string | null | undefined): string {
 function normalizeRideVehicleCategory(
   value: unknown,
 ): RideVehicleCategoryForDriver | null {
-  const raw = String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-
-  if (!raw) return null;
-  if (
-    raw.includes("luggage") ||
-    raw.includes("maleta") ||
-    raw.includes("equipaje")
-  )
-    return "luggage";
-  if (
-    raw.includes("xl") ||
-    raw.includes("extra grande") ||
-    raw.includes("mas espacio")
-  )
-    return "xl";
-  if (
-    raw.includes("standard") ||
-    raw.includes("estandar") ||
-    raw.includes("normal") ||
-    raw.includes("general")
-  )
-    return "standard";
-
+  const canonical = normalizeVehicleCategory(value);
+  if (canonical === "extra_luggage") return "luggage";
+  if (canonical === "xl") return "xl";
+  if (canonical === "standard") return "standard";
   return null;
 }
 
@@ -13529,7 +13555,7 @@ function getRideVehicleCategory(
 
 function getRideVehicleLabel(category: RideVehicleCategoryForDriver): string {
   if (category === "xl") return "Vehículo XL";
-  if (category === "luggage") return "Extra maletas";
+  if (category === "luggage") return "Extra Maleta";
   return "Estándar";
 }
 
@@ -13537,12 +13563,12 @@ function getRideVehicleShortLabel(
   category: RideVehicleCategoryForDriver,
 ): string {
   if (category === "xl") return "XL";
-  if (category === "luggage") return "Maletas";
+  if (category === "luggage") return "Extra Maleta";
   return "Estándar";
 }
 
 function getRideVehicleEmoji(category: RideVehicleCategoryForDriver): string {
-  if (category === "xl") return "🚙";
+  if (category === "xl") return "🚐";
   if (category === "luggage") return "🧳";
   return "🚗";
 }
@@ -15508,6 +15534,8 @@ function AssignedRidesPage({
   ] = useState(60);
   const [cancelConfirmRide, setCancelConfirmRide] =
     useState<DriverRideData | null>(null);
+  const [categoryConfirmRide, setCategoryConfirmRide] =
+    useState<AvailableRideData | null>(null);
   const [completeConfirmRide, setCompleteConfirmRide] =
     useState<DriverRideData | null>(null);
   const [passengerCancelNotice, setPassengerCancelNotice] = useState<{
@@ -15562,7 +15590,24 @@ function AssignedRidesPage({
           ride as unknown as Record<string, unknown>,
         ),
     ) ?? null;
-  const displayedAvailableRides = showOnlyReservations ? [] : availableRides;
+  const displayedAvailableRides = showOnlyReservations
+    ? []
+    : [...availableRides].sort((a, b) => {
+        const driverCat = getDriverRegisteredVehicleCategory(session?.user);
+        const aMatch =
+          toCanonicalVehicleCategory(
+            getRideVehicleCategory(a as RideWithFarePayload),
+          ) === driverCat
+            ? 0
+            : 1;
+        const bMatch =
+          toCanonicalVehicleCategory(
+            getRideVehicleCategory(b as RideWithFarePayload),
+          ) === driverCat
+            ? 0
+            : 1;
+        return aMatch - bMatch;
+      });
   const nextQueuedRide = getDriverNextRideForActiveRide(
     activeRide,
     session?.user,
@@ -16732,11 +16777,34 @@ La reserva fue retirada. No continúes hacia la recogida.`,
   async function handleAcceptRide(rideId: string): Promise<void> {
     if (!session?.accessToken) return;
 
+    const ride =
+      availableRides.find((item) => item.id === rideId) ??
+      (rideAlert?.id === rideId ? rideAlert : null) ??
+      categoryConfirmRide;
+
+    if (ride && !categoryConfirmRide) {
+      const requested = toCanonicalVehicleCategory(
+        getRideVehicleCategory(ride as RideWithFarePayload),
+      );
+      const driverCat = getDriverRegisteredVehicleCategory(session?.user);
+      if (needsVehicleCategoryConfirmation(requested, driverCat)) {
+        setCategoryConfirmRide(ride);
+        return;
+      }
+    }
+
+    await performAcceptRide(rideId);
+  }
+
+  async function performAcceptRide(rideId: string): Promise<void> {
+    if (!session?.accessToken) return;
+
     alertedRideIdsRef.current.add(rideId);
     stopAllDriverRideRequestAlerts(rideId);
     if (rideAlert?.id === rideId) {
       stopRideRequestAlert(true);
     }
+    setCategoryConfirmRide(null);
 
     if (!isDriverAvailable) {
       setError(
@@ -18448,6 +18516,30 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               />
               {rideVehicleEmoji} {rideVehicleShortLabel}
             </div>
+            {(() => {
+              const driverCat = getDriverRegisteredVehicleCategory(
+                session?.user,
+              );
+              const matches =
+                toCanonicalVehicleCategory(rideVehicleCategory) === driverCat;
+              return (
+                <div
+                  style={{
+                    ...styles.pill,
+                    background: matches
+                      ? "rgba(34,197,94,.14)"
+                      : "rgba(245,158,11,.16)",
+                    border: matches
+                      ? "1px solid rgba(34,197,94,.35)"
+                      : "1px solid rgba(245,158,11,.4)",
+                    color: matches ? "var(--rp-ok-fg)" : "#b45309",
+                  }}>
+                  {matches
+                    ? "✓ Coincide con tu vehículo"
+                    : `⚠ Categoría diferente · Tu vehículo: ${vehicleCategoryDisplay(driverCat)}`}
+                </div>
+              );
+            })()}
             <div style={styles.pill}>
               {tripTypeEmoji} {tripTypeLabel}
             </div>
@@ -19734,6 +19826,79 @@ La reserva fue retirada. No continúes hacia la recogida.`,
           }}
         />
       )}
+
+      <IonAlert
+        isOpen={Boolean(categoryConfirmRide)}
+        header={
+          categoryConfirmRide
+            ? `⚠️ ${
+                vehicleCategoryMismatchCopy(
+                  toCanonicalVehicleCategory(
+                    getRideVehicleCategory(
+                      categoryConfirmRide as RideWithFarePayload,
+                    ),
+                  ),
+                ).title
+              }`
+            : "Confirma la categoría"
+        }
+        message={
+          categoryConfirmRide
+            ? (() => {
+                const requested = toCanonicalVehicleCategory(
+                  getRideVehicleCategory(
+                    categoryConfirmRide as RideWithFarePayload,
+                  ),
+                );
+                const driverCat = getDriverRegisteredVehicleCategory(
+                  session?.user,
+                );
+                const copy = vehicleCategoryMismatchCopy(requested);
+                return (
+                  `Categoría del viaje: ${vehicleCategoryDisplay(requested)}\n` +
+                  `Tu vehículo: ${vehicleCategoryDisplay(driverCat)}\n\n` +
+                  copy.body
+                );
+              })()
+            : ""
+        }
+        cssClass="rapago-danger-alert"
+        onDidDismiss={() => setCategoryConfirmRide(null)}
+        buttons={[
+          {
+            text:
+              categoryConfirmRide
+                ? vehicleCategoryMismatchCopy(
+                    toCanonicalVehicleCategory(
+                      getRideVehicleCategory(
+                        categoryConfirmRide as RideWithFarePayload,
+                      ),
+                    ),
+                  ).cancelLabel
+                : "Volver",
+            role: "cancel",
+          },
+          {
+            text:
+              categoryConfirmRide
+                ? vehicleCategoryMismatchCopy(
+                    toCanonicalVehicleCategory(
+                      getRideVehicleCategory(
+                        categoryConfirmRide as RideWithFarePayload,
+                      ),
+                    ),
+                  ).confirmLabel
+                : "Confirmar y aceptar",
+            role: "confirm",
+            handler: () => {
+              const rideId = categoryConfirmRide?.id;
+              if (!rideId || acceptingId === rideId) return false;
+              void performAcceptRide(rideId);
+              return true;
+            },
+          },
+        ]}
+      />
 
       <IonAlert
         isOpen={Boolean(passengerCancelNotice)}

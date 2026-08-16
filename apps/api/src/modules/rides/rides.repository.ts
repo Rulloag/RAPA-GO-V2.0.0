@@ -371,6 +371,7 @@ export class RidesRepository {
       paymentMethod?: "cash" | "card";
       paymentProvider?: string | null;
       useWalletBenefit?: boolean;
+      requestedVehicleCategory?: "standard" | "xl" | "extra_luggage";
     } = {},
   ): Promise<RideCreatedWithPolicyCharges> {
     try {
@@ -486,6 +487,8 @@ export class RidesRepository {
             walletBenefitAppliedClp,
             fareBeforeWalletBenefitClp,
             status: effectiveInitialStatus,
+            requestedVehicleCategory:
+              options.requestedVehicleCategory ?? "standard",
           })
           .returning();
 
@@ -658,19 +661,43 @@ export class RidesRepository {
    */
   async acceptAsQueued(id: string, driverUserId: string): Promise<RideRequest | null> {
     try {
-      const rows = await db
-        .update(rideRequests)
-        .set({
-          status:              "accepted",
-          driverUserId,
-          acceptedAt:          new Date(),
-          assignmentMode:      "queued_offer",
-          queuedOfferDriverId: driverUserId,
-          updatedAt:           new Date(),
-        })
-        .where(and(eq(rideRequests.id, id), eq(rideRequests.status, "requested")))
-        .returning();
-      return rows[0] ?? null;
+      return await db.transaction(async (tx) => {
+        const now = new Date();
+        const profile = (
+          await tx
+            .select({ vehicleCategory: driverProfiles.vehicleCategory })
+            .from(driverProfiles)
+            .where(eq(driverProfiles.userId, driverUserId))
+            .limit(1)
+        )[0];
+
+        const assignedVehicleCategory =
+          profile?.vehicleCategory === "xl" ||
+          profile?.vehicleCategory === "extra_luggage" ||
+          profile?.vehicleCategory === "standard"
+            ? profile.vehicleCategory
+            : "standard";
+
+        const rows = await tx
+          .update(rideRequests)
+          .set({
+            status: "accepted",
+            driverUserId,
+            acceptedAt: now,
+            assignmentMode: "queued_offer",
+            queuedOfferDriverId: driverUserId,
+            assignedVehicleCategory,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(rideRequests.id, id),
+              eq(rideRequests.status, "requested"),
+            ),
+          )
+          .returning();
+        return rows[0] ?? null;
+      });
     } catch (err) {
       if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to accept ride as queued: ${String(err)}`);
@@ -706,12 +733,31 @@ export class RidesRepository {
     try {
       return await db.transaction(async (tx) => {
         const acceptedAt = new Date();
+
+        const profile = (
+          await tx
+            .select({ vehicleCategory: driverProfiles.vehicleCategory })
+            .from(driverProfiles)
+            .where(eq(driverProfiles.userId, driverUserId))
+            .limit(1)
+        )[0];
+
+        const assignedVehicleCategory =
+          profile?.vehicleCategory === "xl" ||
+          profile?.vehicleCategory === "extra_luggage" ||
+          profile?.vehicleCategory === "standard"
+            ? profile.vehicleCategory
+            : profile?.vehicleCategory === "luggage"
+              ? "extra_luggage"
+              : "standard";
+
         const rows = await tx
           .update(rideRequests)
           .set({
             status: "accepted",
             driverUserId,
             acceptedAt,
+            assignedVehicleCategory,
             updatedAt: acceptedAt,
           })
           .where(

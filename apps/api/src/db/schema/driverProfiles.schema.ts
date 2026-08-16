@@ -10,6 +10,9 @@ export const driverProfiles = pgTable("driver_profiles", {
   vehicleYear:     integer("vehicle_year"),
   vehiclePlate:    text("vehicle_plate"),
   vehicleColor:    text("vehicle_color"),
+  // Categoría registrada del vehículo (standard | xl | extra_luggage).
+  // Informa coincidencias; no restringe qué solicitudes ve el conductor.
+  vehicleCategory: text("vehicle_category").notNull().default("standard"),
   licenseNumber:   text("license_number"),
   licenseExpiry:   date("license_expiry"),
   profilePhotoUrl: text("profile_photo_url"),

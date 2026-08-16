@@ -437,6 +437,7 @@ describe("RidesService - contrato actual", () => {
           paymentMethod: "cash",
           paymentProvider: null,
           useWalletBenefit: false,
+          requestedVehicleCategory: "standard",
         },
       );
     });
@@ -467,6 +468,7 @@ describe("RidesService - contrato actual", () => {
           paymentMethod: "card",
           paymentProvider: "mercadopago",
           useWalletBenefit: false,
+          requestedVehicleCategory: "standard",
         },
       );
     });

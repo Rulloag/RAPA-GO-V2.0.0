@@ -14,6 +14,7 @@ import { rideReceiptsService } from "../rideReceipts/rideReceipts.service.js";
 import { attemptQueuedOffer } from "./rideQueueOfferProducer.service.js";
 import { haversineDistanceKm, estimateEtaMinutes, QUEUE_MATCH_CONFIG } from "./rideQueueMatch.js";
 import { filterGpsTrack } from "@rapa-go/shared";
+import { resolveRequestedVehicleCategory } from "@rapa-go/shared";
 import type {
   RideRequestResponse,
   RidesListResult,
@@ -885,6 +886,8 @@ function toResponse(
         toPolicyChargeResponse(charge),
       ) ?? [],
     assignmentMode: r.assignmentMode,
+    requestedVehicleCategory: r.requestedVehicleCategory ?? "standard",
+    assignedVehicleCategory: r.assignedVehicleCategory ?? null,
   };
 
   if (scheduleMeta?.isScheduled) {
@@ -949,6 +952,7 @@ function toAvailableResponse(r: RideRequest): AvailableRideResponse {
     status: r.status,
     requestedAt: r.requestedAt.toISOString(),
     createdAt: r.createdAt.toISOString(),
+    requestedVehicleCategory: r.requestedVehicleCategory ?? "standard",
   };
 }
 
@@ -1278,6 +1282,12 @@ export class RidesService {
           : {}),
         paymentProvider: input.paymentProvider ?? null,
         useWalletBenefit: input.useWalletBenefit === true,
+        requestedVehicleCategory: resolveRequestedVehicleCategory({
+          requestedVehicleCategory: input.requestedVehicleCategory,
+          vehicleCategory: input.vehicleCategory,
+          fareVehicleCategory: input.fareVehicleCategory,
+          notes: notesForStorage,
+        }),
       },
     );
 
