@@ -1,0 +1,93 @@
+/*
+ * AppleSignInButton.css
+ *
+ * Antes el botón se dibujaba con un style={{}} en línea que fijaba
+ * minHeight: 44px y --border-radius: 8px. Medido en producción, eso lo dejaba
+ * en 417x44 mientras "Crear cuenta", "Iniciar sesión" y el botón de Google
+ * medían 417x52: era 8px más bajo y con otra curvatura que todo lo que tenía
+ * alrededor, y esa es la razón de que se leyera como una pieza ajena.
+ *
+ * La altura y el radio salen ahora de --rp-control-h y --rp-radius-sm, los
+ * mismos tokens que usa .rapago-auth-btn-primary. Son clamp() fluidos, así que
+ * el botón acompaña solo a sus vecinos en cualquier ancho de pantalla y no
+ * hacen falta media queries propias: --rp-control-h ya baja a 46px en pantallas
+ * angostas y tope en 52px.
+ *
+ * Colores: negro puro. Las Human Interface Guidelines de Apple admiten tres
+ * variantes para este botón —negro, blanco y blanco con contorno— y exigen el
+ * negro exacto, no un gris. El color="dark" de Ionic entregaba #222428, que no
+ * es ninguna de las tres. Como la app se publica en la App Store, esto no es
+ * solo estética: la revisión de Apple mira el botón.
+ *
+ * Nota honesta sobre el emparejado: el botón de Google queda en #202124 y ese
+ * valor lo fija su SDK, no lo elegimos nosotros. Entre #000 y #202124 hay una
+ * diferencia mínima que solo se nota buscándola; se prefiere respetar la
+ * especificación de cada marca antes que igualarlos a ojo incumpliendo una.
+ */
+
+/* SOBRE ESTE SELECTOR TAN LARGO
+ *
+ * Los estilos globales de la app pintan de dorado cualquier botón sólido sin
+ * atributo color, con una regla de este tipo y marcada !important:
+ *
+ *   ion-button:not([fill="clear"]):not([fill="outline"]):not([color])
+ *     { --background: var(--rp-btn-primary) !important; ... }
+ *
+ * Esa regla tiene especificidad (0,3,1). Una clase suelta, .rapago-apple-button,
+ * tiene (0,1,0): entre dos declaraciones !important gana la más específica, así
+ * que el botón salía con el degradado dorado en lugar de negro. Antes esto no
+ * pasaba porque llevaba color="dark", que lo dejaba fuera del :not([color]) —
+ * pero a cambio lo pintaba del #222428 de Ionic, que no es ninguno de los tres
+ * colores que Apple admite.
+ *
+ * Repetir aquí los mismos :not() sube este selector a (0,4,1) y lo deja por
+ * encima sin recurrir a trucos como duplicar la clase. Se escribe igual que la
+ * regla que tiene que superar, a propósito, para que quien lo lea entienda
+ * contra qué compite.
+ */
+ion-button.rapago-apple-button:not([fill="clear"]):not([fill="outline"]):not([color]) {
+  --background: #000000 !important;
+  --background-hover: #1a1a1a !important;
+  --background-activated: #1a1a1a !important;
+  --background-focused: #1a1a1a !important;
+  --color: #ffffff !important;
+  --border-radius: var(--rp-radius-sm) !important;
+  --box-shadow: 0 8px 20px rgba(20, 15, 5, 0.16) !important;
+  --padding-start: 18px;
+  --padding-end: 18px;
+
+  color: #ffffff !important;
+  height: var(--rp-control-h);
+  min-height: var(--rp-control-h);
+  margin: 0;
+}
+
+/* De noche la tarjeta es casi negra y el botón también: sin contorno se pierde
+   el borde de la pieza. Apple contempla ese caso y permite el negro con
+   contorno sobre fondos oscuros. Es el mismo recurso que usa el botón de
+   Google en modo noche, para que los dos se comporten igual. */
+[data-rapago-theme="dark"]
+  ion-button.rapago-apple-button:not([fill="clear"]):not([fill="outline"]):not([color]) {
+  --border-width: 1px !important;
+  --border-style: solid !important;
+  --border-color: rgba(255, 255, 255, 0.22) !important;
+  --box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* De día el negro ya se recorta contra la crema y el contorno sobraría, pero
+   la sombra tiene que apoyarse en el tono cálido del papel, no en gris. */
+[data-rapago-theme="light"]
+  ion-button.rapago-apple-button:not([fill="clear"]):not([fill="outline"]):not([color]) {
+  --box-shadow: 0 8px 20px rgba(72, 53, 22, 0.16) !important;
+}
+
+.rapago-apple-button::part(native):focus-visible {
+  outline: 3px solid rgba(213, 166, 58, 0.45);
+  outline-offset: 3px;
+}
+
+.rapago-apple-button ion-icon,
+.rapago-apple-button ion-spinner {
+  margin-inline-end: 8px;
+  font-size: 20px;
+}

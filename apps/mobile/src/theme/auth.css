@@ -154,6 +154,27 @@
 }
 
 /* ── Botones ────────────────────────────────────────────────────────────── */
+
+/* Los tres accesos (Apple, Google, correo) iban en un <div> sin CSS, así que
+   el espacio entre ellos lo decidían los márgenes por defecto de cada pieza:
+   ion-button trae 8px arriba y 4px abajo, y el envoltorio de Google no trae
+   ninguno. Medido en producción, eso dejaba 4px entre Apple y Google pero 8px
+   entre Google y "Crear cuenta" — un ritmo desparejo que se percibe aunque no
+   se sepa nombrar. Ahora el hueco lo pone el contenedor, una sola vez, y los
+   hijos no aportan márgenes propios. */
+.rapago-auth-primary-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap-sm);
+}
+
+/* !important porque el margen que hay que anular lo pone Ionic sobre el propio
+   ion-button, y es el mismo recurso que usa el resto de este archivo para
+   ganarle a los valores por defecto del framework. */
+.rapago-auth-primary-options > * {
+  margin: 0 !important;
+}
+
 .rapago-auth-dark .rapago-auth-btn-primary {
   --background: var(--rp-btn-primary) !important;
   --color: var(--rp-btn-primary-fg) !important;

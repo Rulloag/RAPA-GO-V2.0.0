@@ -278,10 +278,19 @@ export function GoogleSignInButton({
 
     googleApi.renderButton(target, {
       type: "standard",
-      theme: "outline",
+      /* "filled_black" (#202124) queda a un tono del negro del botón de Apple
+         (#222428), en vez del blanco de "outline", que era el único elemento
+         claro de toda la tarjeta. Los tres temas de Google son igual de
+         válidos, así que se elige el que encaja en las dos paletas: de día
+         empareja con Apple sobre la crema, y de noche el borde dorado lo pone
+         nuestro CSS, que sí alcanza a este nodo (ver GoogleSignInButton.css). */
+      theme: "filled_black",
       size: "large",
       text: "continue_with",
-      shape: "pill",
+      /* Rectangular, no "pill": el radio real lo fija el CSS en 16px para que
+         coincida con "Crear cuenta" e "Iniciar sesión". Con "pill" Google
+         escribe 20px, que sobre 52px de alto ya no es un óvalo. */
+      shape: "rectangular",
       logo_alignment: "left",
       width: renderWidth,
       locale: "es",
