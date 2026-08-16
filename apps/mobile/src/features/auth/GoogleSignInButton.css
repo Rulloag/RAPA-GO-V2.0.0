@@ -22,9 +22,11 @@
 .rapago-google-button__shell,
 .rapago-google-button__custom {
   width: 100%;
-  height: 52px;
-  min-height: 52px;
-  border-radius: 999px;
+  height: var(--rp-control-h);
+  min-height: var(--rp-control-h);
+  /* Token, no 999px: la pantalla de acceso usa rectángulos redondeados, no
+     píldoras. Con 999px el contenedor no coincidía con "Crear cuenta". */
+  border-radius: var(--rp-radius-sm);
 }
 
 .rapago-google-button__shell {
@@ -66,7 +68,58 @@
   max-width: 100% !important;
 }
 
-/* Placeholder mientras carga el SDK de Google */
+/* ==========================================================================
+   EL BOTÓN OFICIAL DE GOOGLE SÍ SE PUEDE MEDIR Y ALINEAR
+
+   Aclaración importante, porque el comentario que había aquí abajo decía lo
+   contrario y llevó a dejar el botón descuadrado: lo que Google inyecta NO es
+   un iframe visible. El iframe existe pero mide 0x0 y solo transporta el flujo
+   de credencial; el botón que se ve es un <div role="button"> normal, dentro de
+   NUESTRO documento, al que Google le aplica su propia hoja de estilos.
+   Comprobado en producción: document.contains(boton) === true.
+
+   Consecuencia: el tamaño y la posición sí son nuestros. Lo que no tocamos es
+   lo que pertenece a la marca —logo, colores, tipografía y el texto—, que
+   sigue tal cual lo dibuja Google.
+
+   Sin estas reglas el botón se quedaba en sus 400x40 nativos dentro de una
+   caja de 421x52, es decir 12px más bajo y 21px más angosto que "Crear cuenta"
+   e "Iniciar sesión", flotando en un hueco transparente. Eso era lo que se leía
+   como "el botón de Google no toma los estilos".
+
+   Se selecciona por [role="button"], no por las clases de Google
+   (.nsm7Bb-HzV7m-LgbsSe), porque esas están ofuscadas y cambian sin aviso;
+   el rol es parte del contrato de accesibilidad y se mantiene.
+   ========================================================================== */
+.rapago-google-button__official > div,
+.rapago-google-button__official > div > div {
+  width: 100% !important;
+}
+
+.rapago-google-button__official div[role="button"] {
+  /* Google topa el ancho en 400px con estilo en línea; hay que soltar también
+     el max-width o el width:100% no llega a aplicarse. */
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  /* Los mismos tokens que "Crear cuenta", "Iniciar sesión" y el botón de
+     Apple. Al ser clamp() fluidos, el botón de Google acompaña a sus vecinos
+     en cualquier ancho sin media queries propias.
+
+     La altura se fija en píxeles reales, nunca con transform: scale(): escalar
+     deja el texto y el logo borrosos, mientras que con height los hijos se
+     reacomodan solos y la etiqueta queda centrada al pixel (medido en
+     producción: 0.0px de desvío respecto del centro). */
+  height: var(--rp-control-h) !important;
+  max-height: var(--rp-control-h) !important;
+  border-radius: var(--rp-radius-sm) !important;
+}
+
+/* Placeholder mientras carga el SDK de Google.
+   Usa el MISMO #202124 con el que Google pinta su "filled_black" y el mismo
+   radio de 16px: así, cuando el SDK termina de cargar y sustituye una capa por
+   la otra, no hay salto visible. Antes el placeholder era blanco y el botón
+   final negro, de modo que cada carga parpadeaba de claro a oscuro. */
 .rapago-google-button__placeholder {
   position: absolute;
   inset: 0;
@@ -76,17 +129,15 @@
   justify-content: center;
   gap: 11px;
   padding: 0 18px;
-  background: #ffffff;
-  color: #352d23;
+  background: #202124;
+  color: #e8eaed;
   font-size: 0.96rem;
   font-weight: 760;
   letter-spacing: -0.01em;
   text-align: center;
-  border: 1px solid rgba(90, 72, 42, 0.22);
-  border-radius: 999px;
-  box-shadow:
-    0 8px 20px rgba(72, 53, 22, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--rp-radius-sm);
+  box-shadow: 0 8px 20px rgba(20, 15, 5, 0.16);
 }
 
 /* Estilo para botón custom (si no se usa la librería nativa de Google) */
@@ -101,16 +152,12 @@
   padding: 0 18px;
   overflow: hidden;
   cursor: pointer;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.99),
-    rgba(249, 247, 242, 0.99)
-  );
-  color: #352d23;
-  border: 1px solid rgba(90, 72, 42, 0.22);
-  box-shadow:
-    0 8px 20px rgba(72, 53, 22, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  /* Mismo negro de Google que en web, para que la app nativa y el navegador
+     muestren el mismo botón en lugar de uno blanco y otro negro. */
+  background: #202124;
+  color: #e8eaed;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 8px 20px rgba(20, 15, 5, 0.16);
   font: inherit;
   font-size: 0.96rem;
   font-weight: 800;
@@ -158,15 +205,26 @@
   inset: 0;
   z-index: 4;
   cursor: not-allowed;
-  background: rgba(255, 255, 255, 0.14);
+  /* Velo oscuro en los dos temas: el botón que cubre ahora es negro, así que
+     el velo blanco de antes lo aclaraba en vez de apagarlo. Y con el radio
+     puesto deja de asomar como un rectángulo en las esquinas. */
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: var(--rp-radius-sm);
 }
 
+/* Sobre fondo oscuro la "G" de color debe ir sobre un disco blanco: es lo que
+   exige la guía de marca de Google y lo que hace su propio botón filled_black.
+   El padding + el fondo blanco forman ese disco alrededor del SVG. */
 .rapago-google-button__logo {
   width: 22px;
   height: 22px;
   display: block;
   justify-self: start;
   flex: 0 0 auto;
+  box-sizing: content-box;
+  padding: 3px;
+  background: #ffffff;
+  border-radius: 50%;
 }
 
 .rapago-google-button__label {
@@ -204,18 +262,18 @@
   }
 }
 
-/* 
+/*
  * MEDIA QUERIES / RESPONSIVE DESIGN
+ *
+ * Los cuatro saltos de altura que había aquí (48 / 52 / 54 / 46px según ancho
+ * y orientación) desaparecieron: --rp-control-h ya es clamp(46px, 13vw, 52px),
+ * es decir la misma curva pero continua y compartida con el resto de los
+ * controles. Mantenerlos habría vuelto a descuadrar el botón, porque pisaban
+ * el token justo en los anchos donde los vecinos sí lo respetan.
+ *
+ * Solo queda lo que el token no cubre: el tamaño del texto.
  */
-
-/* iPhone SE y pantallas muy pequeñas */
 @media (max-width: 360px) {
-  .rapago-google-button__shell,
-  .rapago-google-button__custom {
-    height: 48px;
-    min-height: 48px;
-  }
-
   .rapago-google-button__custom,
   .rapago-google-button__placeholder {
     padding-inline: 12px;
@@ -223,35 +281,10 @@
   }
 }
 
-/* Tablets */
-@media (min-width: 768px) and (max-width: 1023px) {
-  .rapago-google-button__shell,
-  .rapago-google-button__custom {
-    height: 52px;
-    min-height: 52px;
-  }
-}
-
-/* Pantallas grandes (Desktop) */
 @media (min-width: 1024px) {
-  .rapago-google-button__shell,
-  .rapago-google-button__custom {
-    height: 54px;
-    min-height: 54px;
-  }
-
   .rapago-google-button__custom,
   .rapago-google-button__placeholder {
     font-size: 1rem;
-  }
-}
-
-/* Dispositivos en modo horizontal (Landscape) con baja altura */
-@media (max-height: 520px) and (orientation: landscape) {
-  .rapago-google-button__shell,
-  .rapago-google-button__custom {
-    height: 46px;
-    min-height: 46px;
   }
 }
 
@@ -273,19 +306,24 @@
    manualmente el modo oscuro. Las reglas de abajo adaptan el botón nativo
    (custom) y el placeholder del botón web a la paleta oscura de la auth card.
 
-   El botón oficial renderizado por Google (iframe) no se puede estilizar desde
-   fuera; sigue mostrándose con el tema "outline" propio de Google, que es
-   blanco con borde gris. La capa shell/placeholder que lo envuelve sí adopta
-   los colores oscuros mientras el SDK carga.
+   El botón oficial ahora se pide con theme "filled_black" (ver
+   GoogleSignInButton.tsx), no "outline": el blanco era la única pieza clara de
+   la pantalla y rompía las dos paletas. Sobre la tarjeta oscura ese negro casi
+   se funde con el fondo, así que aquí se le añade el borde dorado que usan el
+   resto de los controles de noche, con lo que recupera su silueta.
    ========================================================================== */
+[data-rapago-theme="dark"] .rapago-google-button__official div[role="button"] {
+  border: 1px solid rgba(214, 166, 64, 0.48) !important;
+}
+
 [data-rapago-theme="dark"] .rapago-google-button__custom,
 [data-rapago-theme="dark"] .rapago-google-button__placeholder {
-  background: linear-gradient(
-    180deg,
-    rgba(38, 34, 27, 0.97) 0%,
-    rgba(22, 19, 15, 0.98) 100%
-  );
-  color: #f0e6d4;
+  /* Se conserva el #202124 del SDK en lugar del degradado marrón que había
+     aquí: el placeholder tiene que ser indistinguible del botón que lo
+     reemplaza. Lo que sí se mantiene del estilo nocturno de la casa es el
+     borde dorado, que es lo que le da silueta sobre la tarjeta oscura. */
+  background: #202124;
+  color: #e8eaed;
   border-color: rgba(214, 166, 64, 0.48);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.35),
@@ -304,11 +342,9 @@
 
 /* Estado activo / press modo noche */
 [data-rapago-theme="dark"] .rapago-google-button__custom:active:not(:disabled) {
-  background: linear-gradient(
-    180deg,
-    rgba(50, 44, 34, 0.99) 0%,
-    rgba(30, 26, 20, 0.99) 100%
-  );
+  /* Aclarar el negro al pulsar, en vez del degradado marrón anterior: sobre
+     #202124 el marrón cambiaba el tono del botón, no solo su brillo. */
+  background: #2e2f33;
   transform: scale(0.990);
 }
 
@@ -317,10 +353,8 @@
   outline-color: rgba(248, 216, 121, 0.55);
 }
 
-/* Texto del label en noche: crema para contrastar */
-[data-rapago-theme="dark"] .rapago-google-button__label {
-  color: #f0e6d4;
-}
+/* El label ya hereda el #e8eaed del botón en los dos temas, así que no lleva
+   regla propia: una sola fuente de verdad para el color del texto. */
 
 /* Spinner en modo noche: dorado para coherencia visual */
 [data-rapago-theme="dark"] .rapago-google-button__spinner {
@@ -333,10 +367,6 @@
   color: #f4918d;
 }
 
-/* Capa blocker en modo noche: tinte oscuro en vez del blanco de día */
-[data-rapago-theme="dark"] .rapago-google-button__blocker {
-  background: rgba(0, 0, 0, 0.18);
-}
 
 /* ==========================================================================
    MODO DÍA — data-rapago-theme="light" (o cuando el atributo no está)
@@ -344,33 +374,20 @@
    en un contexto donde el atributo dark ya había sido aplicado, el retorno
    a "light" restaure correctamente los colores diurnos.
    ========================================================================== */
+/* El botón de Google es negro en los dos temas —es el mismo #202124 que pide
+   el SDK—, así que de día NO se repinta de blanco. Lo único que cambia entre
+   temas es la sombra, que de día debe apoyarse en la crema de la tarjeta y de
+   noche desaparecer. El borde dorado nocturno está en el bloque de arriba. */
 [data-rapago-theme="light"] .rapago-google-button__custom,
 [data-rapago-theme="light"] .rapago-google-button__placeholder {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.99),
-    rgba(249, 247, 242, 0.99)
-  );
-  color: #352d23;
-  border-color: rgba(90, 72, 42, 0.22);
-  box-shadow:
-    0 8px 20px rgba(72, 53, 22, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
-}
-
-[data-rapago-theme="light"] .rapago-google-button__label {
-  color: #352d23;
+  box-shadow: 0 8px 20px rgba(72, 53, 22, 0.16);
 }
 
 [data-rapago-theme="light"] .rapago-google-button__spinner {
-  border-color: rgba(66, 133, 244, 0.24);
-  border-top-color: #4285f4;
+  border-color: rgba(232, 234, 237, 0.28);
+  border-top-color: #e8eaed;
 }
 
 [data-rapago-theme="light"] .rapago-google-button__error {
   color: #a33c2c;
-}
-
-[data-rapago-theme="light"] .rapago-google-button__blocker {
-  background: rgba(255, 255, 255, 0.14);
 }
