@@ -13,6 +13,7 @@ import { DriverComplianceService } from "../drivers/driverCompliance.service.js"
 import { rideReceiptsService } from "../rideReceipts/rideReceipts.service.js";
 import { attemptQueuedOffer } from "./rideQueueOfferProducer.service.js";
 import { haversineDistanceKm, estimateEtaMinutes, QUEUE_MATCH_CONFIG } from "./rideQueueMatch.js";
+import { filterGpsTrack } from "@rapa-go/shared";
 import type {
   RideRequestResponse,
   RidesListResult,
@@ -1097,10 +1098,7 @@ export class RidesService {
       };
     }
 
-    const routeFrom =
-      ride.status === "completed"
-        ? ride.startedAt ?? ride.acceptedAt ?? ride.requestedAt
-        : ride.acceptedAt ?? ride.requestedAt;
+    const routeFrom = ride.acceptedAt ?? ride.requestedAt;
     const routeTo =
       ride.completedAt ?? ride.cancelledAt ?? ride.updatedAt ?? new Date();
     const points = await ridesRepo.listRouteHistory(
@@ -1108,15 +1106,23 @@ export class RidesService {
       routeFrom,
       routeTo,
     );
+    const filtered = filterGpsTrack(
+      points.map((point) => ({
+        lat: point.latitude,
+        lng: point.longitude,
+        capturedAt: point.capturedAt.toISOString(),
+        accuracyMeters: point.accuracyMeters ?? null,
+      })),
+    );
 
     return {
       ok: true,
       rideId,
-      points: points.map((point) => ({
-        lat: point.latitude,
-        lng: point.longitude,
+      points: filtered.map((point) => ({
+        lat: point.lat,
+        lng: point.lng,
         accuracyMeters: point.accuracyMeters ?? null,
-        capturedAt: point.capturedAt.toISOString(),
+        capturedAt: point.capturedAt ?? new Date().toISOString(),
       })),
     };
   }

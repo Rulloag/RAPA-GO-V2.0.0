@@ -30,9 +30,13 @@ describe("experiencia del pasajero tipo Uber", () => {
     expect(tripsSource).toContain("PASSENGER_RAPA_NUI_LIVE_BOUNDS");
     expect(tripsSource).toContain("accuracy > 250");
     expect(tripsSource).toContain("setFollowDriver(false)");
-    expect(tripsSource).toContain("Centrar vehículo");
+    expect(tripsSource).toContain("Centrar viaje");
     expect(tripsSource).toContain("Actualizado hace");
     expect(tripsSource).toContain("SEÑAL ANTIGUA");
+    expect(tripsSource).toContain("getPassengerApproachLabel");
+    expect(tripsSource).toContain("Tu conductor está llegando");
+    expect(tripsSource).toContain("filterGpsTrack");
+    expect(tripsSource).toContain("areMapBoundsSane");
     expect(tripsSource).toContain("now - lastRouteRequestAtRef.current < 12_000");
   });
 

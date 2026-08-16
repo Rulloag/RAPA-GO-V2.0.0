@@ -36,7 +36,17 @@ import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js"
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
 
 import { ROUTES } from "../../../navigation/routes.js";
-import { RAPAGO_CONTACT, WA_MESSAGES } from "@rapa-go/shared";
+import {
+  RAPAGO_CONTACT,
+  WA_MESSAGES,
+  RAPA_NUI_MAP_BOUNDS,
+  RAPA_NUI_MAP_CENTER,
+  areMapBoundsSane,
+  filterGpsTrack,
+  isValidRideMapPoint,
+  parseLatLng,
+  trackDistanceMeters,
+} from "@rapa-go/shared";
 import { RIDE_STATUS_LABEL, RIDE_STATUS_COLOR } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 import {
@@ -5171,10 +5181,26 @@ function getPassengerDistanceMeters(a: { lat: number; lng: number }, b: { lat: n
 }
 
 function formatPassengerDistanceMeters(meters: number | null | undefined): string {
-  if (meters == null || !Number.isFinite(Number(meters))) return "Sin distancia";
+  if (meters == null || !Number.isFinite(Number(meters))) return "";
   const safe = Math.max(0, Number(meters));
+  if (safe < 15) return "";
   if (safe < 1000) return `${Math.round(safe)} m`;
   return `${(safe / 1000).toLocaleString("es-CL", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+}
+
+function getPassengerApproachLabel(
+  status: string,
+  meters: number | null,
+): string {
+  if (status === "driver_arrived") return "Tu conductor llegó";
+  if (status === "in_progress") return "Viaje en curso";
+  if (meters != null && Number.isFinite(meters) && meters <= 300) {
+    return "Tu conductor está llegando";
+  }
+  if (meters != null && Number.isFinite(meters) && meters <= 1000) {
+    return "Tu conductor está cerca";
+  }
+  return "Tu conductor va en camino";
 }
 
 function calculatePassengerBearingDegrees(
@@ -5650,25 +5676,13 @@ function PassengerDriverAndVehicleDetails({
   );
 }
 
-const PASSENGER_RAPA_NUI_LIVE_BOUNDS = {
-  north: -27.01,
-  south: -27.25,
-  west: -109.54,
-  east: -109.17,
-} as const;
+const PASSENGER_RAPA_NUI_LIVE_BOUNDS = RAPA_NUI_MAP_BOUNDS;
 
 function isPassengerRapaNuiLivePoint(
   lat: number,
   lng: number,
 ): boolean {
-  return (
-    Number.isFinite(lat) &&
-    Number.isFinite(lng) &&
-    lat <= PASSENGER_RAPA_NUI_LIVE_BOUNDS.north &&
-    lat >= PASSENGER_RAPA_NUI_LIVE_BOUNDS.south &&
-    lng >= PASSENGER_RAPA_NUI_LIVE_BOUNDS.west &&
-    lng <= PASSENGER_RAPA_NUI_LIVE_BOUNDS.east
-  );
+  return isValidRideMapPoint(lat, lng);
 }
 
 async function fetchRideLiveDriverPoint(
@@ -5750,11 +5764,9 @@ function getDriverPointForPassengerMap(
   const lat = withLocation.driverLat ?? withLocation.driverLatitude ?? null;
   const lng = withLocation.driverLng ?? withLocation.driverLongitude ?? null;
 
-  if (lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
-    return {
-      lat: Number(lat),
-      lng: Number(lng),
-    };
+  const parsed = parseLatLng(lat, lng);
+  if (parsed && isValidRideMapPoint(parsed.lat, parsed.lng)) {
+    return parsed;
   }
 
   return null;
@@ -5790,10 +5802,11 @@ async function geocodePassengerMapPoint(value: unknown): Promise<{ lat: number; 
           return;
         }
 
-        resolve({
+        const located = {
           lat: results[0].geometry.location.lat(),
           lng: results[0].geometry.location.lng(),
-        });
+        };
+        resolve(isValidRideMapPoint(located.lat, located.lng) ? located : null);
       },
     );
   });
@@ -5801,9 +5814,8 @@ async function geocodePassengerMapPoint(value: unknown): Promise<{ lat: number; 
 
 function getDirectRidePoint(ride: RideRequestData & Record<string, unknown>, keys: string[]): { lat: number; lng: number } | null {
   for (let index = 0; index < keys.length; index += 2) {
-    const lat = Number(ride[keys[index]]);
-    const lng = Number(ride[keys[index + 1]]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    const point = parseLatLng(ride[keys[index]], ride[keys[index + 1]]);
+    if (point && isValidRideMapPoint(point.lat, point.lng)) return point;
   }
   return null;
 }
@@ -6139,7 +6151,9 @@ function PassengerLiveRouteMap({
   const [resolvedDestinationPoint, setResolvedDestinationPoint] = useState<{ lat: number; lng: number } | null>(null);
 
   const pickupFromNotes =
-    nav.pickupLat != null && nav.pickupLng != null
+    nav.pickupLat != null &&
+    nav.pickupLng != null &&
+    isValidRideMapPoint(nav.pickupLat, nav.pickupLng)
       ? { lat: nav.pickupLat, lng: nav.pickupLng }
       : getDirectRidePoint(rideRecord, [
           "pickupLat",
@@ -6183,7 +6197,9 @@ function PassengerLiveRouteMap({
       : null);
 
   const destinationFromNotes =
-    nav.destinationLat != null && nav.destinationLng != null
+    nav.destinationLat != null &&
+    nav.destinationLng != null &&
+    isValidRideMapPoint(nav.destinationLat, nav.destinationLng)
       ? { lat: nav.destinationLat, lng: nav.destinationLng }
       : getDirectRidePoint(rideRecord, [
           "destinationLat",
@@ -6406,24 +6422,38 @@ function PassengerLiveRouteMap({
   function fitMapOnce(map: google.maps.Map): void {
     if (didFitBoundsRef.current || !window.google?.maps) return;
 
-    const bounds = new google.maps.LatLngBounds();
+    const candidates = [
+      driverPoint,
+      passenger,
+      pickup,
+      destination,
+      routeOrigin,
+      routeDestination,
+    ].filter(
+      (point): point is { lat: number; lng: number } =>
+        Boolean(point && isValidRideMapPoint(point.lat, point.lng)),
+    );
 
-    if (driverPoint && ["driver_scheduled", "accepted", "driver_en_route", "driver_arrived", "in_progress"].includes(effectiveMapStatus)) {
-      bounds.extend(driverPoint);
-    }
-
-    // Igual que en RequestRidePage: mostramos el punto real del usuario (azul)
-    // y el punto accesible en calle (verde), pero la ruta del conductor va al verde.
-    if (passenger) bounds.extend(passenger);
-    if (pickup) bounds.extend(pickup);
-    if (destination) bounds.extend(destination);
-    if (routeOrigin) bounds.extend(routeOrigin);
-    if (routeDestination) bounds.extend(routeDestination);
-
-    if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, 72);
+    if (candidates.length === 0 || !areMapBoundsSane(candidates)) {
+      map.setCenter(RAPA_NUI_MAP_CENTER);
+      map.setZoom(13);
       didFitBoundsRef.current = true;
+      return;
     }
+
+    const bounds = new google.maps.LatLngBounds();
+    candidates.forEach((point) => bounds.extend(point));
+    map.fitBounds(bounds, { top: 56, right: 40, bottom: 168, left: 40 });
+    google.maps.event.addListenerOnce(map, "idle", () => {
+      const zoom = map.getZoom() ?? 13;
+      if (zoom < 11) {
+        map.setCenter(RAPA_NUI_MAP_CENTER);
+        map.setZoom(13);
+      } else if (zoom > 17) {
+        map.setZoom(17);
+      }
+    });
+    didFitBoundsRef.current = true;
   }
 
 
@@ -6958,7 +6988,7 @@ function PassengerLiveRouteMap({
           }}
         >
           <IonIcon icon={locationOutline} aria-hidden="true" />
-          Centrar vehículo
+          Centrar viaje
         </button>
       )}
 
@@ -7023,10 +7053,10 @@ function PassengerLiveRouteMap({
                 }}
               >
                 {effectiveMapStatus === "driver_arrived"
-                  ? "Tu conductor llegó al punto"
+                  ? `${ride.driverName ?? "Tu conductor"} te está esperando`
                   : effectiveMapStatus === "in_progress"
                     ? "Viaje en curso"
-                    : "Tu conductor viene en camino"}
+                    : getPassengerApproachLabel(effectiveMapStatus, routeInfo?.meters ?? directDriverMeters)}
               </div>
 
               <div
@@ -7045,22 +7075,26 @@ function PassengerLiveRouteMap({
               >
                 {effectiveMapStatus === "driver_arrived"
                   ? "Sal ahora al punto de recogida."
-                  : routeInfo?.durationText
-                    ? `${routeInfo.durationText}`
-                    : "GPS real activo"}
-                {effectiveMapStatus !== "driver_arrived" &&
-                routeInfo?.distanceText
-                  ? ` · ${routeInfo.distanceText}`
-                  : ""}
-                {effectiveMapStatus !== "driver_arrived"
-                  ? effectiveMapStatus === "in_progress"
-                    ? " hasta tu destino."
-                    : " hasta el punto de recogida."
-                  : ""}
-                {lastLiveUpdateAgeSeconds != null
-                  ? ` · Actualizado hace ${lastLiveUpdateAgeSeconds} s`
-                  : ""}
-                {liveDriverError ? ` · ${liveDriverError}` : ""}
+                  : [
+                      ride.driverName && effectiveMapStatus !== "in_progress"
+                        ? `${ride.driverName} está ${
+                            routeInfo?.durationText &&
+                            !/esperando|calculando|1 min/i.test(routeInfo.durationText)
+                              ? `a ${routeInfo.durationText}`
+                              : "en camino"
+                          }`
+                        : null,
+                      formatPassengerDistanceMeters(routeInfo?.meters ?? directDriverMeters),
+                      effectiveMapStatus === "in_progress"
+                        ? "hacia tu destino"
+                        : "hasta el punto de recogida",
+                      lastLiveUpdateAgeSeconds != null
+                        ? `Actualizado hace ${lastLiveUpdateAgeSeconds} s`
+                        : null,
+                      liveDriverError,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
               </div>
             </div>
 
@@ -7097,13 +7131,9 @@ function getHistoricalRidePoint(
   lat: number | null | undefined,
   lng: number | null | undefined,
 ): { lat: number; lng: number } | null {
-  const latitude = Number(lat);
-  const longitude = Number(lng);
-
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
-
-  return { lat: latitude, lng: longitude };
+  const point = parseLatLng(lat, lng);
+  if (!point || !isValidRideMapPoint(point.lat, point.lng)) return null;
+  return point;
 }
 
 function historicalRideMarkerIcon(
@@ -7158,25 +7188,26 @@ function PassengerHistoricalRouteMap({
 
         if (cancelled || !mapElementRef.current || !window.google?.maps) return;
 
-        const validRecordedPoints = points
-          .map((point) => ({
-            point: getHistoricalRidePoint(point.lat, point.lng),
+        const nav = extractPassengerRideNav(ride.notes);
+        const filteredTrack = filterGpsTrack(
+          points.map((point) => ({
+            lat: point.lat,
+            lng: point.lng,
             capturedAt: point.capturedAt,
-          }))
-          .filter(
-            (entry): entry is { point: { lat: number; lng: number }; capturedAt: string } =>
-              entry.point !== null,
-          );
-        const recordedPoints = validRecordedPoints.map((entry) => entry.point);
-        const origin = getHistoricalRidePoint(ride.originLat, ride.originLng);
-        const destination = getHistoricalRidePoint(
-          ride.destinationLat,
-          ride.destinationLng,
+            accuracyMeters: point.accuracyMeters,
+          })),
         );
-        const center = recordedPoints[0] ?? origin ?? destination ?? {
-          lat: -27.1505,
-          lng: -109.4325,
-        };
+        const recordedPoints = filteredTrack.map((point) => ({
+          lat: point.lat,
+          lng: point.lng,
+        }));
+        const origin =
+          getHistoricalRidePoint(nav.pickupLat, nav.pickupLng) ??
+          getHistoricalRidePoint(ride.originLat, ride.originLng);
+        const destination =
+          getHistoricalRidePoint(nav.destinationLat, nav.destinationLng) ??
+          getHistoricalRidePoint(ride.destinationLat, ride.destinationLng);
+        const center = recordedPoints[0] ?? origin ?? destination ?? RAPA_NUI_MAP_CENTER;
 
         map = new google.maps.Map(mapElementRef.current, {
           center,
@@ -7194,7 +7225,7 @@ function PassengerHistoricalRouteMap({
             title: `Origen: ${ride.originText}`,
             icon: historicalRideMarkerIcon("#16a34a", 10),
             label: {
-              text: "O",
+              text: "A",
               color: "#ffffff",
               fontSize: "10px",
               fontWeight: "900",
@@ -7210,7 +7241,7 @@ function PassengerHistoricalRouteMap({
             title: `Destino: ${ride.destinationText}`,
             icon: historicalRideMarkerIcon("#dc2626", 10),
             label: {
-              text: "D",
+              text: "B",
               color: "#ffffff",
               fontSize: "10px",
               fontWeight: "900",
@@ -7219,40 +7250,50 @@ function PassengerHistoricalRouteMap({
           });
         }
 
-        if (recordedPoints.length >= 2) {
+        const routeDistance = Math.round(trackDistanceMeters(recordedPoints));
+        const hasRealGpsRoute = recordedPoints.length >= 2 && routeDistance >= 40;
+
+        if (hasRealGpsRoute) {
           routePolyline = new google.maps.Polyline({
             map,
             path: recordedPoints,
             geodesic: true,
-            strokeColor: "#2563eb",
+            strokeColor: "#1d4ed8",
             strokeOpacity: 0.95,
-            strokeWeight: 6,
+            strokeWeight: 7,
+            zIndex: 5,
           });
         }
 
-        const bounds = new google.maps.LatLngBounds();
-        recordedPoints.forEach((point) => bounds.extend(point));
-        if (origin) bounds.extend(origin);
-        if (destination) bounds.extend(destination);
+        const boundPoints = [
+          ...(hasRealGpsRoute ? recordedPoints : []),
+          origin,
+          destination,
+        ].filter(
+          (point): point is { lat: number; lng: number } => Boolean(point),
+        );
 
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, 56);
+        if (boundPoints.length > 0 && areMapBoundsSane(boundPoints)) {
+          const bounds = new google.maps.LatLngBounds();
+          boundPoints.forEach((point) => bounds.extend(point));
+          map.fitBounds(bounds, { top: 56, right: 36, bottom: 72, left: 36 });
+          google.maps.event.addListenerOnce(map, "idle", () => {
+            const zoom = map?.getZoom() ?? 13;
+            if (zoom < 11) {
+              map?.setCenter(RAPA_NUI_MAP_CENTER);
+              map?.setZoom(13);
+            } else if (zoom > 17) {
+              map?.setZoom(17);
+            }
+          });
+        } else {
+          map.setCenter(RAPA_NUI_MAP_CENTER);
+          map.setZoom(13);
         }
 
-        const routeDistance =
-          recordedPoints.length >= 2
-            ? Math.round(
-                recordedPoints.reduce((total, point, index) => {
-                  const previous = recordedPoints[index - 1];
-                  return previous
-                    ? total + getPassengerDistanceMeters(previous, point)
-                    : total;
-                }, 0),
-              )
-            : null;
-        const firstCapturedAt = validRecordedPoints[0]?.capturedAt;
-        const lastCapturedAt = validRecordedPoints[validRecordedPoints.length - 1]?.capturedAt;
-        const routeDuration =
+        const firstCapturedAt = filteredTrack[0]?.capturedAt;
+        const lastCapturedAt = filteredTrack[filteredTrack.length - 1]?.capturedAt;
+        const gpsDuration =
           firstCapturedAt && lastCapturedAt
             ? Math.max(
                 0,
@@ -7263,15 +7304,24 @@ function PassengerHistoricalRouteMap({
                 ),
               )
             : null;
+        const tripDuration =
+          ride.startedAt && ride.completedAt
+            ? Math.max(
+                0,
+                Math.round(
+                  (new Date(ride.completedAt).getTime() -
+                    new Date(ride.startedAt).getTime()) /
+                    1000,
+                ),
+              )
+            : gpsDuration;
 
         setRoutePointCount(recordedPoints.length);
-        setActualDistanceMeters(routeDistance);
+        setActualDistanceMeters(hasRealGpsRoute ? routeDistance : null);
         setActualDurationSeconds(
-          routeDuration != null && Number.isFinite(routeDuration)
-            ? routeDuration
-            : null,
+          tripDuration != null && tripDuration >= 45 ? tripDuration : null,
         );
-        setRouteState(recordedPoints.length >= 2 ? "recorded" : "no_trace");
+        setRouteState(hasRealGpsRoute ? "recorded" : "no_trace");
       } catch {
         if (!cancelled) {
           setRouteState("error");
@@ -7291,16 +7341,19 @@ function PassengerHistoricalRouteMap({
         google.maps.event.clearInstanceListeners(map);
       }
     };
-  }, [ride.id, ride.originLat, ride.originLng, ride.destinationLat, ride.destinationLng, ride.originText, ride.destinationText, token]);
+  }, [ride.id, ride.originLat, ride.originLng, ride.destinationLat, ride.destinationLng, ride.originText, ride.destinationText, ride.notes, ride.startedAt, ride.completedAt, token]);
 
-  const distanceLabel = formatPassengerDistanceMeters(
-    actualDistanceMeters ?? ride.distanceMeters,
-  );
-  const resolvedDurationSeconds = actualDurationSeconds ?? ride.durationSeconds;
+  const distanceLabel = formatPassengerDistanceMeters(actualDistanceMeters);
   const durationMinutes =
-    resolvedDurationSeconds != null && Number.isFinite(Number(resolvedDurationSeconds))
-      ? Math.max(1, Math.round(Number(resolvedDurationSeconds) / 60))
+    actualDurationSeconds != null && Number.isFinite(Number(actualDurationSeconds))
+      ? Math.round(Number(actualDurationSeconds) / 60)
       : null;
+  const statsLabel = [
+    distanceLabel,
+    durationMinutes != null && durationMinutes >= 1 ? `${durationMinutes} min` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div
@@ -7344,11 +7397,11 @@ function PassengerHistoricalRouteMap({
             : routeState === "recorded"
               ? `Ruta GPS real registrada · ${routePointCount} puntos`
               : routeState === "no_trace"
-                ? "Sin trazado GPS guardado"
+                ? "No hay suficientes puntos GPS para reconstruir completamente este recorrido."
                 : "No se pudo cargar la ruta registrada"}
         </div>
 
-        {(distanceLabel || durationMinutes != null) && (
+        {statsLabel ? (
           <div
             style={{
               padding: "7px 10px",
@@ -7361,11 +7414,9 @@ function PassengerHistoricalRouteMap({
               textAlign: "right",
             }}
           >
-            {[distanceLabel, durationMinutes != null ? `${durationMinutes} min` : null]
-              .filter(Boolean)
-              .join(" · ")}
+            {statsLabel}
           </div>
-        )}
+        ) : null}
       </div>
 
       {routeState === "no_trace" && (
@@ -7386,7 +7437,7 @@ function PassengerHistoricalRouteMap({
             pointerEvents: "none",
           }}
         >
-          Se muestran origen y destino. RAPA GO no inventa una ruta cuando el GPS histórico no fue registrado.
+          Se muestran origen y destino. Sin trazado GPS guardado. RAPA GO no inventa una ruta real.
         </div>
       )}
     </div>
@@ -11011,7 +11062,7 @@ export default function TripsPage(): JSX.Element {
           )}
         </IonToolbar>
       </IonHeader>
-      <IonContent>
+      <IonContent style={{ "--padding-bottom": "calc(88px + env(safe-area-inset-bottom, 0px))" } as CSSProperties}>
         {paymentReturnMessage && (
           <IonCard
             className="rapago-trips-notice-card"

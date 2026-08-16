@@ -44,6 +44,16 @@ describe("rideLocationUpdateSchema", () => {
       }),
     ).toThrow();
   });
+
+  it("rechaza Null Island (0,0)", () => {
+    expect(() =>
+      rideLocationUpdateSchema.parse({
+        ...basePoint,
+        lat: 0,
+        lng: 0,
+      }),
+    ).toThrow();
+  });
 });
 
 describe("rideLocationBatchSchema", () => {
