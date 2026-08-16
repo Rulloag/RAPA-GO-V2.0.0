@@ -31,14 +31,24 @@ describe("profile identity lock regression", () => {
   });
 
   it("locks driver phone and license fields", () => {
-    const licenseSection = driverSource.slice(
-      driverSource.lastIndexOf("Licencia de conducir"),
-      driverSource.lastIndexOf("Biografía"),
+    /* El teléfono y la licencia estaban repartidos en dos tarjetas con
+       <IonInput readonly>, y este test comprobaba que apareciera "readonly".
+       Tras el rediseño visual del perfil ambos viven juntos en la tarjeta de
+       credencial y ya no son campos: son texto. El invariante que protegía
+       este test —que el conductor no pueda editarlos desde el perfil— se
+       mantiene, y de forma más fuerte, así que se comprueba sobre la nueva
+       estructura: en esa sección no debe haber NINGÚN campo de entrada. */
+    const credentialSection = driverSource.slice(
+      driverSource.indexOf("Lo que ve el pasajero"),
+      driverSource.indexOf("── Reputación"),
     );
 
-    expect(licenseSection).toContain("readonly");
-    expect(licenseSection).toContain("Solicitar corrección a soporte");
-    expect(licenseSection).not.toContain("setLicenseNumber(String");
-    expect(licenseSection).not.toContain("setLicenseExpiry(String");
+    expect(credentialSection).toContain("Licencia de conducir");
+    expect(credentialSection).toContain("Teléfono");
+    expect(credentialSection).toContain("Solicitar corrección a soporte");
+    expect(credentialSection).not.toContain("IonInput");
+    expect(credentialSection).not.toContain("setLicenseNumber(String");
+    expect(credentialSection).not.toContain("setLicenseExpiry(String");
+    expect(credentialSection).not.toContain("setPhone(String");
   });
 });
