@@ -20,6 +20,8 @@ export const applications = pgTable("applications", {
   vehicleYear: integer("vehicle_year"),
   vehiclePlate: text("vehicle_plate"),
   vehicleColor: text("vehicle_color"),
+  // Categoría declarada del vehículo principal (standard | xl | extra_luggage).
+  vehicleCategory: text("vehicle_category"),
   licenseNumber: text("license_number"),
   licenseExpiry: text("license_expiry"),
   hasOwnVehicle: boolean("has_own_vehicle").default(false),

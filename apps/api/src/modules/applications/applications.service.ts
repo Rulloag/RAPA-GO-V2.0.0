@@ -338,6 +338,7 @@ async function toResponse(application: Application): Promise<ApplicationResponse
     vehicleYear: application.vehicleYear ?? null,
     vehiclePlate: application.vehiclePlate ?? null,
     vehicleColor: application.vehicleColor ?? null,
+    vehicleCategory: application.vehicleCategory ?? null,
     vehiclePhotoUrl,
     vehicles: Array.isArray(application.vehicles)
       ? application.vehicles
@@ -406,6 +407,14 @@ async function provisionApprovedDriver(
     vehicleYear: application.vehicleYear,
     vehiclePlate: application.vehiclePlate,
     vehicleColor: application.vehicleColor,
+    vehicleCategory:
+      application.vehicleCategory === "xl" ||
+      application.vehicleCategory === "extra_luggage" ||
+      application.vehicleCategory === "standard"
+        ? application.vehicleCategory
+        : application.vehicleCategory === "luggage"
+          ? "extra_luggage"
+          : "standard",
     licenseNumber: application.licenseNumber,
     licenseExpiry: application.licenseExpiry,
     profilePhotoUrl: application.profilePhotoUrl,
@@ -726,6 +735,11 @@ export class ApplicationsService {
         if (input.vehicleYear !== undefined) insertData.vehicleYear = input.vehicleYear;
         if (input.vehiclePlate !== undefined) insertData.vehiclePlate = input.vehiclePlate;
         if (input.vehicleColor !== undefined) insertData.vehicleColor = input.vehicleColor;
+        if (input.vehicleCategory !== undefined) {
+          insertData.vehicleCategory = input.vehicleCategory;
+        } else if (Array.isArray(input.vehicles) && input.vehicles[0]?.category) {
+          insertData.vehicleCategory = input.vehicles[0].category;
+        }
         if (input.licenseNumber !== undefined) insertData.licenseNumber = input.licenseNumber;
         if (input.licenseExpiry !== undefined) insertData.licenseExpiry = input.licenseExpiry;
         if (input.hasOwnVehicle !== undefined) insertData.hasOwnVehicle = input.hasOwnVehicle;

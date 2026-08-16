@@ -22,6 +22,7 @@ export interface ApplicationData {
   emergencyContactName: string | null; emergencyContactPhone: string | null;
   vehicleBrand: string | null; vehicleModel: string | null; vehicleYear: number | null;
   vehiclePlate: string | null; vehicleColor: string | null;
+  vehicleCategory?: string | null;
   vehiclePhotoUrl: string | null;
   vehicles: Array<Record<string, unknown>>;
   licenseNumber: string | null; licenseExpiry: string | null;

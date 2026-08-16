@@ -14887,6 +14887,7 @@ type AdminDriverApplicationVehicle = {
   year?: string | null;
   plate?: string | null;
   color?: string | null;
+  category?: string | null;
   label?: string | null;
   imageDataUrl?: string | null;
   imageName?: string | null;
@@ -14934,6 +14935,7 @@ type AdminDriverApplicationRecord = {
     year?: string | null;
     plate?: string | null;
     color?: string | null;
+    category?: string | null;
     photoDataUrl?: string | null;
     totalVehicles?: number | null;
     vehicles?: AdminDriverApplicationVehicle[] | null;
@@ -15003,6 +15005,7 @@ function getDriverApplicationVehicles(item: AdminDriverApplicationRecord): Admin
       year: item.vehicle.year ?? "",
       plate: item.vehicle.plate ?? "",
       color: item.vehicle.color ?? "",
+      category: item.vehicle.category ?? null,
       label: item.vehicle.description ?? "",
       imageDataUrl: item.vehicle.photoDataUrl ?? item.documents?.vehiclePhoto?.dataUrl ?? null,
       imageName: item.documents?.vehiclePhoto?.fileName ?? null,
@@ -16314,6 +16317,17 @@ export function AdminDocumentsPage(): JSX.Element {
                               </div>
                               <div style={{ color: "#555", fontSize: ".8rem", fontWeight: 800, marginTop: 3 }}>
                                 Patente: {vehicle.plate || "No informada"} · Año: {vehicle.year || "No informado"}
+                              </div>
+                              <div style={{ color: "#555", fontSize: ".8rem", fontWeight: 800, marginTop: 3 }}>
+                                Categoría:{" "}
+                                {vehicle.category === "xl"
+                                  ? "🚐 XL"
+                                  : vehicle.category === "extra_luggage" ||
+                                      vehicle.category === "luggage"
+                                    ? "🧳 Extra Maleta"
+                                    : vehicle.category === "standard"
+                                      ? "🚗 Estándar"
+                                      : "No informada"}
                               </div>
                               <div style={{ color: "#555", fontSize: ".8rem", fontWeight: 800, marginTop: 3 }}>
                                 Tipo: {vehicle.ownership === "optional" ? "Opcional / temporal" : "Propio principal"}
