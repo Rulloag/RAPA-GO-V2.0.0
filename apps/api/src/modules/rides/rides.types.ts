@@ -88,6 +88,15 @@ export interface RideRequestResponse {
   priorityFeeClp?:       number | null;
   flightNumber?:         string | null;
   preferredDriverGender?: "female" | null;
+  /** automatic | manual | queued_offer — sin datos privados de ningún otro viaje. */
+  assignmentMode?:       string;
+  /**
+   * Espera estimada (min) para 'accepted' + assignmentMode='queued_offer':
+   * el conductor ya está asignado pero sigue terminando otro viaje. Misma
+   * estimación de Fase 1 (Haversine + velocidad promedio, NO es ETA de ruta
+   * real). null si no aplica o no se pudo calcular.
+   */
+  estimatedWaitMinutes?: number | null;
   stops?:                RideStopResponse[] | undefined;
 
   /** Forma de pago persistida por el backend para este viaje. */

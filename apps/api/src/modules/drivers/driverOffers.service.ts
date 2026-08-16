@@ -6,6 +6,8 @@ import { RidesRepository } from "../rides/rides.repository.js";
 import { DriverStatusRepository } from "./driverStatus.repository.js";
 import { toResponse } from "../rides/rides.responseMapper.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { attemptQueuedOffer } from "../rides/rideQueueOfferProducer.service.js";
+import { haversineDistanceKm, estimateEtaMinutes, QUEUE_MATCH_CONFIG } from "../rides/rideQueueMatch.js";
 import type { RideAssignmentOfferResponse } from "../rides/rideAssignmentOffers.types.js";
 import type { RideRequestResponse } from "../rides/rides.types.js";
 
@@ -63,6 +65,15 @@ export interface ActiveOfferPayload {
     priorityFeeClp:   number | null;
     flightNumber:     string | null;
   };
+  /**
+   * Espera estimada (minutos) hasta que el conductor podría empezar B:
+   * tiempo restante estimado del viaje actual + ETA estimado hasta el
+   * origen de B. Misma estimación (Haversine + velocidad promedio,
+   * documentada como no-real) que usa el motor de elegibilidad de Fase 1 —
+   * null si no hay suficiente información de ubicación para calcularla.
+   */
+  estimatedWaitMinutes: number | null;
+  pickupDistanceKm:     number | null;
 }
 
 type GetActiveOfferResult =
@@ -100,6 +111,36 @@ export class DriverOffersService {
       return { ok: true, offer: null };
     }
 
+    let estimatedWaitMinutes: number | null = null;
+    let pickupDistanceKm: number | null = null;
+    try {
+      const driverStatus = await driverStatusRepo.findByDriverId(auth.userId);
+      if (driverStatus?.currentRideId && driverStatus.currentLat != null && driverStatus.currentLng != null) {
+        const currentRide = await ridesRepo.findById(driverStatus.currentRideId);
+        if (
+          currentRide?.destinationLat != null &&
+          currentRide?.destinationLng != null &&
+          ride.originLat != null &&
+          ride.originLng != null
+        ) {
+          const remainingTripMin = estimateEtaMinutes(
+            haversineDistanceKm(driverStatus.currentLat, driverStatus.currentLng, currentRide.destinationLat, currentRide.destinationLng),
+            QUEUE_MATCH_CONFIG,
+          );
+          const pickupKm = haversineDistanceKm(
+            currentRide.destinationLat,
+            currentRide.destinationLng,
+            ride.originLat,
+            ride.originLng,
+          );
+          pickupDistanceKm = pickupKm;
+          estimatedWaitMinutes = Math.round(remainingTripMin + estimateEtaMinutes(pickupKm, QUEUE_MATCH_CONFIG));
+        }
+      }
+    } catch {
+      // Estimación best-effort — nunca debe romper la lectura de la oferta.
+    }
+
     return {
       ok: true,
       offer: {
@@ -116,6 +157,8 @@ export class DriverOffersService {
           priorityFeeClp:   ride.priorityFeeClp ?? null,
           flightNumber:     ride.flightNumber ?? null,
         },
+        estimatedWaitMinutes,
+        pickupDistanceKm,
       },
     };
   }
@@ -127,22 +170,42 @@ export class DriverOffersService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can accept offers.", statusCode: 403 };
     }
 
+    const offer = await offersRepo.findById(offerId);
+    if (!offer) {
+      return { ok: false, code: "OFFER_EXPIRED_OR_UNAVAILABLE", message: "Offer has expired or is no longer available.", statusCode: 409 };
+    }
+
+    // Reclama el slot de viaje EN COLA ANTES de tocar la oferta o el ride.
+    // Nunca se confía en la UI para impedir una segunda cola: la garantía
+    // real es este UPDATE condicional en BD (current_ride_id no nulo Y
+    // queued_ride_id nulo). Si el conductor no tiene viaje activo, o ya
+    // tiene uno en cola, se rechaza aquí mismo.
+    const queueClaimed = await driverStatusRepo.claimQueuedRide(auth.userId, offer.rideRequestId);
+    if (!queueClaimed) {
+      return {
+        ok: false,
+        code: "DRIVER_QUEUE_UNAVAILABLE",
+        message: "You must have an active ride and no existing queued ride to accept this offer.",
+        statusCode: 409,
+      };
+    }
+
     // Atomic accept — fails if expired or already resolved
     const accepted = await offersRepo.markAccepted(offerId, auth.userId);
     if (!accepted) {
+      await driverStatusRepo.releaseQueuedRideClaim(auth.userId, offer.rideRequestId);
       return { ok: false, code: "OFFER_EXPIRED_OR_UNAVAILABLE", message: "Offer has expired or is no longer available.", statusCode: 409 };
     }
 
     // Accept the ride atomically — only if still requested
     const assignedRide = await ridesRepo.acceptAsQueued(accepted.rideRequestId, auth.userId);
     if (!assignedRide) {
-      // Race: admin or another driver already took the ride — cancel the offer
+      // Race: admin or another driver already took the ride — cancel the
+      // offer and release the queue claim so the driver isn't left blocked.
       await offersRepo.markCancelledByRideId(accepted.rideRequestId);
+      await driverStatusRepo.releaseQueuedRideClaim(auth.userId, offer.rideRequestId);
       return { ok: false, code: "RIDE_ALREADY_ASSIGNED", message: "Ride was assigned by another party before you accepted.", statusCode: 409 };
     }
-
-    // Record queued ride on driver_statuses — do NOT call setBusy (driver is still on current ride)
-    await driverStatusRepo.setQueuedRide(auth.userId, assignedRide.id);
 
     return { ok: true, ride: toResponse(assignedRide) };
   }
@@ -154,8 +217,18 @@ export class DriverOffersService {
       return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can reject offers.", statusCode: 403 };
     }
 
-    await offersRepo.markRejected(offerId, auth.userId);
+    const rejected = await offersRepo.markRejected(offerId, auth.userId);
     // Ride stays 'requested' — admin can assign manually.
+
+    // Avanza al siguiente candidato (Fase 2) best-effort: nunca debe hacer
+    // fallar el rechazo del conductor si el productor de ofertas falla.
+    if (rejected) {
+      void attemptQueuedOffer(rejected.rideRequestId).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[RAPA GO] No se pudo avanzar al siguiente candidato para ${rejected.rideRequestId}: ${message.slice(0, 500)}`);
+      });
+    }
+
     return { ok: true };
   }
 }
