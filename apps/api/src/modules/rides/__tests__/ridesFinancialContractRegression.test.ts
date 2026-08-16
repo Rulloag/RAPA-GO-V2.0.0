@@ -86,6 +86,16 @@ describe("RAPA GO financial ride contract regression", () => {
     expect(policy).toContain("DRIVER_NO_SHOW_WAIT_MS = 5 * 60 * 1000");
   });
 
+  it("queued_offer + accepted never charges; clock starts at enRouteAt after activation", () => {
+    expect(service).toContain(
+      'if (ride.assignmentMode === "queued_offer" && ride.status === "accepted")',
+    );
+    expect(service).toContain("ride.enRouteAt?.getTime()");
+    expect(service).toContain(
+      'ride.assignmentMode === "queued_offer"',
+    );
+  });
+
   it("completed rides resolve Klap from the server-side completion path", () => {
     const start = service.indexOf("async completeRide(");
     const end = service.indexOf("async markEnRoute(", start);

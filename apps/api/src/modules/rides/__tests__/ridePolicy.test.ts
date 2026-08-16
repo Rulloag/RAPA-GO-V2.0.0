@@ -37,6 +37,28 @@ describe("RAPA GO ride policy", () => {
     ).toBe(true);
   });
 
+  it("el reloj inyectado (enRouteAt de queued_offer) usa la misma ventana de 1 minuto", () => {
+    const enRouteAtMs = 5_000_000;
+
+    expect(
+      isPassengerCancellationChargeable({
+        isScheduled: false,
+        scheduledPickupAtMs: null,
+        acceptedAtMs: enRouteAtMs,
+        nowMs: enRouteAtMs + 59_999,
+      }),
+    ).toBe(false);
+
+    expect(
+      isPassengerCancellationChargeable({
+        isScheduled: false,
+        scheduledPickupAtMs: null,
+        acceptedAtMs: null,
+        nowMs: enRouteAtMs + 20 * 60 * 1000,
+      }),
+    ).toBe(false);
+  });
+
   it("mantiene gratuita cualquier cancelación mientras no exista conductor asignado", () => {
     const nowMs = 10_000_000;
 
