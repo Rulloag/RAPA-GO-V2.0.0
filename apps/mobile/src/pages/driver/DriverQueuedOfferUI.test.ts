@@ -2,7 +2,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import driverSource from "./index.tsx?raw";
+import driverSourceRaw from "./index.tsx?raw";
+
+const driverSource = driverSourceRaw.replace(/\r\n/g, "\n");
 
 // Fase 4 — "Próximo viaje disponible". Sigue el mismo patrón de los demás
 // tests de esta página (aserciones sobre el código fuente vía `?raw`): el

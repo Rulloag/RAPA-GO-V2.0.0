@@ -2,8 +2,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import tripsSource from "./TripsPage.tsx?raw";
-import sharedSource from "../shared.ts?raw";
+import tripsSourceRaw from "./TripsPage.tsx?raw";
+import sharedSourceRaw from "../shared.ts?raw";
+
+const tripsSource = tripsSourceRaw.replace(/\r\n/g, "\n");
+const sharedSource = sharedSourceRaw.replace(/\r\n/g, "\n");
 
 // Fase 5 — UI del pasajero B durante la preasignación encadenada. Mismo
 // patrón que el resto de tests de esta página (aserciones sobre el código
