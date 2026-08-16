@@ -10898,16 +10898,6 @@ export default function TripsPage(): JSX.Element {
                   : "Sin conductor activo por ahora."}
               </span>
             </div>
-
-            <IonButton
-              size="small"
-              color="warning"
-              disabled={loading}
-              onClick={() => void loadRides()}
-              style={{ "--border-radius": "999px", fontWeight: 900 } as React.CSSProperties}
-            >
-              {loading ? <IonSpinner name="dots" /> : "Actualizar"}
-            </IonButton>
           </div>
 
           {lastRefreshAt && (
