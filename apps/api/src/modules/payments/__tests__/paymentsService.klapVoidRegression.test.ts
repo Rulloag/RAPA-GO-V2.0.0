@@ -28,6 +28,7 @@ afterEach(() => {
   delete process.env["KLAP_CANCEL_URL"];
   delete process.env["KLAP_WEBHOOK_CONFIRM_URL"];
   delete process.env["KLAP_WEBHOOK_REJECT_URL"];
+  delete process.env["KLAP_WEBHOOK_VALIDATION_URL"];
   delete process.env["KLAP_ORDER_EXPIRATION_MINUTES"];
   delete process.env["KLAP_REQUEST_TIMEOUT_MS"];
 });
@@ -50,6 +51,9 @@ describe("Klap authorization release regression", () => {
 
     process.env["KLAP_WEBHOOK_REJECT_URL"] =
       "https://backend.rapago.test/webhooks/klap/reject";
+
+    process.env["KLAP_WEBHOOK_VALIDATION_URL"] =
+      "https://backend.rapago.test/webhooks/klap/validate";
 
     process.env["KLAP_ORDER_EXPIRATION_MINUTES"] =
       "30";

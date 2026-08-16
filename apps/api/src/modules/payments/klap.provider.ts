@@ -102,19 +102,18 @@ function parseBooleanEnv(value: string | undefined, defaultValue: boolean): bool
 }
 
 /**
- * Modo authorization: la orden se crea como retención aunque el contrato exacto
- * de respuesta de /capture todavía no esté confirmado.
+ * Modo authorization: la orden de viaje SIEMPRE se crea como retención.
+ * El default es true porque el cobro inmediato (SALE) viola la política:
+ * autorizar 100% al pedir el viaje y capturar recién al completar / multa.
+ * KLAP_DEFERRED_CAPTURE_ENABLED=false queda solo como rollback de emergencia.
  */
 export function isKlapAuthorizationModeEnabled(): boolean {
-  return parseBooleanEnv(process.env["KLAP_DEFERRED_CAPTURE_ENABLED"], false);
+  return parseBooleanEnv(process.env["KLAP_DEFERRED_CAPTURE_ENABLED"], true);
 }
 
 /** Captura normal: solo cuando el contrato remoto ya fue confirmado. */
 export function isKlapDeferredCaptureEnabled(): boolean {
-  return (
-    isKlapAuthorizationModeEnabled() &&
-    parseBooleanEnv(process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"], false)
-  );
+  return parseBooleanEnv(process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"], false);
 }
 
 /**
@@ -237,7 +236,7 @@ function getKlapConfig(): KlapConfig {
   );
   const authorizationModeEnabled = parseBooleanEnv(
     process.env["KLAP_DEFERRED_CAPTURE_ENABLED"],
-    false,
+    true,
   );
   const captureContractConfirmed = parseBooleanEnv(
     process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"],
@@ -251,7 +250,10 @@ function getKlapConfig(): KlapConfig {
     process.env["KLAP_CAPTURE_DISCOVERY_MAX_AMOUNT_CLP"] ?? 0,
   );
   const captureSuccessStatuses = parseCaptureSuccessStatuses(
-    process.env["KLAP_CAPTURE_SUCCESS_STATUSES"],
+    process.env["KLAP_CAPTURE_SUCCESS_STATUSES"] &&
+      process.env["KLAP_CAPTURE_SUCCESS_STATUSES"].trim()
+      ? process.env["KLAP_CAPTURE_SUCCESS_STATUSES"]
+      : "captured,success,approved",
   );
   // Opcional a propósito: si todavía no está configurada en este entorno,
   // la orden se crea igual sin los customs de notificación al comercio (ver
@@ -259,13 +261,6 @@ function getKlapConfig(): KlapConfig {
   const merchantNotificationEmail = String(
     process.env["KLAP_MERCHANT_NOTIFICATION_EMAIL"] ?? "",
   ).trim();
-
-  if (!authorizationModeEnabled && (captureContractConfirmed || captureDiscoveryMode)) {
-    throw new KlapProviderError(
-      "config",
-      "Klap capture cannot be enabled unless KLAP_DEFERRED_CAPTURE_ENABLED=true.",
-    );
-  }
 
   if (captureContractConfirmed && captureDiscoveryMode) {
     throw new KlapProviderError(
@@ -635,12 +630,13 @@ export class KlapProvider implements PaymentProvider {
       );
     }
 
-    if (config.authorizationModeEnabled) {
-      customs.push({
-        key: "transaction_type",
-        value: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
-      });
-    }
+    // Política RAPA GO: el checkout NUNCA es una venta. Aunque el flag de
+    // captura diferida esté en false (Hostinger histórico), la orden declara
+    // authorization para retener el 100% de la tarifa hasta captura/void.
+    customs.push({
+      key: "transaction_type",
+      value: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+    });
 
     // Comprobante de pago (confirmado por Klap para POST /orders): el aviso
     // al pasajero depende únicamente de que tengamos su correo, y es
@@ -935,13 +931,6 @@ export class KlapProvider implements PaymentProvider {
     }
 
     const config = getKlapConfig();
-
-    if (!config.authorizationModeEnabled) {
-      throw new KlapProviderError(
-        "config",
-        "Klap authorization mode is disabled.",
-      );
-    }
 
     const normalCapture = config.captureContractConfirmed;
     const discoveryCapture = !normalCapture && config.captureDiscoveryMode;

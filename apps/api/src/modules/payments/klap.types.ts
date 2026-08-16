@@ -40,7 +40,7 @@ export interface KlapConfig {
   disableWallets: boolean;
   /** Header no documentado por Swagger; por seguridad se desactiva por defecto. */
   sendIdempotencyHeader: boolean;
-  /** Crea la orden como authorization (retención) aunque capture aún esté fail-closed. */
+  /** Crea la orden como authorization (retención). El cobro no ocurre en el checkout. */
   authorizationModeEnabled: boolean;
   /** Permite captura normal únicamente con contrato de respuesta confirmado. */
   captureContractConfirmed: boolean;
@@ -124,10 +124,9 @@ export interface KlapCaptureOrderParams {
 }
 
 /**
- * La captura permanece bloqueada por defecto. Solo puede ejecutarse cuando
- * KLAP_DEFERRED_CAPTURE_ENABLED y KLAP_CAPTURE_CONTRACT_CONFIRMED están activos,
- * y la respuesta contiene un estado final incluido explícitamente en
- * KLAP_CAPTURE_SUCCESS_STATUSES. Nunca se acepta un 2xx vacío como cobro.
+ * La captura permanece bloqueada por defecto hasta
+ * KLAP_CAPTURE_CONTRACT_CONFIRMED. La autorización del checkout es siempre
+ * una retención; nunca se acepta un 2xx vacío como cobro.
  */
 export interface KlapCaptureOrderResult {
   httpStatus: number;

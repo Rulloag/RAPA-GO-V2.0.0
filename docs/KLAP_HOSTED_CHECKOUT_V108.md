@@ -36,10 +36,37 @@ KLAP_WEBHOOK_VALIDATION_URL=https://backend.rapago.cl/api/webhooks/klap/validate
 KLAP_ORDER_EXPIRATION_MINUTES=30
 KLAP_REQUEST_TIMEOUT_MS=10000
 KLAP_SEND_IDEMPOTENCY_HEADER=false
+
+# Captura diferida (obligatorio). Sin esto Klap cobra al pagar el checkout.
+KLAP_DEFERRED_CAPTURE_ENABLED=true
+KLAP_CAPTURE_CONTRACT_CONFIRMED=true
+KLAP_CAPTURE_SUCCESS_STATUSES=captured,success,approved
+KLAP_CAPTURE_DISCOVERY_MODE=false
+KLAP_DISABLE_WALLETS=true
 ```
 
 `VITE_KLAP_CHECKOUT_SCRIPT_URL` deja de utilizarse en V108. Puede permanecer
 temporalmente en el entorno, pero el frontend ya no carga ese script.
+
+## Autorización vs cobro
+
+RAPA GO no crea una venta (`sale`) al pedir el viaje. El `POST /orders` incluye
+siempre el custom `transaction_type=authorization`: Klap retiene el 100% de la
+tarifa. El cobro definitivo ocurre después, con las APIs ya usadas en
+`klap.provider.ts`:
+
+- Completado: `POST /orders/{order_id}/capture` con `{ amount }` (100% tarifa).
+- Cancelación gratis / sin conductor: `POST /orders/{order_id}/refund` sin body
+  (libera la retención).
+- Cancelación con multa o no-show: `POST /capture` por el monto de la multa;
+  Klap cierra la orden y el emisor libera el saldo no capturado.
+
+El webhook `confirm` deja el pago en `authorized`, nunca en `success`. `success`
+solo existe tras una captura confirmada.
+
+Si el comercio Klap no tiene habilitada la captura diferida, Klap puede ignorar
+`transaction_type` y cobrar igual. Eso se corrige en el panel del comercio, no
+inventando endpoints.
 
 ## Rutas nuevas o ajustadas
 

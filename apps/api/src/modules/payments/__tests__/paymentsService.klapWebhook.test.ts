@@ -349,6 +349,33 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
     );
   });
 
+  it("16c. con KLAP_DEFERRED_CAPTURE_ENABLED=false el confirm sigue siendo autorización, nunca cobro", async () => {
+    const previousDeferred = process.env["KLAP_DEFERRED_CAPTURE_ENABLED"];
+    process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = "false";
+
+    try {
+      const result = await service.handleKlapConfirmWebhook(
+        confirmBody(),
+        { apikey: validApikeyHeader() },
+      );
+
+      expect(result.ok).toBe(true);
+      expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalledOnce();
+      expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transactionType: "authorization",
+          authorizedAmountClp: 5000,
+        }),
+      );
+    } finally {
+      if (previousDeferred === undefined) {
+        delete process.env["KLAP_DEFERRED_CAPTURE_ENABLED"];
+      } else {
+        process.env["KLAP_DEFERRED_CAPTURE_ENABLED"] = previousDeferred;
+      }
+    }
+  });
+
   it("a corrected redelivery with the right amount succeeds even though the first mismatched delivery used the same mc_code (no stale idempotency block)", async () => {
     mockFindByProviderOrderId.mockResolvedValue(paymentFixture({ amountClp: 5000 }));
 

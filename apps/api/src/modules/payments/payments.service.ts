@@ -16,7 +16,6 @@ import type {
 import type { NormalizedWebhook } from "./payment.provider.js";
 import { KlapProviderError, KLAP_TRANSACTION_TYPE_AUTHORIZATION } from "./klap.types.js";
 import {
-  isKlapAuthorizationModeEnabled,
   isKlapCaptureDiscoveryModeEnabled,
   isKlapCaptureExecutionEnabled,
   verifyKlapWebhookApikey,
@@ -412,7 +411,22 @@ type KlapReconciledStatus = "success" | "rejected" | "pending" | "unknown";
 function normalizeKlapOrderStatus(value: unknown): KlapReconciledStatus {
   const status = String(value ?? "").trim().toLowerCase();
 
-  if (["approved", "success", "paid", "completed", "confirmed"].includes(status)) {
+  // "success" aquí significa "el checkout de Klap terminó bien".
+  // Con captura diferida eso es una autorización/retención, no un cobro.
+  // "authorized" es el estado de hold; "captured"/"paid" también se tratan
+  // como checkout resuelto para no dejar el viaje en pending_payment.
+  if (
+    [
+      "approved",
+      "success",
+      "paid",
+      "completed",
+      "confirmed",
+      "authorized",
+      "authorization",
+      "captured",
+    ].includes(status)
+  ) {
     return "success";
   }
 
@@ -1503,19 +1517,13 @@ export class PaymentsService {
       };
     }
 
-    // Captura diferida: esta orden se creó como autorización (ver
-    // KlapProvider.createHostedOrder, customs.transaction_type). Un confirm
-    // que no declare transaction_type = "authorization" nunca marca el pago
-    // como exitoso ni activa efectos financieros â€” se registra y se rechaza
-    // con un error controlado, sin construir eventKey ni reclamar idempotencia,
-    // igual que amount_mismatch, para que una entrega corregida se revalide
-    // desde cero.
-    const deferredCaptureEnabled = isKlapAuthorizationModeEnabled();
-
+    // Captura diferida: la orden se crea siempre como authorization.
+    // Un confirm que declare SALE/capture nunca marca el pago como cobrado.
+    // Si Klap omite transaction_type (observado en producción), se acepta
+    // como autorización porque RAPA GO nunca pidió una venta.
     if (
-      deferredCaptureEnabled &&
-        body.transaction_type != null &&
-        body.transaction_type.trim().toLowerCase() !== KLAP_TRANSACTION_TYPE_AUTHORIZATION
+      body.transaction_type != null &&
+      body.transaction_type.trim().toLowerCase() !== KLAP_TRANSACTION_TYPE_AUTHORIZATION
     ) {
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
@@ -1592,41 +1600,24 @@ export class PaymentsService {
         quotas_type: body.quotas_type ?? null,
       };
 
-      if (deferredCaptureEnabled) {
-        await paymentsRepo.markAuthorizedAndActivateRide({
-          id: payment.id,
-          rideRequestId: payment.rideRequestId,
-          authorizedAmountClp: paidAmountClp,
-          transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
-          providerPayload,
-        });
-      } else {
-        await paymentsRepo.markSuccessAndActivateRide({
-          id: payment.id,
-          rideRequestId: payment.rideRequestId,
-          externalId: body.order_id,
-          providerPayload,
-        });
-      }
+      await paymentsRepo.markAuthorizedAndActivateRide({
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        authorizedAmountClp: paidAmountClp,
+        transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+        providerPayload,
+      });
 
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
-        eventType: deferredCaptureEnabled
-          ? "payment.klap_authorized"
-          : "payment.success",
+        eventType: "payment.klap_authorized",
         entityType: "payment",
         entityId: payment.id,
-        metadata: deferredCaptureEnabled
-          ? {
-              rideId: payment.rideRequestId,
-              authorizedAmountClp: paidAmountClp,
-              provider: "klap",
-            }
-          : {
-              rideId: payment.rideRequestId,
-              amountClp: paidAmountClp,
-              provider: "klap",
-            },
+        metadata: {
+          rideId: payment.rideRequestId,
+          authorizedAmountClp: paidAmountClp,
+          provider: "klap",
+        },
       });
 
       await paymentsRepo.completeWebhookEvent({
@@ -2290,35 +2281,19 @@ export class PaymentsService {
                 ? Math.round(remoteOrder.amount.total)
                 : active.amountClp;
 
-            if (isKlapAuthorizationModeEnabled()) {
-              await paymentsRepo.markAuthorizedAndActivateRide({
-                id: active.id,
-                rideRequestId: active.rideRequestId,
-                authorizedAmountClp: remoteAmountClp,
-                transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
-                providerPayload: safePayload,
-              });
-
-              return {
-                ok: false,
-                code: "PAYMENT_ALREADY_PAID",
-                message:
-                  "Klap ya autorizó la tarjeta para este viaje. Revisa Mis Viajes.",
-                statusCode: 409,
-              };
-            }
-
-            await paymentsRepo.markSuccessAndActivateRide({
+            await paymentsRepo.markAuthorizedAndActivateRide({
               id: active.id,
               rideRequestId: active.rideRequestId,
-              externalId: remoteOrder.transaction_id ?? remoteOrder.order_id,
+              authorizedAmountClp: remoteAmountClp,
+              transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
               providerPayload: safePayload,
             });
 
             return {
               ok: false,
               code: "PAYMENT_ALREADY_PAID",
-              message: "Klap ya confirmó el pago para este viaje. Revisa Mis Viajes.",
+              message:
+                "Klap ya autorizó la tarjeta para este viaje. Revisa Mis Viajes.",
               statusCode: 409,
             };
           }
@@ -2727,23 +2702,14 @@ export class PaymentsService {
     }
 
     if (normalizedStatus === "success") {
-      if (isKlapAuthorizationModeEnabled()) {
-        await paymentsRepo.markAuthorizedAndActivateRide({
-          id: payment.id,
-          rideRequestId: payment.rideRequestId,
-          authorizedAmountClp:
-            remoteTotal != null ? Math.round(remoteTotal) : payment.amountClp,
-          transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
-          providerPayload: safePayload,
-        });
-      } else {
-        await paymentsRepo.markSuccessAndActivateRide({
-          id: payment.id,
-          rideRequestId: payment.rideRequestId,
-          externalId: remoteOrder.transaction_id ?? remoteOrder.order_id,
-          providerPayload: safePayload,
-        });
-      }
+      await paymentsRepo.markAuthorizedAndActivateRide({
+        id: payment.id,
+        rideRequestId: payment.rideRequestId,
+        authorizedAmountClp:
+          remoteTotal != null ? Math.round(remoteTotal) : payment.amountClp,
+        transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+        providerPayload: safePayload,
+      });
     } else if (normalizedStatus === "rejected") {
       await paymentsRepo.markRejected(payment.id, safePayload);
     }
@@ -2814,7 +2780,10 @@ export class PaymentsService {
       };
     }
 
-    if (payment.status !== "authorized") {
+    if (
+      payment.status !== "authorized" &&
+      payment.status !== "success"
+    ) {
       return {
         ok: false,
         code: "PAYMENT_NOT_AUTHORIZED",
@@ -3027,7 +2996,18 @@ export class PaymentsService {
       };
     }
 
-    if (remoteBeforeStatus !== "authorized") {
+    const klapReleasableRemoteStatuses = new Set([
+      "authorized",
+      "authorization",
+      "approved",
+      "success",
+      "captured",
+      "paid",
+      "completed",
+      "confirmed",
+    ]);
+
+    if (!klapReleasableRemoteStatuses.has(remoteBeforeStatus)) {
       await paymentsRepo.markRefundFailed({
         id: payment.id,
         reason:
@@ -3883,13 +3863,9 @@ export class PaymentsService {
     );
 
     if (!payment) {
-      // FASE 8 (captura diferida Klap): todavía no existe una ruta oficial de
-      // Klap para anular/liberar una autorización de tarjeta (void). Si el
-      // viaje se cancela con una autorización Klap viva (nunca capturada),
-      // no hay nada que devolver — pero el banco emisor puede mantener el
-      // monto retenido en la tarjeta del pasajero hasta que la autorización
-      // expire o Klap la libere por su cuenta. Se registra explícitamente
-      // como pendiente de conciliación manual; no se inventa ninguna URL.
+      // Autorización Klap viva: void total o captura parcial de multa.
+      // POST /orders/{id}/refund (sin body) libera una retención; /capture
+      // cobra solo la multa. No se inventan endpoints.
       const activeKlapAuthorization = await paymentsRepo.findActiveByRideIdAndPurpose(
         input.rideRequestId,
         "ride",
@@ -4082,6 +4058,77 @@ export class PaymentsService {
         refunded: false,
         skippedReason:
           "No existe un pago aprobado para devolver en este viaje.",
+      };
+    }
+
+    if (normalizePaymentText(payment.provider) === "klap") {
+      const cancellationFeeClp = Math.max(
+        0,
+        Math.round(Number(input.cancellationFeeClp ?? 0)),
+      );
+
+      if (cancellationFeeClp === 0) {
+        const authorizedAmountClp =
+          payment.authorizedAmountClp ?? payment.amountClp;
+        const resolution = resolveKlapFinancialOutcome({
+          paymentId: payment.id,
+          tripId: input.rideRequestId,
+          outcome: "cancelled",
+          authorizedAmountClp,
+          cancellationFeeClp: 0,
+          authorizationExpired: false,
+        });
+
+        const releaseResult = await this.releaseAuthorizedKlapPayment(
+          payment.id,
+          {
+            actorUserId: input.cancelledByUserId,
+            cancelledByRole: input.cancelledByRole,
+            resolutionKey: resolution.resolutionKey,
+          },
+        );
+
+        if (!releaseResult.ok) {
+          return releaseResult;
+        }
+
+        const released = releaseResult.status === "refunded";
+        return {
+          ok: true,
+          processed: released,
+          refunded: released,
+          ...(!released
+            ? {
+                skippedReason:
+                  "La liberacion Klap esta en proceso o requiere conciliacion. No se enviara otra operacion financiera.",
+              }
+            : {}),
+          paymentId: payment.id,
+          remainderReleaseRequired: !released,
+        };
+      }
+
+      auditService.recordSafe({
+        actorUserId: input.cancelledByUserId,
+        eventType: "payment.klap_financial_manual_review",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: input.rideRequestId,
+          provider: "klap",
+          paymentStatus: payment.status,
+          cancellationFeeClp,
+          reason: "captured_sale_cannot_partial_refund",
+        },
+      });
+
+      return {
+        ok: true,
+        processed: false,
+        refunded: false,
+        skippedReason:
+          "El cobro Klap ya estaba capturado (venta inmediata). No hay API de reembolso parcial en el contrato actual; requiere revisión manual.",
+        paymentId: payment.id,
       };
     }
 
