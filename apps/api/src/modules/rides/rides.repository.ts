@@ -916,6 +916,11 @@ export class RidesRepository {
                   cancelledByUserId: null,
                   cancelledByRole: null,
                   cancellationReason: null,
+                  // Limpia cualquier metadata de una asignación previa como
+                  // oferta en cola, para que la reasignación no quede
+                  // marcada con datos del conductor que canceló.
+                  assignmentMode: "automatic",
+                  queuedOfferDriverId: null,
                   updatedAt: changedAt,
                 }
               : {

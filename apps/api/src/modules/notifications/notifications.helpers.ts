@@ -153,6 +153,20 @@ export function notifyPassengerDriverEnRoute(p: {
   });
 }
 
+export function notifyPassengerDriverCancelledAndReassigning(p: {
+  passengerUserId: string;
+  rideId: string;
+}): void {
+  notifyAsync({
+    userId: p.passengerUserId,
+    type: "ride_driver_cancelled_reassigning",
+    title: "Tu conductor canceló",
+    message: "Estamos buscando otro conductor para tu viaje.",
+    entityType: "ride_request",
+    entityId: p.rideId,
+  });
+}
+
 export function notifyPassengerDriverArrived(p: {
   passengerUserId: string;
   driverName: string;

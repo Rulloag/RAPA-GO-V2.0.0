@@ -2202,6 +2202,20 @@ export class RidesService {
       responseRide["requeuedAfterDriverCancellation"] = true;
       responseRide["passengerNotice"] =
         "Tu conductor canceló el viaje. Estamos buscando uno nuevo.";
+
+      // Señal persistente y real, visible aunque el pasajero esté en otro
+      // dispositivo — a diferencia del `responseRide` de arriba, que sólo
+      // llega al conductor que hizo esta llamada. Reutiliza el mecanismo de
+      // notificaciones existente (mismo que notifyPassengerDriverEnRoute),
+      // no crea infraestructura nueva.
+      import("../notifications/notifications.helpers.js")
+        .then(({ notifyPassengerDriverCancelledAndReassigning }) => {
+          notifyPassengerDriverCancelledAndReassigning({
+            passengerUserId: cancelled.passengerUserId,
+            rideId: cancelled.id,
+          });
+        })
+        .catch(() => {});
     } else {
       queueReceiptWithoutBlocking(
         rideReceiptsService.queueCancelledRide(
