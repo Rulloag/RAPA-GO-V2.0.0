@@ -3299,6 +3299,325 @@ ion-tabs:has(
 }
 
 /* ==========================================================================
+   MI PERFIL — ÁMBITO PROPIO (.rapago-driver-profile)
+
+   El bloque de arriba se escribió para una migración del JSX que quedó a
+   medias: la hoja daba por hechas las clases (`.rapago-driver-card__title`,
+   `.rapago-driver-vehicle`, `.rapago-driver-media`…) mientras el TSX seguía
+   pintando con las cuatro funciones auxiliares y 131 `style={{}}`. Al
+   completar la migración aparecieron cuatro huecos que aquella hoja no podía
+   cubrir, y que se resuelven aquí.
+
+   1. LA PANTALLA DEJA DE USAR ion-card.
+      `ion-card.rapago-driver-card` arrastra el reset `:is(div,span,p,…) {
+      color: inherit !important }` de la línea 2956, cuya especificidad (0,2,2)
+      le gana a cualquier clase de dos niveles: `.rapago-driver-card__note`
+      pedía --rp-muted y recibía `inherit`. Es el mismo motivo por el que
+      profile.css eligió `<section>` en vez de `<ion-card>` (profile.css:12).
+      El perfil del conductor pasa a `<section class="rapago-profile-card">`,
+      el componente que ya usa el perfil del pasajero y que no está acotado a
+      ninguna página, así que las dos pantallas comparten literalmente la misma
+      tarjeta en vez de dos que se parecen.
+
+   2. LA PATENTE SE DIBUJA COMO PATENTE.
+      Era texto corrido dentro de "Patente ABCD12 · Rojo". La patente es el
+      único dato del vehículo que el pasajero verifica de un vistazo desde la
+      vereda, así que se dibuja como el objeto que es: caja, monoespaciada y
+      con tracking. No es adorno: es el dato que hace de identificador.
+
+   3. JERARQUÍA POR TRACKING, NO POR PESO.
+      El render tenía 35 `fontWeight: 950`. rapago-shell.css:49-57 ya dejó
+      escrito que con el font stack del SO todo lo que pasa de 700 renderiza
+      igual, así que esos 950 no creaban ningún nivel. Aquí la jerarquía usa
+      lo que sí responde: --rp-tracking-display en los títulos y
+      --rp-tracking-eyebrow en las etiquetas.
+
+   4. EL FORMULARIO SE HUNDE, LA LISTA FLOTA.
+      Dentro de "Tu flota" convivían la lista de vehículos y el formulario de
+      alta/edición con el mismo peso visual. El formulario pasa a una
+      superficie rehundida (--rp-surface-soft) para que se lea como
+      herramienta y la lista como contenido.
+   ========================================================================== */
+
+.rapago-driver-profile {
+  /* TINTA SOBRE LA FOTOGRAFÍA, NO SOBRE UNA TARJETA.
+     El héroe y las etiquetas de zona son los únicos textos de la pantalla que
+     se apoyan directamente en el fondo de página, que es una FOTO bajo un velo
+     translúcido: su punto más claro, no la media, es contra lo que hay que
+     medir. Con --rp-muted-soft el rótulo de zona daba 3,06:1 en modo día, bajo
+     el mínimo AA de 4,5:1 para texto. De noche el velo cierra a 0,86 y el
+     mismo token da 5,72:1, así que allí no hace falta tocar nada.
+     Medido con el banco de pruebas sobre el stop más claro de cada velo. */
+  --rp-dp-on-photo: var(--rp-muted-soft);
+}
+
+.rapago-driver-profile[data-rapago-theme="light"] {
+  /* .86 sobre el stop más claro del velo arena→bruma: 4,84:1. */
+  --rp-dp-on-photo: rgba(26, 26, 26, 0.86);
+}
+
+.rapago-driver-profile .rapago-profile-section-label,
+.rapago-driver-profile .rapago-driver-id__role,
+.rapago-driver-profile .rapago-profile-hero .rapago-driver-stars__row .is-off {
+  color: var(--rp-dp-on-photo) !important;
+}
+
+/* El fondo lo pinta el IonPage (rapago-shell.css:449). El IonContent solo
+   tiene que dejar de imponer el padding de `ion-padding`, porque la columna
+   se lo pone ella misma con --rp-pad-x. */
+.rapago-driver-profile .rapago-driver-profile__content {
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
+}
+
+.rapago-driver-profile .rapago-driver-filepick {
+  display: none;
+}
+
+/* ── Identidad ──────────────────────────────────────────────────────────── */
+/* Hereda .rapago-profile-hero/.rapago-profile-avatar del perfil del pasajero.
+   Lo único propio del conductor es la línea de rol y el enlace de quitar la
+   foto, que aquí sí existe (el pasajero no puede borrar su avatar). */
+/* El botón de cámara del avatar mide 32-36px, por debajo del mínimo táctil
+   (44pt iOS / 48dp Android). Crecer el círculo lo volvería un pegote sobre un
+   avatar de 76px, así que se amplía solo el área de toque con un pseudo
+   elemento: el dibujo no cambia y el dedo gana 8px por lado. */
+.rapago-driver-profile .rapago-profile-avatar-edit {
+  position: absolute;
+}
+
+.rapago-driver-profile .rapago-profile-avatar-edit::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
+
+.rapago-driver-profile .rapago-driver-id__role {
+  margin: 5px 0 0;
+  font-size: var(--rp-fs-sub);
+  font-weight: 700;
+  letter-spacing: var(--rp-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--rp-muted-soft);
+}
+
+.rapago-driver-profile .rapago-driver-id__rating {
+  margin-top: 12px;
+  justify-content: center;
+}
+
+.rapago-driver-profile .rapago-driver-id__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  /* 44pt: es un destructivo, tiene que ser difícil de tocar por error pero
+     imposible de fallar cuando se busca. */
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 0 14px;
+  border: 1px solid var(--rp-danger-bd);
+  border-radius: 999px;
+  /* Superficie propia, no transparente: en modo día el rojo de peligro sobre
+     la foto de fondo daba 2,07:1. Apoyado en --rp-surface sube a 5,9:1, y de
+     paso el botón deja de flotar sobre una imagen, que es lo que le quitaba
+     lectura de control. */
+  background: var(--rp-surface);
+  color: var(--rp-danger-fg);
+  font: inherit;
+  font-size: var(--rp-fs-sub);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.rapago-driver-profile .rapago-driver-id__remove ion-icon {
+  font-size: 1rem;
+}
+
+/* ── Patente ────────────────────────────────────────────────────────────── */
+.rapago-driver-profile .rapago-driver-plate {
+  display: inline-block;
+  padding: 3px 9px;
+  border: 1.5px solid var(--rp-border-c);
+  border-radius: 6px;
+  background: var(--rp-field-bg);
+  color: var(--rp-field-fg);
+  font-family: ui-monospace, "SF Mono", "Roboto Mono", Menlo, monospace;
+  font-size: var(--rp-fs-sub);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  /* La patente nunca se parte: es un identificador, no una frase. */
+  white-space: nowrap;
+}
+
+.rapago-driver-profile .rapago-driver-plate--empty {
+  border-style: dashed;
+  color: var(--rp-muted);
+  letter-spacing: 0.04em;
+  font-weight: 650;
+}
+
+/* ── Estado de una fila de credencial ───────────────────────────────────── */
+/* El eje semántico ya definido en rapago-shell.css: laguna = confirmado,
+   ámbar = falta algo, toba = error real. Se aplica al VALOR, no al fondo de
+   la fila: teñir la fila entera convertiría la tarjeta en un semáforo. */
+.rapago-driver-profile .rapago-profile-row-value.is-ok {
+  color: var(--rp-ok-fg);
+}
+
+.rapago-driver-profile .rapago-profile-row-value.is-warn {
+  color: var(--rp-warn-fg);
+}
+
+.rapago-driver-profile .rapago-profile-row-value.is-error {
+  color: var(--rp-danger-fg);
+}
+
+.rapago-driver-profile .rapago-driver-row-extra {
+  margin-top: 6px;
+}
+
+/* ── Avisos en línea ────────────────────────────────────────────────────── */
+/* .rapago-driver-inline-note (arriba) solo daba tamaño y peso; el color lo
+   ponía cada `style={{ color: … }}`. Estos modificadores lo cierran. */
+.rapago-driver-profile .rapago-driver-inline-note.is-error {
+  color: var(--rp-danger-fg);
+}
+
+.rapago-driver-profile .rapago-driver-inline-note.is-warn {
+  color: var(--rp-warn-fg);
+}
+
+.rapago-driver-profile .rapago-driver-inline-note.is-ok {
+  color: var(--rp-ok-fg);
+}
+
+/* Bloque de estado del formulario de vehículo (error de validación, borrador
+   sin guardar, guardado correcto). Antes eran tres `style={{}}` con los
+   colores calculados en JS dentro del propio JSX. */
+.rapago-driver-profile .rapago-driver-formstate {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: var(--rp-radius-sm);
+  border: 1px solid var(--rp-border-c);
+  background: var(--rp-surface-soft);
+  color: var(--rp-text);
+  font-size: var(--rp-fs-sub);
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.rapago-driver-profile .rapago-driver-formstate.is-error {
+  border-color: var(--rp-err-bd);
+  background: var(--rp-err-bg);
+  color: var(--rp-err-fg);
+}
+
+.rapago-driver-profile .rapago-driver-formstate.is-warn {
+  border-color: var(--rp-warn-bd);
+  background: var(--rp-warn-bg);
+  color: var(--rp-warn-fg);
+}
+
+.rapago-driver-profile .rapago-driver-formstate.is-ok {
+  border-color: var(--rp-ok-bd);
+  background: var(--rp-ok-bg);
+  color: var(--rp-ok-fg);
+}
+
+/* ── Editor de vehículo ─────────────────────────────────────────────────── */
+/* Superficie rehundida: la lista de vehículos es contenido, esto es la
+   herramienta que la edita. Sin el escalón, ambas pesaban igual y la tarjeta
+   "Vehículos" era un muro de 600px sin puntos de entrada. */
+.rapago-driver-profile .rapago-driver-editor {
+  margin-top: var(--rp-gap-sm);
+  padding: var(--rp-pad-x);
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface-soft);
+  border: 1px solid var(--rp-divider);
+}
+
+/* Etiqueta de subgrupo DENTRO de una tarjeta ("Agregar vehículo", "Idioma
+   principal"). Es un peldaño por debajo de .rapago-profile-section-label, que
+   rotula zonas enteras de la pantalla: misma familia, sin la línea de fuga. */
+.rapago-driver-profile .rapago-driver-eyebrow {
+  margin: 0 0 8px;
+  font-size: var(--rp-fs-label);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: var(--rp-tracking-eyebrow);
+  color: var(--rp-muted-soft);
+}
+
+.rapago-driver-profile .rapago-driver-editor__foot {
+  margin: 10px 0 0;
+  text-align: center;
+}
+
+/* ── Comentario de una calificación ─────────────────────────────────────── */
+/* La hoja ya traía __stars/__route/__comment pero no el contenedor, que el
+   TSX resolvía con un `style={{}}` de fondo y borde escritos a mano. */
+.rapago-driver-profile .rapago-driver-rating {
+  padding: 10px 12px;
+  border-radius: var(--rp-radius-sm);
+  background: var(--rp-surface-soft);
+  border: 1px solid var(--rp-divider);
+}
+
+/* Contraste del botón de guardar vehículo. Ionic da a `warning` un contraste
+   oscuro y a `success` uno claro; se fija aquí porque antes viajaba como
+   `"--color": ownership === "borrowed" ? "#111" : "#fff"` calculado en el
+   JSX, que es una decisión de color viviendo dentro del render. */
+.rapago-driver-profile .rapago-driver-vehiclesave.is-borrowed {
+  --color: #111111;
+  color: #111111;
+}
+
+.rapago-driver-profile .rapago-driver-vehiclesave.is-own {
+  --color: #ffffff;
+  color: #ffffff;
+}
+
+/* El último campo del editor no necesita el margen inferior de
+   .rapago-profile-field: ya lo aporta el padding del propio editor. */
+.rapago-driver-profile .rapago-driver-editor > .rapago-profile-field:last-of-type {
+  margin-bottom: 0;
+}
+
+/* ── Pila de acciones finales ───────────────────────────────────────────── */
+.rapago-driver-profile .rapago-driver-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rp-gap-sm);
+}
+
+.rapago-driver-profile .rapago-driver-actions ion-button {
+  margin: 0;
+}
+
+/* La columna reserva el alto real de la tab bar flotante, no un padding
+   adivinado: --rp-driver-tabbar-clearance se define arriba (línea 73) y se
+   actualiza sola si global.css cambia la altura de la barra. */
+.rapago-driver-profile .rapago-profile-shell {
+  padding-bottom: calc(var(--rp-driver-tabbar-clearance) + var(--rp-gap));
+}
+
+/* ── Títulos de tarjeta ─────────────────────────────────────────────────── */
+/* .rapago-profile-card-title pinta en --rp-accent (oro). En esta pantalla hay
+   ocho tarjetas seguidas: ocho títulos dorados convierten el acento en ruido
+   de fondo y le quitan fuerza al único sitio donde el oro debe mandar, que es
+   el botón de guardar. Los títulos van en tinta de texto y se distinguen por
+   tamaño y tracking cerrado. */
+.rapago-driver-profile .rapago-profile-card-title {
+  color: var(--rp-text);
+  letter-spacing: var(--rp-tracking-display);
+}
+
+/* ==========================================================================
    UX/UI SPRINT — fixes de diseño módulo conductor
    Sin tocar lógica de negocio. Solo layout, colores, jerarquía visual.
    ========================================================================== */
