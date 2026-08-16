@@ -174,3 +174,14 @@ release-evidence/*
 HOSTINGER-FRONTEND-*/
 RAPA-GO-HOSTINGER-*.zip
 RAPA-GO-FRONTEND*.zip
+rapago-frontend-*.zip
+rapago-backend-*.zip
+
+# Zips y dist descomprimido de release (útiles en disco para Hostinger, no en git)
+release-zips/
+
+# Previews y archivos temporales locales (p. ej. PDFs de comprobante)
+tmp/
+
+# Copia/clone anidado accidental del repo
+/Rapa_Go/
