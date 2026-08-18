@@ -19,6 +19,7 @@ import { GoogleNativeAuth } from "./googleNative.js";
 import { disableGoogleAutoSelect } from "./googleIdentityServices.js";
 import { ROUTES } from "../../navigation/routes.js";
 import { clientStoragePolicy } from "../../services/storage/clientStoragePolicy.js";
+import { clearApprovedVehicleCategoryStateForSession } from "../drivers/driverApprovedVehicleCategory.js";
 import type {
   AuthContextValue,
   AuthUser,
@@ -156,6 +157,7 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
   }, [session]);
 
   const clearLocalSession = useCallback(async (): Promise<void> => {
+    clearApprovedVehicleCategoryStateForSession(sessionRef.current);
     await sessionStorageService.clearSession();
     clientStoragePolicy.clearSensitiveClientStorage();
     sessionRef.current = null;
@@ -183,6 +185,13 @@ export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
 
   const applyAuthenticatedSession = useCallback(
     async (nextSession: AuthSession, refreshToken?: string): Promise<void> => {
+      const previousSession = sessionRef.current;
+      const sameIdentity =
+        previousSession?.accessToken === nextSession.accessToken &&
+        previousSession?.user.id === nextSession.user.id;
+      if (!sameIdentity) {
+        clearApprovedVehicleCategoryStateForSession(previousSession);
+      }
       await sessionStorageService.saveSession(nextSession, refreshToken);
       sessionRef.current = nextSession;
       setSession(nextSession);

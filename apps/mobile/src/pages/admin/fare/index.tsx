@@ -39,9 +39,14 @@ import {
 import { RapagoAppBar } from "../../../components/RapagoAppBar.js";
 import { ROUTES } from "../../../navigation/routes.js";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
+import {
+  VEHICLE_CATEGORIES,
+  vehicleCategoryLabel,
+  type VehicleCategory,
+} from "@rapa-go/shared";
 
 type PassengerKey = "resident" | "chilean" | "foreigner";
-type VehicleKey = "standard" | "xl" | "luggage";
+type VehicleKey = VehicleCategory;
 type RoundingMode = "ceil" | "nearest" | "none";
 
 type RuralConfig = {
@@ -161,13 +166,13 @@ const PASSENGER_LABEL: Record<PassengerKey, string> = {
 const VEHICLE_LABEL: Record<VehicleKey, string> = {
   standard: "General / estándar",
   xl: "Vehículo XL",
-  luggage: "Vehículo extra maletas",
+  extra_luggage: vehicleCategoryLabel("extra_luggage"),
 };
 
 const VEHICLE_DESCRIPTION: Record<VehicleKey, string> = {
   standard: "Tarifa base urbana.",
   xl: "Mayor capacidad o comodidad.",
-  luggage: "Orientado a viajes con equipaje relevante.",
+  extra_luggage: "Orientado a viajes con equipaje relevante.",
 };
 
 const DEFAULT_CONFIG: FareEngineConfig = {
@@ -191,7 +196,7 @@ const DEFAULT_CONFIG: FareEngineConfig = {
   vehicleMultipliers: {
     standard: 1,
     xl: 1.4,
-    luggage: 1.25,
+    extra_luggage: 1.25,
   },
   passengerActive: {
     resident: true,
@@ -201,7 +206,7 @@ const DEFAULT_CONFIG: FareEngineConfig = {
   vehicleActive: {
     standard: true,
     xl: true,
-    luggage: true,
+    extra_luggage: true,
   },
   fixedDestinations: [
     {
@@ -338,6 +343,29 @@ function getActiveRecord<T extends string>(
   }, {} as Record<T, boolean>);
 }
 
+function readStoredVehicleCategoryMultiplier(
+  stored: Partial<Record<string, number>> | undefined,
+  category: VehicleKey,
+  fallback: number,
+): number {
+  if (category === "extra_luggage") {
+    return Number(stored?.extra_luggage ?? stored?.luggage ?? fallback);
+  }
+
+  return Number(stored?.[category] ?? fallback);
+}
+
+function readStoredVehicleCategoryActive(
+  stored: Partial<Record<string, boolean>> | undefined,
+  category: VehicleKey,
+): boolean {
+  if (category === "extra_luggage") {
+    return (stored?.extra_luggage ?? stored?.luggage) !== false;
+  }
+
+  return stored?.[category] !== false;
+}
+
 function roundByRule(value: number, config: FareEngineConfig): number {
   const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
 
@@ -434,7 +462,59 @@ function getFixedFare(
   return destination.baseResidentClp * (config.passengerMultipliers[passenger] ?? 1);
 }
 
+function migrateLegacyCompatibilityRules(): void {
+  try {
+    const raw = localStorage.getItem(COMPATIBILITY_RULES_STORAGE_KEY);
+    if (!raw) return;
+
+    const rules = JSON.parse(raw) as Array<Record<string, unknown>>;
+    if (!Array.isArray(rules) || rules.length === 0) return;
+
+    const LUGGAGE_ID_RE = /^luggage_/;
+    const hasLegacy = rules.some(
+      (r) => typeof r.id === "string" && LUGGAGE_ID_RE.test(r.id),
+    );
+    if (!hasLegacy) return;
+
+    const canonicalMap = new Map<string, { rule: Record<string, unknown>; isCanonical: boolean }>();
+
+    for (const rule of rules) {
+      const id = String(rule.id ?? "");
+      const isLegacy = LUGGAGE_ID_RE.test(id);
+      const canonicalId = isLegacy
+        ? id.replace(LUGGAGE_ID_RE, "extra_luggage_")
+        : id;
+
+      const existing = canonicalMap.get(canonicalId);
+      if (existing) {
+        if (existing.isCanonical) continue;
+        if (!isLegacy) {
+          canonicalMap.set(canonicalId, { rule, isCanonical: true });
+        }
+      } else {
+        canonicalMap.set(canonicalId, { rule, isCanonical: !isLegacy });
+      }
+    }
+
+    const migrated: Array<Record<string, unknown>> = [];
+    for (const [canonicalId, { rule }] of canonicalMap) {
+      const vehicle =
+        rule.vehicle === "luggage" ? "extra_luggage" : rule.vehicle;
+      migrated.push({ ...rule, id: canonicalId, vehicle });
+    }
+
+    localStorage.setItem(
+      COMPATIBILITY_RULES_STORAGE_KEY,
+      JSON.stringify(migrated),
+    );
+  } catch {
+    // non-blocking
+  }
+}
+
 function readStoredConfig(): FareEngineConfig {
+  migrateLegacyCompatibilityRules();
+
   try {
     const raw = localStorage.getItem(ENGINE_STORAGE_KEY);
     const fallback = cloneDefaultConfig();
@@ -481,18 +561,34 @@ function readStoredConfig(): FareEngineConfig {
         foreigner: Number(parsed.passengerMultipliers?.foreigner ?? fallback.passengerMultipliers.foreigner),
       },
       vehicleMultipliers: {
-        standard: Number(parsed.vehicleMultipliers?.standard ?? fallback.vehicleMultipliers.standard),
-        xl: Number(parsed.vehicleMultipliers?.xl ?? fallback.vehicleMultipliers.xl),
-        luggage: Number(parsed.vehicleMultipliers?.luggage ?? fallback.vehicleMultipliers.luggage),
+        standard: readStoredVehicleCategoryMultiplier(
+          parsed.vehicleMultipliers,
+          "standard",
+          fallback.vehicleMultipliers.standard,
+        ),
+        xl: readStoredVehicleCategoryMultiplier(
+          parsed.vehicleMultipliers,
+          "xl",
+          fallback.vehicleMultipliers.xl,
+        ),
+        extra_luggage: readStoredVehicleCategoryMultiplier(
+          parsed.vehicleMultipliers,
+          "extra_luggage",
+          fallback.vehicleMultipliers.extra_luggage,
+        ),
       },
       passengerActive: getActiveRecord<PassengerKey>(
         parsed.passengerActive,
         ["resident", "chilean", "foreigner"],
       ),
-      vehicleActive: getActiveRecord<VehicleKey>(
-        parsed.vehicleActive,
-        ["standard", "xl", "luggage"],
-      ),
+      vehicleActive: {
+        standard: readStoredVehicleCategoryActive(parsed.vehicleActive, "standard"),
+        xl: readStoredVehicleCategoryActive(parsed.vehicleActive, "xl"),
+        extra_luggage: readStoredVehicleCategoryActive(
+          parsed.vehicleActive,
+          "extra_luggage",
+        ),
+      },
       fixedDestinations:
         Array.isArray(parsed.fixedDestinations) && parsed.fixedDestinations.length > 0
           ? parsed.fixedDestinations.map((item, index) => ({
@@ -553,10 +649,10 @@ function buildCompatibilityRules(config: FareEngineConfig): CompatibilityFareRul
   const vehicleIds: Record<VehicleKey, string> = {
     standard: "standard",
     xl: "xl",
-    luggage: "luggage",
+    extra_luggage: "extra_luggage",
   };
 
-  for (const vehicle of Object.keys(VEHICLE_LABEL) as VehicleKey[]) {
+  for (const vehicle of VEHICLE_CATEGORIES) {
     for (const passenger of Object.keys(PASSENGER_LABEL) as PassengerKey[]) {
       const id =
         vehicle === "standard"
@@ -2018,7 +2114,7 @@ export function AdminFareSettingsPage(): React.ReactElement {
                   </div>
 
                   <IonList style={{ background: "transparent", padding: 0 }}>
-                    {(Object.keys(VEHICLE_LABEL) as VehicleKey[]).map((key) =>
+                    {VEHICLE_CATEGORIES.map((key) =>
                       renderMultiplierCard(
                         VEHICLE_LABEL[key],
                         config.vehicleMultipliers[key],

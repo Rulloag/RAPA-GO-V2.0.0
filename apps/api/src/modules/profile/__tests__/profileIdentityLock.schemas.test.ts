@@ -50,6 +50,14 @@ describe("immutable identity schemas", () => {
     expect(parsed.bio).toBe("Conductor local");
   });
 
+  it("rejects driver self-service vehicleCategory changes", () => {
+    expect(
+      upsertDriverProfileSchema.safeParse({
+        vehicleCategory: "xl",
+      }).success,
+    ).toBe(false);
+  });
+
   it("requires birth date in a driver application", () => {
     const base = {
       type: "driver" as const,

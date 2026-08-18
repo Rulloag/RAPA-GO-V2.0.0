@@ -4,6 +4,7 @@ import { UsersRepository } from "../users/users.repository.js";
 import { DriverProfileRepository } from "./driverProfile.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { UpsertDriverProfileInput } from "./driverProfile.schemas.js";
+import { serializeDriverProfile } from "./driverProfile.serializer.js";
 
 const tokenService   = new TokenService();
 const sessionService = new SessionService();
@@ -29,29 +30,6 @@ async function authenticate(accessToken: string): Promise<AuthResult> {
   return { ok: true, userId: user.id, role: user.role };
 }
 
-function serializeProfile(profile: import("../../db/schema/index.js").DriverProfile | null) {
-  if (!profile) return null;
-  return {
-    id:              profile.id,
-    userId:          profile.userId,
-    phone:           profile.phone           ?? null,
-    vehicleBrand:    profile.vehicleBrand    ?? null,
-    vehicleModel:    profile.vehicleModel    ?? null,
-    vehicleYear:     profile.vehicleYear     ?? null,
-    vehiclePlate:    profile.vehiclePlate    ?? null,
-    vehicleColor:    profile.vehicleColor    ?? null,
-    vehicleCategory: profile.vehicleCategory ?? "standard",
-    licenseNumber:   profile.licenseNumber   ?? null,
-    licenseExpiry:   profile.licenseExpiry   ?? null,
-    profilePhotoUrl: profile.profilePhotoUrl ?? null,
-    vehiclePhotoUrl: profile.vehiclePhotoUrl ?? null,
-    bio:             profile.bio             ?? null,
-    languages:       profile.languages       ?? [],
-    createdAt:       profile.createdAt.toISOString(),
-    updatedAt:       profile.updatedAt.toISOString(),
-  };
-}
-
 export class DriverProfileService {
   async getProfile(accessToken: string) {
     const auth = await authenticate(accessToken);
@@ -60,7 +38,7 @@ export class DriverProfileService {
       return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Only drivers can access driver profile.", statusCode: 403 };
     }
     const profile = await profileRepo.findByUserId(auth.userId);
-    return { ok: true as const, profile: serializeProfile(profile) };
+    return { ok: true as const, profile: serializeDriverProfile(profile) };
   }
 
   async upsertProfile(accessToken: string, input: UpsertDriverProfileInput) {
@@ -70,14 +48,14 @@ export class DriverProfileService {
       return { ok: false as const, code: "AUTH_FORBIDDEN", message: "Only drivers can update driver profile.", statusCode: 403 };
     }
     const profile = await profileRepo.upsert(auth.userId, input);
-    return { ok: true as const, profile: serializeProfile(profile) };
+    return { ok: true as const, profile: serializeDriverProfile(profile) };
   }
 
   async getPublicProfile(driverUserId: string) {
     const user = await usersRepo.findById(driverUserId);
     if (!user) return { ok: false as const, code: "NOT_FOUND", message: "Driver not found.", statusCode: 404 };
     const profile = await profileRepo.findByUserId(driverUserId);
-    const serialized = serializeProfile(profile);
+    const serialized = serializeDriverProfile(profile);
     // Omit licenseNumber for public/admin view
     if (serialized) {
       const { licenseNumber: _ln, ...publicProfile } = serialized;

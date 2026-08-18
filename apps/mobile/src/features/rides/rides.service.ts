@@ -196,6 +196,7 @@ export interface ActiveRideOfferRideData {
   scheduledPickupAt: string | null;
   priorityFeeClp:   number | null;
   flightNumber:     string | null;
+  requestedVehicleCategory?: string | null;
   /** Espera estimada (min) hasta poder iniciar este viaje — no es un ETA de ruta real, ver rideQueueMatch en el backend. */
   estimatedWaitMinutes?: number | null;
   pickupDistanceKm?:     number | null;

@@ -22,12 +22,18 @@ describe("UI del conductor — oferta de preasignación encadenada (Fase 4)", ()
   });
 
   it("TEST_3: aceptar llama al endpoint real y pasa a estado 'reservado' sin tocar current_ride_id", () => {
-    expect(driverSource).toContain("ridesService.acceptDriverOffer(");
-    expect(driverSource).toContain("setDriverQueuedOfferReserved(true);");
-    expect(driverSource).toContain("Próximo viaje reservado");
-    expect(driverSource).toContain(
-      "acceptDriverOffer sólo reserva B como queued_ride_id — no cambia",
+    const acceptQueuedSection = driverSource.slice(
+      driverSource.indexOf("const handleAcceptDriverQueuedOffer = useCallback("),
+      driverSource.indexOf("const handleRejectDriverQueuedOffer = useCallback("),
     );
+
+    expect(acceptQueuedSection).toContain("ridesService.acceptDriverOffer(");
+    expect(acceptQueuedSection).toContain("guardCategoryConfirmation(rideData,");
+    expect(acceptQueuedSection).toContain("setDriverQueuedOfferReserved(true);");
+    expect(acceptQueuedSection).not.toContain("saveDriverActiveRideLocalMirror(");
+    expect(acceptQueuedSection).not.toContain("setDriverQueuedOffer(null);");
+    expect(driverSource).toContain("Próximo viaje reservado");
+    expect(driverSource).toContain("setDriverQueuedOfferReserved(status.queuedRideId != null);");
   });
 
   it("TEST_4: rechazar llama al endpoint real y la tarjeta desaparece", () => {

@@ -12,6 +12,7 @@ import {
   generateLegalDocumentPdf,
 } from "./driverContractPdf.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
+import { resolveProvisionDriverVehicleCategory } from "../drivers/driverProfile.schemas.js";
 import { db } from "../../db/client.js";
 import {
   authCredentials,
@@ -406,6 +407,12 @@ async function provisionApprovedDriver(
     vehicleYear: application.vehicleYear,
     vehiclePlate: application.vehiclePlate,
     vehicleColor: application.vehicleColor,
+<<<<<<< HEAD
+=======
+    vehicleCategory: resolveProvisionDriverVehicleCategory(
+      application.vehicleCategory,
+    ),
+>>>>>>> d454351 (feat(vehicle-categories): unify requested and assigned categories)
     licenseNumber: application.licenseNumber,
     licenseExpiry: application.licenseExpiry,
     profilePhotoUrl: application.profilePhotoUrl,

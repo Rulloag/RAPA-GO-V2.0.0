@@ -24,6 +24,18 @@ export const driverProfileController = {
   },
 
   async upsertMyProfile(req: FastifyRequest, reply: FastifyReply) {
+    const rawBody =
+      req.body && typeof req.body === "object"
+        ? (req.body as Record<string, unknown>)
+        : null;
+    if (rawBody && Object.prototype.hasOwnProperty.call(rawBody, "vehicleCategory")) {
+      return sendError(reply, {
+        code:       "VALIDATION_ERROR",
+        message:    "La categoría aprobada del vehículo no se puede cambiar desde el perfil del conductor. Solicita una nueva revisión.",
+        statusCode: 400,
+      });
+    }
+
     const parsed = upsertDriverProfileSchema.safeParse(req.body);
     if (!parsed.success) {
       return sendError(reply, {
