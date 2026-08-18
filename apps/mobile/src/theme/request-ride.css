@@ -242,8 +242,9 @@
   margin-top: 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: var(--rp-surface);
-  border: 1px solid var(--rp-border-c);
+  /* Fondo claro fijo: el texto debe leerse igual en modo noche sobre el mapa. */
+  background: #fffaf0;
+  border: 1px solid color-mix(in srgb, var(--rp-gold) 35%, var(--rp-border-c));
   border-radius: var(--rp-radius-lg);
   box-shadow: 0 14px 34px rgba(47, 36, 24, 0.18);
   animation: rp-suggestions-in 160ms var(--rp-ease);
@@ -266,9 +267,9 @@
   gap: 3px;
   padding: 12px 15px;
   border: 0;
-  border-bottom: 1px solid var(--rp-border-c);
+  border-bottom: 1px solid rgba(47, 36, 24, 0.12);
   background: transparent;
-  color: var(--rp-text);
+  color: #2f2418;
   text-align: left;
   transition: background-color 120ms var(--rp-ease);
 }
@@ -292,15 +293,15 @@
 }
 
 .request-map-suggestion strong {
-  color: var(--rp-text);
-  font-size: 0.86rem;
+  color: #2f2418;
+  font-size: 0.9rem;
   font-weight: 850;
   line-height: 1.25;
 }
 
 .request-map-suggestion span {
-  color: var(--rp-muted);
-  font-size: 0.73rem;
+  color: rgba(47, 36, 24, 0.62);
+  font-size: 0.76rem;
   font-weight: 650;
   line-height: 1.3;
 }
@@ -2710,6 +2711,52 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   outline-offset: 2px;
 }
 
+.rapago-request-page .rq-field__map {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rq-accent) 14%, transparent);
+  color: var(--rq-accent);
+  font-size: 1rem;
+}
+
+.rapago-request-page .rq-field__map:active {
+  transform: scale(0.96);
+}
+
+.rapago-request-page .rq-results__hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: var(--rq-3) var(--rq-3) var(--rq-1);
+  color: var(--rq-muted);
+  font-size: var(--rq-fs-micro);
+  font-weight: var(--rq-fw-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rapago-request-page .rq-results__clear-recents {
+  border: 0;
+  background: transparent;
+  color: var(--rq-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-decoration: underline;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.rapago-request-page .rq-results__item--recent .rq-results__pin {
+  color: var(--rq-accent);
+}
+
 .rapago-request-page .rq-field ion-input[disabled] {
   opacity: 1;
 }
@@ -2731,15 +2778,6 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   background: var(--rq-surface);
   box-shadow: var(--rq-shadow-sm);
   overflow: hidden;
-}
-
-.rapago-request-page .rq-results__hint {
-  padding: var(--rq-3) var(--rq-3) var(--rq-1);
-  color: var(--rq-muted);
-  font-size: var(--rq-fs-micro);
-  font-weight: var(--rq-fw-bold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 /* Sin tope de alto propio: la lista crece con el cuerpo de la hoja, que es

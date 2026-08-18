@@ -80,6 +80,7 @@ import {
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
+import { recentLocationHistoryService } from "../../../features/location/recentLocationHistory.service.js";
 import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
 import "../../../theme/request-ride.css";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
@@ -1956,6 +1957,26 @@ const RAPA_NUI_PLACE_HINTS: readonly RapaNuiPlaceHint[] = [
     query: "Casa Silvio",
     keywords: ["silvio", "casa silvio"],
   },
+  {
+    query: "Comisaría Rapa Nui",
+    keywords: ["comisaria", "comisaría", "carabineros", "policia", "policía"],
+  },
+  {
+    query: "Hospital de Hanga Roa",
+    keywords: ["hospital", "hosp", "urgencia", "urgencias", "salud"],
+  },
+  {
+    query: "Aeropuerto Internacional Mataveri",
+    keywords: ["aeropuerto", "aero", "mataveri", "airport", "terminal"],
+  },
+  {
+    query: "Anakena",
+    keywords: ["anakena", "playa anakena"],
+  },
+  {
+    query: "Ahu Tahai",
+    keywords: ["tahai", "ahu tahai", "ahu"],
+  },
 ];
 
 /** Nombre completo que pedirle a Google, o null si nada encaja con confianza.
@@ -2611,10 +2632,17 @@ export function mergeRapaNuiAutocompletePredictions(
     .filter((match) => match.score < LOCAL_STRONG_AUTOCOMPLETE_SCORE)
     .map((match) => match.suggestion);
 
+  /* Google ya va con locationRestriction, pero a veces devuelve nombres genéricos
+     cuya dirección apunta al continente (Santiago, RM…). Esos no pueden
+     adelantar al catálogo local ni confundir al pasajero en Rapa Nui. */
+  const googleFiltered = googleSuggestions.filter(
+    (suggestion) => !isGoogleSuggestionMainlandChile(suggestion),
+  );
+
   const seen = new Set<string>();
   const merged: GoogleSuggestion[] = [];
 
-  for (const suggestion of [...strong, ...googleSuggestions, ...weak]) {
+  for (const suggestion of [...strong, ...googleFiltered, ...weak]) {
     /* La clave es solo el nombre. Antes incluía el subtítulo, y como el del
        catálogo termina en "· Sugerencia RAPA GO" y el de Google es la
        dirección, el MISMO lugar aparecía dos veces seguidas: una versión
@@ -2630,6 +2658,37 @@ export function mergeRapaNuiAutocompletePredictions(
   }
 
   return merged;
+}
+
+/** Resultados cuya dirección apunta al continente chileno, no a la isla. */
+export function isGoogleSuggestionMainlandChile(
+  suggestion: GoogleSuggestion,
+): boolean {
+  const text = normalizeRapaNuiAutocompleteText(
+    `${suggestion.secondaryText ?? ""} ${suggestion.description ?? ""}`,
+  );
+  if (!text) return false;
+
+  const onIsland =
+    text.includes("rapa nui") ||
+    text.includes("isla de pascua") ||
+    text.includes("hanga roa") ||
+    text.includes("easter island") ||
+    text.includes("mataveri");
+
+  if (onIsland) return false;
+
+  return (
+    text.includes("santiago") ||
+    text.includes("region metropolitana") ||
+    text.includes("metropolitana de santiago") ||
+    text.includes("concepcion") ||
+    text.includes("valparaiso chile") ||
+    text.includes("vina del mar") ||
+    text.includes("antofagasta") ||
+    text.includes("la serena") ||
+    text.includes("temuco")
+  );
 }
 
 function localRapaNuiPlaceToPickerResult(
@@ -7400,6 +7459,31 @@ function MapPointPicker({
     setPickerSuggestions([]);
 
     try {
+      /* Catálogo local primero: coordenadas curadas, sin depender del primer
+         resultado de Google (que a veces es otra comisaría u hospital). */
+      const localByName = RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.find(
+        (place) =>
+          normalizeRapaNuiAutocompleteText(place.name) ===
+          normalizeRapaNuiAutocompleteText(destination.name),
+      );
+
+      if (localByName) {
+        if (sequence !== requestSequenceRef.current) return;
+        await pickPlaceId(
+          `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${localByName.id}`,
+        );
+        return;
+      }
+
+      const localInstant = getRapaNuiLocalAutocompletePredictions(
+        destination.name,
+      )[0];
+      if (localInstant) {
+        if (sequence !== requestSequenceRef.current) return;
+        await pickPlaceId(localInstant.placeId);
+        return;
+      }
+
       const predictions = await getGooglePredictions(destination.search);
 
       if (sequence !== requestSequenceRef.current) return;
@@ -7407,6 +7491,8 @@ function MapPointPicker({
       const targetKey = normalizePlaceStreetCompare(destination.name);
       const preferred =
         predictions.find((prediction) => {
+          if (isGoogleSuggestionMainlandChile(prediction)) return false;
+
           const predictionKey = normalizePlaceStreetCompare(
             prediction.mainText,
           );
@@ -7416,9 +7502,7 @@ function MapPointPicker({
             predictionKey.includes(targetKey) ||
             targetKey.includes(predictionKey)
           );
-        }) ??
-        predictions[0] ??
-        null;
+        }) ?? null;
 
       const details = preferred
         ? await getPlaceDetailsExact(preferred.placeId)
@@ -8684,6 +8768,7 @@ export default function RequestRidePage(): JSX.Element {
      principal). */
   const [activeSearchField, setActiveSearchField] =
     useState<PickerTarget | null>(null);
+  const [recentLocationsTick, setRecentLocationsTick] = useState(0);
   /* Aviso de orden en el riel: el destino no se puede elegir antes que el
      origen. No es una validación nueva —el viaje siempre necesitó los dos
      puntos— sino decirlo en el momento en que el pasajero lo intenta, en vez
@@ -9150,6 +9235,13 @@ export default function RequestRidePage(): JSX.Element {
     setOriginPoint(confirmed);
     setOriginInput(confirmed.text);
     setOriginSuggestions([]);
+    recentLocationHistoryService.remember({
+      placeId: confirmed.placeId,
+      name: confirmed.text,
+      formattedAddress: confirmed.address,
+      lat: confirmed.lat,
+      lng: confirmed.lng,
+    });
     /* Ya hay origen: el aviso de orden pierde sentido y se retira solo. */
     setRouteOrderHint(false);
     setSubmitError(null);
@@ -9285,6 +9377,13 @@ export default function RequestRidePage(): JSX.Element {
     setDestinationPoint(confirmed);
     setDestInput(confirmed.text);
     setDestSuggestions([]);
+    recentLocationHistoryService.remember({
+      placeId: confirmed.placeId,
+      name: confirmed.text,
+      formattedAddress: confirmed.address,
+      lat: confirmed.lat,
+      lng: confirmed.lng,
+    });
     setSubmitError(null);
     /* Baja la hoja al reposo para que el pin quede visible en el mapa. */
     setSheetShift(Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION));
@@ -9451,6 +9550,8 @@ export default function RequestRidePage(): JSX.Element {
     const suggestions = isOrigin ? originSuggestions : destSuggestions;
     const searching = isOrigin ? searchingOrigin : searchingDest;
     const showBaseList = normalizeRapaNuiAutocompleteText(value).length < 1;
+    void recentLocationsTick;
+    const recentPlaces = showBaseList ? recentLocationHistoryService.list() : [];
 
     return (
       <div
@@ -9458,10 +9559,60 @@ export default function RequestRidePage(): JSX.Element {
         role="group"
         aria-label={isOrigin ? "Resultados de origen" : "Resultados de destino"}>
         <div className="rq-results__hint">
-          {showBaseList ? "Lugares disponibles" : "Resultados"}
+          {showBaseList
+            ? recentPlaces.length > 0
+              ? "Recientes y lugares disponibles"
+              : "Lugares disponibles"
+            : "Resultados"}
+          {showBaseList && recentPlaces.length > 0 ? (
+            <button
+              type="button"
+              className="rq-results__clear-recents"
+              onClick={() => {
+                recentLocationHistoryService.clear();
+                setRecentLocationsTick((tick) => tick + 1);
+              }}>
+              Borrar recientes
+            </button>
+          ) : null}
         </div>
 
         <ul className="rq-results__list">
+          {showBaseList && recentPlaces.length > 0
+            ? recentPlaces.map((recent) => (
+                <li key={`recent-${recent.placeId ?? recent.name}-${recent.lat}`}>
+                  <button
+                    type="button"
+                    className="rq-results__item rq-results__item--recent"
+                    onClick={() => {
+                      const picker: PickerResult = {
+                        text: recent.name,
+                        address: recent.formattedAddress,
+                        lat: recent.lat,
+                        lng: recent.lng,
+                        placeId: recent.placeId,
+                        placeTypes: [],
+                        originalLat: null,
+                        originalLng: null,
+                        walkMeters: 0,
+                        isAccessiblePickup: false,
+                      };
+                      if (isOrigin) applyOrigin(picker);
+                      else applyDestination(picker);
+                      setActiveSearchField(null);
+                      dismissSoftKeyboard();
+                    }}>
+                    <span className="rq-results__pin" aria-hidden="true">
+                      <IonIcon icon={timeOutline} />
+                    </span>
+                    <span className="rq-results__copy">
+                      <strong>{recent.name}</strong>
+                      <small>{recent.formattedAddress}</small>
+                    </span>
+                  </button>
+                </li>
+              ))
+            : null}
           {showBaseList ? (
             RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.map((place) => (
               <li key={place.id}>
@@ -9640,6 +9791,23 @@ export default function RequestRidePage(): JSX.Element {
     setDestInput("");
     setDestSuggestions([]);
     setSubmitError(null);
+  }
+
+  function openLocationPicker(
+    target: PickerTarget,
+    options?: { autoFocusSearch?: boolean },
+  ): void {
+    if (target === "destination" && canChooseOrigin && !originPoint) {
+      setRouteOrderHint(true);
+      setActiveSearchField("origin");
+      return;
+    }
+
+    dismissSoftKeyboard();
+    setActiveSearchField(null);
+    setRouteOrderHint(false);
+    setPickerAutoFocusSearch(options?.autoFocusSearch ?? false);
+    setPickerTarget(target);
   }
 
   function handleUseCurrentLocation(): void {
@@ -11661,7 +11829,28 @@ export default function RequestRidePage(): JSX.Element {
                   <div
                     className="rq-field rq-field--origin"
                     data-state={originPoint ? "set" : "empty"}
-                    data-active={activeSearchField === "origin"}>
+                    data-active={activeSearchField === "origin"}
+                    role="button"
+                    tabIndex={canChooseOrigin ? 0 : -1}
+                    aria-label="Origen del viaje. Toca para elegir en el mapa."
+                    onClick={(event) => {
+                      const target = event.target as HTMLElement;
+                      if (
+                        target.closest(".rq-field__clear") ||
+                        target.closest(".rq-field__map") ||
+                        target.closest("ion-input")
+                      ) {
+                        return;
+                      }
+                      if (!canChooseOrigin) return;
+                      openLocationPicker("origin");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      if (!canChooseOrigin) return;
+                      event.preventDefault();
+                      openLocationPicker("origin");
+                    }}>
                     <span className="rq-field__marker" aria-hidden="true" />
 
                     <IonInput
@@ -11707,6 +11896,16 @@ export default function RequestRidePage(): JSX.Element {
                         />
                       ) : null}
 
+                      {canChooseOrigin ? (
+                        <button
+                          type="button"
+                          className="rq-field__map"
+                          aria-label="Elegir origen en el mapa"
+                          onClick={() => openLocationPicker("origin")}>
+                          <IonIcon icon={mapOutline} aria-hidden="true" />
+                        </button>
+                      ) : null}
+
                       {originInput.trim() ? (
                         <button
                           type="button"
@@ -11725,7 +11924,28 @@ export default function RequestRidePage(): JSX.Element {
                   <div
                     className="rq-field rq-field--destination"
                     data-state={destinationPoint ? "set" : "empty"}
-                    data-active={activeSearchField === "destination"}>
+                    data-active={activeSearchField === "destination"}
+                    role="button"
+                    tabIndex={selectedRoundTripPromotion ? -1 : 0}
+                    aria-label="Destino del viaje. Toca para elegir en el mapa."
+                    onClick={(event) => {
+                      const target = event.target as HTMLElement;
+                      if (
+                        target.closest(".rq-field__clear") ||
+                        target.closest(".rq-field__map") ||
+                        target.closest("ion-input")
+                      ) {
+                        return;
+                      }
+                      if (selectedRoundTripPromotion) return;
+                      openLocationPicker("destination");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      if (selectedRoundTripPromotion) return;
+                      event.preventDefault();
+                      openLocationPicker("destination");
+                    }}>
                     <span className="rq-field__marker" aria-hidden="true" />
 
                     <IonInput
@@ -11777,6 +11997,16 @@ export default function RequestRidePage(): JSX.Element {
                         />
                       ) : null}
 
+                      {!selectedRoundTripPromotion ? (
+                        <button
+                          type="button"
+                          className="rq-field__map"
+                          aria-label="Elegir destino en el mapa"
+                          onClick={() => openLocationPicker("destination")}>
+                          <IonIcon icon={mapOutline} aria-hidden="true" />
+                        </button>
+                      ) : null}
+
                       {destInput.trim() ? (
                         <button
                           type="button"
@@ -11823,21 +12053,31 @@ export default function RequestRidePage(): JSX.Element {
                 !selectedRoundTripPromotion ? (
                   <div className="rq-quick">
                     {canChooseOrigin && !originPoint ? (
-                      <button
-                        type="button"
-                        className="rq-quick__btn rq-quick__btn--primary"
-                        onClick={handleUseCurrentLocation}
-                        disabled={locating}
-                        aria-label="Usar mi ubicación actual como origen">
-                        {locating ? (
-                          <IonSpinner name="dots" />
-                        ) : (
-                          <>
-                            <IonIcon icon={locateOutline} aria-hidden="true" />
-                            Usar mi ubicación actual
-                          </>
-                        )}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="rq-quick__btn rq-quick__btn--primary"
+                          onClick={handleUseCurrentLocation}
+                          disabled={locating}
+                          aria-label="Usar mi ubicación actual como origen">
+                          {locating ? (
+                            <IonSpinner name="dots" />
+                          ) : (
+                            <>
+                              <IonIcon icon={locateOutline} aria-hidden="true" />
+                              Usar mi ubicación actual
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="rq-quick__btn"
+                          aria-label="Elegir el origen en el mapa"
+                          onClick={() => openLocationPicker("origin")}>
+                          <IonIcon icon={mapOutline} aria-hidden="true" />
+                          Elegir origen en el mapa
+                        </button>
+                      </>
                     ) : null}
 
                     {!selectedRoundTripPromotion && !destinationPoint ? (
@@ -11845,29 +12085,9 @@ export default function RequestRidePage(): JSX.Element {
                         type="button"
                         className="rq-quick__btn"
                         aria-label="Elegir el destino en el mapa"
-                        onClick={() => {
-                          /* Mismo guardia que el campo de destino: sin origen
-                             no se elige el otro extremo, porque la ruta y la
-                             búsqueda se calculan desde él. Se reutiliza tal
-                             cual para no abrir por aquí un camino que se
-                             saltara la regla. */
-                          if (canChooseOrigin && !originPoint) {
-                            setRouteOrderHint(true);
-                            setActiveSearchField("origin");
-                            return;
-                          }
-
-                          setRouteOrderHint(false);
-                          /* El modal se abre sobre el teclado si venía de
-                             escribir en un campo; bajarlo antes deja el mapa
-                             entero a la vista. */
-                          dismissSoftKeyboard();
-                          setActiveSearchField(null);
-                          setPickerAutoFocusSearch(false);
-                          setPickerTarget("destination");
-                        }}>
+                        onClick={() => openLocationPicker("destination")}>
                         <IonIcon icon={mapOutline} aria-hidden="true" />
-                        Elegir en el mapa
+                        Elegir destino en el mapa
                       </button>
                     ) : null}
                   </div>
