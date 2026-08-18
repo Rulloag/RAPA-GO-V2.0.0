@@ -29,16 +29,53 @@
   border-radius: var(--rp-radius-sm);
 }
 
+/* EL COLOR DEL BOTÓN ES NUESTRO, NO DE GOOGLE
+ *
+ * Reconstruyendo la hoja de Google clase por clase (es opaca por CORS, así que
+ * hubo que sondearla desde la página) aparece esto:
+ *
+ *   .nsm7Bb-HzV7m-LgbsSe                 -> background #fff    (estado base)
+ *   .nsm7Bb-HzV7m-LgbsSe.MFS4be-JaPV2b-Ia7Qfc -> background #202124  (tema negro)
+ *
+ * Es decir: el blanco es el valor por defecto y el negro llega por UNA clase
+ * ofuscada. Como nuestro CSS no declaraba ningún background, si el SDK no
+ * alcanza a poner esa clase —o Google la renombra, cosa que hacen sin aviso—
+ * el botón sale blanco con nuestra geometría intacta. Reproducido quitando esa
+ * única clase en vivo: el resultado es idéntico al fallo que se reportó.
+ *
+ * Por eso el fondo pasa a pintarse aquí, en el shell, y el nodo de Google se
+ * neutraliza más abajo. #202124 no es un color inventado: es exactamente el
+ * que usa su propio tema filled_black, así que lo que se ve sigue siendo el
+ * botón que Google especifica, solo que ya no depende de su hoja de estilos.
+ */
 .rapago-google-button__shell {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background: #202124;
   border: 0;
-  box-shadow: none;
+  /* El borde va como sombra interior en vez de como border: así no consume
+     caja y el control sigue midiendo exactamente --rp-control-h, igual que
+     "Crear cuenta" e "Iniciar sesión". */
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
   isolation: isolate;
   overflow: hidden;
+  transition: background 160ms ease;
+}
+
+/* Google pinta su hover sobre el nodo que abajo dejamos transparente, así que
+   la respuesta al puntero se recupera aquí. La capa de ondas del SDK
+   (.nsm7Bb-HzV7m-LgbsSe-MJoBVe, absoluta e inset 0) no se toca y sigue
+   funcionando encima. */
+.rapago-google-button__shell:not([aria-disabled="true"]):hover {
+  background: #2e2f33;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rapago-google-button__shell {
+    transition: none;
+  }
 }
 
 /*
@@ -115,11 +152,40 @@
   border-radius: var(--rp-radius-sm) !important;
 }
 
+/* Neutraliza el pintado propio de Google para que se vea el fondo del shell,
+   sea cual sea el estado de sus clases de tema.
+ *
+ * La especificidad importa: la hoja de Google se inyecta como último hijo de
+ * <head>, después de nuestro bundle, así que en un empate de !important
+ * ganaría ella por orden. Encadenar las dos clases del bloque sube esto a
+ * (0,3,1) y queda por encima de sus (0,1,0) y (0,2,0).
+ *
+ * Los estados van explícitos por el mismo motivo: si Google define
+ * :hover/:focus/:active con su propio fondo, hay que ganarles uno a uno. */
+.rapago-google-button .rapago-google-button__official div[role="button"],
+.rapago-google-button .rapago-google-button__official div[role="button"]:hover,
+.rapago-google-button .rapago-google-button__official div[role="button"]:focus,
+.rapago-google-button .rapago-google-button__official div[role="button"]:active {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #e8eaed !important;
+}
+
+/* Google fija el color en el <span> del texto. Sin esta regla, cuando falta la
+   clase de tema el texto hereda su gris #3c4043 —pensado para el botón blanco—
+   y quedaría gris oscuro sobre nuestro fondo negro. */
+.rapago-google-button .rapago-google-button__official div[role="button"] span {
+  color: #e8eaed !important;
+}
+
 /* Placeholder mientras carga el SDK de Google.
-   Usa el MISMO #202124 con el que Google pinta su "filled_black" y el mismo
-   radio de 16px: así, cuando el SDK termina de cargar y sustituye una capa por
-   la otra, no hay salto visible. Antes el placeholder era blanco y el botón
-   final negro, de modo que cada carga parpadeaba de claro a oscuro. */
+   Va SIN fondo ni borde propios: vive dentro del shell, que ya pinta el
+   #202124 y el contorno. Así el relevo placeholder -> botón real no puede
+   producir ningún salto de color, porque el color nunca cambia de dueño.
+   (El botón nativo .rapago-google-button__custom sí lleva los suyos: ese no
+   está dentro de un shell, es una pieza autónoma.) */
 .rapago-google-button__placeholder {
   position: absolute;
   inset: 0;
@@ -129,15 +195,14 @@
   justify-content: center;
   gap: 11px;
   padding: 0 18px;
-  background: #202124;
+  background: transparent;
   color: #e8eaed;
   font-size: 0.96rem;
   font-weight: 760;
   letter-spacing: -0.01em;
   text-align: center;
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 0;
   border-radius: var(--rp-radius-sm);
-  box-shadow: 0 8px 20px rgba(20, 15, 5, 0.16);
 }
 
 /* Estilo para botón custom (si no se usa la librería nativa de Google) */
@@ -312,16 +377,20 @@
    se funde con el fondo, así que aquí se le añade el borde dorado que usan el
    resto de los controles de noche, con lo que recupera su silueta.
    ========================================================================== */
-[data-rapago-theme="dark"] .rapago-google-button__official div[role="button"] {
-  border: 1px solid rgba(214, 166, 64, 0.48) !important;
+/* El borde pasa al shell: el nodo de Google quedó neutralizado más arriba, y
+   además así el contorno no depende de que su botón exista —también enmarca el
+   placeholder mientras el SDK carga. */
+[data-rapago-theme="dark"] .rapago-google-button__shell {
+  box-shadow:
+    inset 0 0 0 1px rgba(214, 166, 64, 0.48),
+    0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
-[data-rapago-theme="dark"] .rapago-google-button__custom,
-[data-rapago-theme="dark"] .rapago-google-button__placeholder {
-  /* Se conserva el #202124 del SDK en lugar del degradado marrón que había
-     aquí: el placeholder tiene que ser indistinguible del botón que lo
-     reemplaza. Lo que sí se mantiene del estilo nocturno de la casa es el
-     borde dorado, que es lo que le da silueta sobre la tarjeta oscura. */
+/* Solo el botón nativo: el placeholder ya no lleva color propio, lo hereda del
+   shell. Se conserva el #202124 del SDK en lugar del degradado marrón que
+   había aquí, para que la app nativa y la web muestren el mismo botón, y el
+   borde dorado de la casa, que es lo que le da silueta sobre fondo oscuro. */
+[data-rapago-theme="dark"] .rapago-google-button__custom {
   background: #202124;
   color: #e8eaed;
   border-color: rgba(214, 166, 64, 0.48);
@@ -378,9 +447,16 @@
    el SDK—, así que de día NO se repinta de blanco. Lo único que cambia entre
    temas es la sombra, que de día debe apoyarse en la crema de la tarjeta y de
    noche desaparecer. El borde dorado nocturno está en el bloque de arriba. */
-[data-rapago-theme="light"] .rapago-google-button__custom,
-[data-rapago-theme="light"] .rapago-google-button__placeholder {
+[data-rapago-theme="light"] .rapago-google-button__custom {
   box-shadow: 0 8px 20px rgba(72, 53, 22, 0.16);
+}
+
+/* La sombra exterior del control en modo día va en el shell, que es quien
+   ahora dibuja la pieza. Se combina con la sombra interior del contorno. */
+[data-rapago-theme="light"] .rapago-google-button__shell {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.10),
+    0 8px 20px rgba(72, 53, 22, 0.16);
 }
 
 [data-rapago-theme="light"] .rapago-google-button__spinner {

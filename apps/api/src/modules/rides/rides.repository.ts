@@ -12,6 +12,7 @@ import {
 } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
+import { resolveAssignedVehicleCategory } from "./resolveAssignedVehicleCategory.js";
 import { formatDatabaseErrorDetails } from "../../shared/errors/databaseErrorDetails.js";
 import type { RideRequest } from "../../db/schema/index.js";
 import {
@@ -671,12 +672,9 @@ export class RidesRepository {
             .limit(1)
         )[0];
 
-        const assignedVehicleCategory =
-          profile?.vehicleCategory === "xl" ||
-          profile?.vehicleCategory === "extra_luggage" ||
-          profile?.vehicleCategory === "standard"
-            ? profile.vehicleCategory
-            : "standard";
+        const assignedVehicleCategory = resolveAssignedVehicleCategory(
+          profile?.vehicleCategory,
+        );
 
         const rows = await tx
           .update(rideRequests)
@@ -742,14 +740,9 @@ export class RidesRepository {
             .limit(1)
         )[0];
 
-        const assignedVehicleCategory =
-          profile?.vehicleCategory === "xl" ||
-          profile?.vehicleCategory === "extra_luggage" ||
-          profile?.vehicleCategory === "standard"
-            ? profile.vehicleCategory
-            : profile?.vehicleCategory === "luggage"
-              ? "extra_luggage"
-              : "standard";
+        const assignedVehicleCategory = resolveAssignedVehicleCategory(
+          profile?.vehicleCategory,
+        );
 
         const rows = await tx
           .update(rideRequests)

@@ -27,7 +27,6 @@ export class DriverProfileRepository {
       if (input.vehicleYear !== undefined)     setValues.vehicleYear     = input.vehicleYear;
       if (input.vehiclePlate !== undefined)    setValues.vehiclePlate    = input.vehiclePlate;
       if (input.vehicleColor !== undefined)    setValues.vehicleColor    = input.vehicleColor;
-      if (input.vehicleCategory !== undefined) setValues.vehicleCategory = input.vehicleCategory;
       if (input.profilePhotoUrl !== undefined) setValues.profilePhotoUrl = input.profilePhotoUrl;
       if (input.vehiclePhotoUrl !== undefined) setValues.vehiclePhotoUrl = input.vehiclePhotoUrl;
       if (input.bio !== undefined)             setValues.bio             = input.bio;

@@ -64,6 +64,7 @@ export interface ActiveOfferPayload {
     scheduledPickupAt: string | null;
     priorityFeeClp:   number | null;
     flightNumber:     string | null;
+    requestedVehicleCategory: string;
   };
   /**
    * Espera estimada (minutos) hasta que el conductor podría empezar B:
@@ -156,6 +157,7 @@ export class DriverOffersService {
           scheduledPickupAt: ride.scheduledPickupAt?.toISOString() ?? null,
           priorityFeeClp:   ride.priorityFeeClp ?? null,
           flightNumber:     ride.flightNumber ?? null,
+          requestedVehicleCategory: ride.requestedVehicleCategory ?? "standard",
         },
         estimatedWaitMinutes,
         pickupDistanceKm,

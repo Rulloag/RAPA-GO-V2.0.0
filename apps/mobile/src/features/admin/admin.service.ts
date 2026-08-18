@@ -65,6 +65,8 @@ export interface AdminRideData {
   priorityFeeClp?:        number | null;
   flightNumber?:          string | null;
   preferredDriverGender?: "female" | null;
+  requestedVehicleCategory?: string | null;
+  assignedVehicleCategory?: string | null;
 }
 
 export interface ActiveDriverData {

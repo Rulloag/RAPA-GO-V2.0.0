@@ -23,6 +23,7 @@ import { WhatsAppButton } from "../../../components/WhatsAppButton.js";
 import { loadRapaGoGoogleMaps } from "../../../components/MapFallback.js";
 import { useAuth } from "../../../features/auth/index.js";
 import { ridesService, type RideRequestData } from "../../../features/rides/rides.service.js";
+import { VehicleCategorySnapshots } from "../../../features/rides/VehicleCategorySnapshots.js";
 import { rideLocationService } from "../../../features/location/rideLocation.service.js";
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import {
@@ -7549,6 +7550,14 @@ function PassengerFinalRideSummary({
           <div><strong>Motivo:</strong> {ride.cancellationReason}</div>
         )}
       </div>
+
+      <VehicleCategorySnapshots
+        requestedVehicleCategory={ride.requestedVehicleCategory}
+        assignedVehicleCategory={ride.assignedVehicleCategory}
+        driverUserId={ride.driverUserId}
+        notes={ride.notes}
+        status={ride.status}
+      />
 
       {timeline.length > 0 && (
         <div
