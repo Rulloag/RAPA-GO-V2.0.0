@@ -97,6 +97,7 @@ import { WA_MESSAGES } from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { loadRapaGoGoogleMaps } from "../../components/MapFallback";
 import { rideLocationService } from "../../features/location/rideLocation.service.js";
+import { VehicleCategorySnapshots } from "../../features/rides/VehicleCategorySnapshots.js";
 import { AccountDeletionAdminPanel } from "../../components/accountDeletion/AccountDeletionAdminPanel.js";
 import { CashOverpaymentRefundAdminPanel } from "../../components/payments/CashOverpaymentRefundAdminPanel.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../services/api/apiBaseUrl.js";
@@ -13042,6 +13043,14 @@ export function AdminTripsPage(): JSX.Element {
                         Conductor: <strong>{ride.driverName || String(getRideUnknownField(ride, "assignedDriverName") ?? "")}</strong>
                       </div>
                     )}
+
+                    <VehicleCategorySnapshots
+                      requestedVehicleCategory={ride.requestedVehicleCategory ?? String(getRideUnknownField(ride, "requestedVehicleCategory") ?? "")}
+                      assignedVehicleCategory={ride.assignedVehicleCategory ?? String(getRideUnknownField(ride, "assignedVehicleCategory") ?? "")}
+                      driverUserId={ride.driverUserId}
+                      notes={ride.notes}
+                      status={ride.status}
+                    />
 
                     {/* Dates */}
                     <div

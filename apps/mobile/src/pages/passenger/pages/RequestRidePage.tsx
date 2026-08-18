@@ -83,6 +83,11 @@ import { preSearchLocationService } from "../../../features/location/preSearchLo
 import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
 import "../../../theme/request-ride.css";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
+import {
+  VEHICLE_CATEGORIES,
+  vehicleCategoryLabel,
+  type VehicleCategory,
+} from "@rapa-go/shared";
 
 const LOCAL_PASSENGER_RIDES_KEY = "rapago_local_passenger_rides";
 const LOCAL_ADMIN_SCHEDULED_RIDES_KEY = "rapago_admin_scheduled_rides";
@@ -3422,7 +3427,6 @@ function distanceMeters(
 }
 
 type PassengerFareType = "resident" | "chilean" | "foreigner";
-type VehicleCategory = "standard" | "xl" | "luggage";
 
 type FareQuote = {
   km: number;
@@ -3721,7 +3725,7 @@ const DEFAULT_RAPAGO_FARE_RULES: RapaGoFareRules = {
   vehicleMultipliers: {
     standard: 1,
     xl: 1.4,
-    luggage: 1.25,
+    extra_luggage: 1.25,
   },
   passengerActive: {
     resident: true,
@@ -3973,27 +3977,35 @@ function readPassengerFareType(user?: unknown): PassengerFareType {
   return "chilean";
 }
 
-function vehicleCategoryLabel(category: VehicleCategory): string {
-  if (category === "xl") return "XL";
-  if (category === "luggage") return "Extra maletas";
-  return "Estándar";
+function readStoredVehicleCategoryMultiplier(
+  stored: Partial<Record<string, number>> | undefined,
+  category: VehicleCategory,
+  fallback: number,
+): number {
+  if (category === "extra_luggage") {
+    return parseStoredNumber(
+      stored?.extra_luggage ?? stored?.luggage,
+      fallback,
+    );
+  }
+
+  return parseStoredNumber(stored?.[category], fallback);
 }
 
 function vehicleCategoryTitle(category: VehicleCategory): string {
   if (category === "xl") return "Vehículo XL";
-  if (category === "luggage") return "Extra maletas";
-  return "Estándar";
+  return vehicleCategoryLabel(category);
 }
 
 function vehicleCategoryDescription(category: VehicleCategory): string {
   if (category === "xl") return "Más espacio y comodidad";
-  if (category === "luggage") return "Ideal si llevas equipaje";
+  if (category === "extra_luggage") return "Ideal si llevas equipaje";
   return "Viaje normal urbano";
 }
 
 function vehicleCategoryIcon(category: VehicleCategory): string {
   if (category === "xl") return busOutline;
-  if (category === "luggage") return briefcaseOutline;
+  if (category === "extra_luggage") return briefcaseOutline;
   return carOutline;
 }
 
@@ -4108,7 +4120,7 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
         ruralFactor?: number;
       };
       passengerMultipliers?: Partial<Record<PassengerFareType, number>>;
-      vehicleMultipliers?: Partial<Record<VehicleCategory, number>>;
+      vehicleMultipliers?: Partial<Record<string, number>>;
       passengerActive?: Partial<Record<PassengerFareType, boolean>>;
       fixedDestinations?: FixedDestinationRule[];
       rounding?: {
@@ -4206,17 +4218,20 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
         ),
       },
       vehicleMultipliers: {
-        standard: parseStoredNumber(
-          parsed.vehicleMultipliers?.standard,
+        standard: readStoredVehicleCategoryMultiplier(
+          parsed.vehicleMultipliers,
+          "standard",
           fallback.vehicleMultipliers.standard,
         ),
-        xl: parseStoredNumber(
-          parsed.vehicleMultipliers?.xl,
+        xl: readStoredVehicleCategoryMultiplier(
+          parsed.vehicleMultipliers,
+          "xl",
           fallback.vehicleMultipliers.xl,
         ),
-        luggage: parseStoredNumber(
-          parsed.vehicleMultipliers?.luggage,
-          fallback.vehicleMultipliers.luggage,
+        extra_luggage: readStoredVehicleCategoryMultiplier(
+          parsed.vehicleMultipliers,
+          "extra_luggage",
+          fallback.vehicleMultipliers.extra_luggage,
         ),
       },
       passengerActive: {
@@ -10058,7 +10073,7 @@ export default function RequestRidePage(): JSX.Element {
       Math.min(9, Math.round(routeMinutes * 0.38)),
     );
     const categoryOffset =
-      category === "xl" ? 2 : category === "luggage" ? 1 : 0;
+      category === "xl" ? 2 : category === "extra_luggage" ? 1 : 0;
 
     return `Llega en ${baseMinutes + categoryOffset} min`;
   }
@@ -10526,8 +10541,7 @@ export default function RequestRidePage(): JSX.Element {
           input as CreateRideInput & {
             requestedVehicleCategory?: string;
           }
-        ).requestedVehicleCategory =
-          vehicleCategory === "luggage" ? "extra_luggage" : vehicleCategory;
+        ).requestedVehicleCategory = vehicleCategory;
         (input as CreateRideInput & { paymentMethod?: string }).paymentMethod =
           activePaymentMethod;
         (
@@ -11938,7 +11952,7 @@ export default function RequestRidePage(): JSX.Element {
                 </div>
 
                 <div className="rp-request-vehicle-list">
-                  {(["standard", "xl", "luggage"] as VehicleCategory[]).map(
+                  {VEHICLE_CATEGORIES.map(
                     (category) => {
                       const active = vehicleCategory === category;
                       const categoryFareAmount =

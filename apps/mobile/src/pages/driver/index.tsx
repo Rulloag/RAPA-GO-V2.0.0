@@ -77,12 +77,25 @@ import {
   driverProfileService,
   type DriverProfileData,
 } from "../../features/drivers/driverProfile.service";
+import {
+  APPROVED_VEHICLE_CATEGORY_ERROR_MESSAGE,
+  APPROVED_VEHICLE_CATEGORY_LOADING_MESSAGE,
+  ensureApprovedVehicleCategoryLoaded,
+  getApprovedVehicleCategoryDisplay,
+  getApprovedVehicleCategoryLabel,
+  getApprovedVehicleCategoryState,
+  rememberApprovedVehicleCategoryCache,
+  type ApprovedVehicleCategoryState,
+} from "../../features/drivers/driverApprovedVehicleCategory.js";
 import { driverVehiclePhotoService } from "../../features/drivers/driverVehiclePhoto.service";
 import {
   needsVehicleCategoryConfirmation,
   normalizeVehicleCategory,
   vehicleCategoryDisplay,
+  vehicleCategoryEmoji,
+  vehicleCategoryLabel,
   vehicleCategoryMismatchCopy,
+  vehicleCategoryShortLabel,
   type VehicleCategory,
 } from "@rapa-go/shared";
 import { driverStatusService } from "../../features/drivers/driverStatus.service";
@@ -11245,45 +11258,120 @@ function extractFareFromNotes(notes: string | null | undefined): number | null {
   return null;
 }
 
-type RideVehicleCategoryForDriver = "standard" | "xl" | "luggage";
-
 const DRIVER_VEHICLE_CATEGORY_STORAGE_KEY =
   "rapago_driver_vehicle_category_v1";
 
-function toCanonicalVehicleCategory(
-  category: RideVehicleCategoryForDriver,
-): VehicleCategory {
-  return category === "luggage" ? "extra_luggage" : category;
-}
-
-function getDriverRegisteredVehicleCategory(
-  user?: unknown,
-): VehicleCategory {
-  try {
-    const stored = normalizeVehicleCategory(
-      localStorage.getItem(DRIVER_VEHICLE_CATEGORY_STORAGE_KEY),
-    );
-    if (stored) return stored;
-  } catch {
-    /* ignore */
-  }
-
-  const selected = readSelectedDriverVehicle(user);
-  const fromSelected = normalizeVehicleCategory(
-    (selected as { vehicleCategory?: string } | null)?.vehicleCategory,
-  );
-  if (fromSelected) return fromSelected;
-
-  return "standard";
-}
-
 function rememberDriverVehicleCategory(category: unknown): void {
-  const normalized = normalizeVehicleCategory(category) ?? "standard";
+  const normalized = normalizeVehicleCategory(category);
+  if (!normalized) return;
   try {
     localStorage.setItem(DRIVER_VEHICLE_CATEGORY_STORAGE_KEY, normalized);
   } catch {
     /* ignore */
   }
+}
+
+function getApprovedVehicleCategoryForUser(
+  accessToken?: string | null,
+  user?: unknown,
+): ApprovedVehicleCategoryState {
+  return getApprovedVehicleCategoryState(accessToken, user);
+}
+
+function getApprovedVehicleCategoryForDisplay(
+  accessToken?: string | null,
+  user?: unknown,
+): string {
+  return getApprovedVehicleCategoryDisplay(
+    getApprovedVehicleCategoryForUser(accessToken, user),
+  );
+}
+
+type DriverCategoryGateResult =
+  | { status: "proceed" }
+  | { status: "confirm"; ride: AvailableRideData }
+  | { status: "verify_error"; ride: AvailableRideData };
+
+async function runDriverCategoryGate(
+  ride: unknown,
+  action: () => Promise<void>,
+  accessToken?: string | null,
+  user?: unknown,
+): Promise<DriverCategoryGateResult> {
+  if (!ride) {
+    void action();
+    return { status: "proceed" };
+  }
+
+  if (!accessToken) {
+    void action();
+    return { status: "proceed" };
+  }
+
+  const approvedState = await ensureApprovedVehicleCategoryLoaded(
+    accessToken,
+    user,
+  );
+
+  if (approvedState.status === "error") {
+    return { status: "verify_error", ride: ride as AvailableRideData };
+  }
+
+  const requested = getRideVehicleCategory(ride as RideWithFarePayload);
+  const driverCat =
+    approvedState.status === "ready" ? approvedState.category : null;
+
+  if (
+    driverCat &&
+    !needsVehicleCategoryConfirmation(requested, driverCat)
+  ) {
+    void action();
+    return { status: "proceed" };
+  }
+
+  if (driverCat) {
+    return { status: "confirm", ride: ride as AvailableRideData };
+  }
+
+  void action();
+  return { status: "proceed" };
+}
+
+function getApprovedDriverCategoryForComparison(
+  accessToken?: string | null,
+  user?: unknown,
+): VehicleCategory | null {
+  const state = getApprovedVehicleCategoryForUser(accessToken, user);
+  return state.status === "ready" ? state.category : null;
+}
+
+function getDriverCategoryGateKey(ride: unknown): string {
+  if (!ride || typeof ride !== "object") return "driver-category-gate:unknown";
+  const record = ride as Record<string, unknown>;
+  const directId = String(
+    record.id ??
+      record.rideId ??
+      record.rideRequestId ??
+      record.requestId ??
+      "",
+  ).trim();
+  if (directId) return `driver-category-gate:${directId}`;
+  return `driver-category-gate:${JSON.stringify({
+    origin: record.originText ?? null,
+    destination: record.destinationText ?? null,
+    pickup: record.pickupAddress ?? null,
+    dropoff: record.dropoffAddress ?? null,
+  })}`;
+}
+
+function releaseDriverCategoryGateLock(
+  activeGateKeyRef: React.MutableRefObject<string | null>,
+  gateLocksRef: React.MutableRefObject<Set<string>>,
+): void {
+  const key = activeGateKeyRef.current;
+  if (!key) return;
+  gateLocksRef.current.delete(key);
+  activeGateKeyRef.current = null;
 }
 
 type RideWithFarePayload = {
@@ -13502,19 +13590,13 @@ function getRideTripTypeEmoji(notes: string | null | undefined): string {
   return getRideTripTypeLabel(notes) === "Ida y vuelta" ? "🔁" : "➡️";
 }
 
-function normalizeRideVehicleCategory(
-  value: unknown,
-): RideVehicleCategoryForDriver | null {
-  const canonical = normalizeVehicleCategory(value);
-  if (canonical === "extra_luggage") return "luggage";
-  if (canonical === "xl") return "xl";
-  if (canonical === "standard") return "standard";
-  return null;
+function normalizeRideVehicleCategory(value: unknown): VehicleCategory | null {
+  return normalizeVehicleCategory(value);
 }
 
 function extractVehicleCategoryFromNotes(
   notes: string | null | undefined,
-): RideVehicleCategoryForDriver | null {
+): VehicleCategory | null {
   const text = repairDriverDisplayText(notes);
   if (!text.trim()) return null;
 
@@ -13536,43 +13618,76 @@ function extractVehicleCategoryFromNotes(
   return normalizeRideVehicleCategory(text);
 }
 
-function getRideVehicleCategory(
-  ride: RideWithFarePayload,
-): RideVehicleCategoryForDriver {
+function getRideVehicleCategory(ride: RideWithFarePayload): VehicleCategory {
   const direct =
+    normalizeRideVehicleCategory(ride.requestedVehicleCategory) ??
     normalizeRideVehicleCategory(ride.fareVehicleCategory) ??
     normalizeRideVehicleCategory(ride.vehicleCategory) ??
     normalizeRideVehicleCategory(ride.vehicleType) ??
     normalizeRideVehicleCategory(ride.requestedVehicleType) ??
-    normalizeRideVehicleCategory(ride.requestedVehicleCategory) ??
     extractVehicleCategoryFromNotes(ride.notes);
 
   return direct ?? "standard";
 }
 
-function getRideVehicleLabel(category: RideVehicleCategoryForDriver): string {
+function getRideVehicleLabel(category: VehicleCategory): string {
   if (category === "xl") return "Vehículo XL";
-  if (category === "luggage") return "Extra Maleta";
-  return "Estándar";
+  return vehicleCategoryLabel(category);
 }
 
-function getRideVehicleShortLabel(
-  category: RideVehicleCategoryForDriver,
-): string {
-  if (category === "xl") return "XL";
-  if (category === "luggage") return "Extra Maleta";
-  return "Estándar";
+function getRideVehicleShortLabel(category: VehicleCategory): string {
+  return vehicleCategoryShortLabel(category);
 }
 
-function getRideVehicleEmoji(category: RideVehicleCategoryForDriver): string {
-  if (category === "xl") return "🚐";
-  if (category === "luggage") return "🧳";
-  return "🚗";
+function getRideVehicleEmoji(category: VehicleCategory): string {
+  return vehicleCategoryEmoji(category);
 }
 
 function getDriverEstimatedEarning(fareClp: number | null): number | null {
   if (fareClp == null) return null;
   return Math.round(fareClp * 0.85);
+}
+
+function driverCategoryGate(
+  ride: unknown,
+  action: () => Promise<void>,
+  accessToken: string | null | undefined,
+  user: unknown,
+  setConfirmRide: (r: AvailableRideData | null) => void,
+  actionRef: React.MutableRefObject<(() => Promise<void>) | null>,
+  setVerifyErrorRide: (r: AvailableRideData | null) => void,
+  setCategoryGateLoading: (loading: boolean) => void,
+  activeGateKeyRef: React.MutableRefObject<string | null>,
+  gateLocksRef: React.MutableRefObject<Set<string>>,
+): void {
+  const gateKey = getDriverCategoryGateKey(ride);
+  if (gateLocksRef.current.has(gateKey)) return;
+  gateLocksRef.current.add(gateKey);
+  activeGateKeyRef.current = gateKey;
+  setCategoryGateLoading(true);
+  const actionWithUnlock = async (): Promise<void> => {
+    try {
+      await action();
+    } finally {
+      releaseDriverCategoryGateLock(activeGateKeyRef, gateLocksRef);
+    }
+  };
+  void runDriverCategoryGate(ride, actionWithUnlock, accessToken, user).then((result) => {
+    setCategoryGateLoading(false);
+
+    if (result.status === "proceed") {
+      return;
+    }
+
+    if (result.status === "verify_error") {
+      setVerifyErrorRide(result.ride);
+      actionRef.current = actionWithUnlock;
+      return;
+    }
+
+    setConfirmRide(result.ride);
+    actionRef.current = actionWithUnlock;
+  });
 }
 
 type DriverEarningsFilter = "today" | "week" | "month" | "all";
@@ -14237,6 +14352,38 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
   const globalAlertLoadInFlightRef = useRef(false);
   const globalAlertNextLoadAtRef = useRef(0);
   const globalAlertRateLimitedUntilRef = useRef(0);
+  const [alertCategoryConfirmRide, setAlertCategoryConfirmRide] =
+    useState<AvailableRideData | null>(null);
+  const alertCategoryConfirmActionRef = useRef<(() => Promise<void>) | null>(null);
+  const alertCategoryGateKeyRef = useRef<string | null>(null);
+  const alertCategoryGateLocksRef = useRef<Set<string>>(new Set());
+  const [alertCategoryVerifyErrorRide, setAlertCategoryVerifyErrorRide] =
+    useState<AvailableRideData | null>(null);
+  const [alertCategoryGateLoading, setAlertCategoryGateLoading] =
+    useState(false);
+
+  function guardAlertCategoryConfirmation(
+    ride: AvailableRideData | Record<string, unknown> | null,
+    action: () => Promise<void>,
+  ): void {
+    driverCategoryGate(
+      ride as Record<string, unknown> | null,
+      action,
+      session?.accessToken,
+      session?.user,
+      setAlertCategoryConfirmRide,
+      alertCategoryConfirmActionRef,
+      setAlertCategoryVerifyErrorRide,
+      setAlertCategoryGateLoading,
+      alertCategoryGateKeyRef,
+      alertCategoryGateLocksRef,
+    );
+  }
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    void ensureApprovedVehicleCategoryLoaded(session.accessToken, session.user);
+  }, [session?.accessToken, session?.user]);
 
   const isDriverAvailable =
     driverAvailability === "available" && !driverConnection.blocked;
@@ -14693,6 +14840,13 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
       return;
     }
 
+    guardAlertCategoryConfirmation(ride, () =>
+      performAcceptRideFromAlert(ride),
+    );
+    return;
+  }
+
+  async function performAcceptRideFromAlert(ride: AvailableRideData): Promise<void> {
     setAccepting(true);
     setAlertError(null);
 
@@ -15457,6 +15611,102 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
           </div>
         </div>
       </div>
+
+      <IonAlert
+        isOpen={alertCategoryGateLoading}
+        header="Verificando categoría"
+        message={APPROVED_VEHICLE_CATEGORY_LOADING_MESSAGE}
+        backdropDismiss={false}
+      />
+
+      <IonAlert
+        isOpen={Boolean(alertCategoryVerifyErrorRide)}
+        header="Verificación de categoría"
+        message={APPROVED_VEHICLE_CATEGORY_ERROR_MESSAGE}
+        onDidDismiss={() => {
+          setAlertCategoryVerifyErrorRide(null);
+          alertCategoryConfirmActionRef.current = null;
+          releaseDriverCategoryGateLock(
+            alertCategoryGateKeyRef,
+            alertCategoryGateLocksRef,
+          );
+        }}
+        buttons={[
+          {
+            text: "Cancelar",
+            role: "cancel",
+          },
+          {
+            text: "Aceptar viaje",
+            role: "confirm",
+            handler: () => {
+              const action = alertCategoryConfirmActionRef.current;
+              if (!action) return false;
+              alertCategoryConfirmActionRef.current = null;
+              setAlertCategoryVerifyErrorRide(null);
+              void action();
+              return true;
+            },
+          },
+        ]}
+      />
+
+      <IonAlert
+        isOpen={Boolean(alertCategoryConfirmRide)}
+        header={
+          alertCategoryConfirmRide
+            ? `⚠️ ${vehicleCategoryMismatchCopy(getRideVehicleCategory(alertCategoryConfirmRide as RideWithFarePayload)).title}`
+            : "Confirma la categoría"
+        }
+        message={
+          alertCategoryConfirmRide
+            ? (() => {
+                const requested = getRideVehicleCategory(alertCategoryConfirmRide as RideWithFarePayload);
+                const driverCat = getApprovedDriverCategoryForComparison(
+                  session?.accessToken,
+                  session?.user,
+                );
+                const copy = vehicleCategoryMismatchCopy(requested);
+                return (
+                  `Categoría del viaje: ${vehicleCategoryDisplay(requested)}\n` +
+                  `Tu vehículo: ${driverCat ? vehicleCategoryDisplay(driverCat) : getApprovedVehicleCategoryForDisplay(session?.accessToken, session?.user)}\n\n` +
+                  copy.body
+                );
+              })()
+            : ""
+        }
+        cssClass="rapago-danger-alert"
+        onDidDismiss={() => {
+          setAlertCategoryConfirmRide(null);
+          alertCategoryConfirmActionRef.current = null;
+          releaseDriverCategoryGateLock(
+            alertCategoryGateKeyRef,
+            alertCategoryGateLocksRef,
+          );
+        }}
+        buttons={[
+          {
+            text: alertCategoryConfirmRide
+              ? vehicleCategoryMismatchCopy(getRideVehicleCategory(alertCategoryConfirmRide as RideWithFarePayload)).cancelLabel
+              : "Volver",
+            role: "cancel",
+          },
+          {
+            text: alertCategoryConfirmRide
+              ? vehicleCategoryMismatchCopy(getRideVehicleCategory(alertCategoryConfirmRide as RideWithFarePayload)).confirmLabel
+              : "Confirmar y aceptar",
+            role: "confirm",
+            handler: () => {
+              const action = alertCategoryConfirmActionRef.current;
+              if (!action) return false;
+              alertCategoryConfirmActionRef.current = null;
+              setAlertCategoryConfirmRide(null);
+              void action();
+              return true;
+            },
+          },
+        ]}
+      />
     </div>
   );
 }
@@ -15533,6 +15783,30 @@ function AssignedRidesPage({
     useState<DriverRideData | null>(null);
   const [categoryConfirmRide, setCategoryConfirmRide] =
     useState<AvailableRideData | null>(null);
+  const categoryConfirmActionRef = useRef<(() => Promise<void>) | null>(null);
+  const categoryGateKeyRef = useRef<string | null>(null);
+  const categoryGateLocksRef = useRef<Set<string>>(new Set());
+  const [categoryVerifyErrorRide, setCategoryVerifyErrorRide] =
+    useState<AvailableRideData | null>(null);
+  const [categoryGateLoading, setCategoryGateLoading] = useState(false);
+
+  function guardCategoryConfirmation(
+    ride: AvailableRideData | Record<string, unknown> | null,
+    action: () => Promise<void>,
+  ): void {
+    driverCategoryGate(
+      ride,
+      action,
+      session?.accessToken,
+      session?.user,
+      setCategoryConfirmRide,
+      categoryConfirmActionRef,
+      setCategoryVerifyErrorRide,
+      setCategoryGateLoading,
+      categoryGateKeyRef,
+      categoryGateLocksRef,
+    );
+  }
   const [completeConfirmRide, setCompleteConfirmRide] =
     useState<DriverRideData | null>(null);
   const [passengerCancelNotice, setPassengerCancelNotice] = useState<{
@@ -15587,20 +15861,27 @@ function AssignedRidesPage({
           ride as unknown as Record<string, unknown>,
         ),
     ) ?? null;
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    void ensureApprovedVehicleCategoryLoaded(session.accessToken, session.user);
+  }, [session?.accessToken, session?.user]);
+
   const displayedAvailableRides = showOnlyReservations
     ? []
     : [...availableRides].sort((a, b) => {
-        const driverCat = getDriverRegisteredVehicleCategory(session?.user);
+        const driverCat = getApprovedDriverCategoryForComparison(
+          session?.accessToken,
+          session?.user,
+        );
         const aMatch =
-          toCanonicalVehicleCategory(
-            getRideVehicleCategory(a as RideWithFarePayload),
-          ) === driverCat
+          driverCat != null &&
+          getRideVehicleCategory(a as RideWithFarePayload) === driverCat
             ? 0
             : 1;
         const bMatch =
-          toCanonicalVehicleCategory(
-            getRideVehicleCategory(b as RideWithFarePayload),
-          ) === driverCat
+          driverCat != null &&
+          getRideVehicleCategory(b as RideWithFarePayload) === driverCat
             ? 0
             : 1;
         return aMatch - bMatch;
@@ -15687,21 +15968,23 @@ function AssignedRidesPage({
 
   const handleAcceptDriverQueuedOffer = useCallback(async () => {
     if (!driverQueuedOffer || !session?.accessToken || driverQueuedOfferActionLoading) return;
-    setDriverQueuedOfferActionLoading(true);
-    try {
-      // acceptDriverOffer sólo reserva B como queued_ride_id — no cambia
-      // current_ride_id, no toca la navegación de A (Fase 0/2 en el backend).
-      await ridesService.acceptDriverOffer(
-        session.accessToken,
-        driverQueuedOffer.offer.id,
-      );
-      setDriverQueuedOfferReserved(true);
-    } catch {
-      // Se mantiene la tarjeta visible para reintentar; el backend sigue
-      // siendo la autoridad final (índices únicos + revalidación).
-    } finally {
-      setDriverQueuedOfferActionLoading(false);
-    }
+
+    const rideData = driverQueuedOffer.ride as unknown as Record<string, unknown>;
+    guardCategoryConfirmation(rideData, async () => {
+      setDriverQueuedOfferActionLoading(true);
+      try {
+        await ridesService.acceptDriverOffer(
+          session.accessToken!,
+          driverQueuedOffer.offer.id,
+        );
+        setDriverQueuedOfferReserved(true);
+      } catch {
+        // Se mantiene la tarjeta visible para reintentar.
+      } finally {
+        setDriverQueuedOfferActionLoading(false);
+      }
+    });
+    return;
   }, [driverQueuedOffer, session?.accessToken, driverQueuedOfferActionLoading]);
 
   const handleRejectDriverQueuedOffer = useCallback(async () => {
@@ -16779,15 +17062,9 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       (rideAlert?.id === rideId ? rideAlert : null) ??
       categoryConfirmRide;
 
-    if (ride && !categoryConfirmRide) {
-      const requested = toCanonicalVehicleCategory(
-        getRideVehicleCategory(ride as RideWithFarePayload),
-      );
-      const driverCat = getDriverRegisteredVehicleCategory(session?.user);
-      if (needsVehicleCategoryConfirmation(requested, driverCat)) {
-        setCategoryConfirmRide(ride);
-        return;
-      }
+    if (ride && !categoryConfirmRide && !categoryVerifyErrorRide) {
+      guardCategoryConfirmation(ride, () => performAcceptRide(rideId));
+      return;
     }
 
     await performAcceptRide(rideId);
@@ -17522,8 +17799,6 @@ La reserva fue retirada. No continúes hacia la recogida.`,
   async function handleAcceptScheduledReservation(
     ride: DriverScheduledReservationOffer,
   ): Promise<void> {
-    // Las reservas asignadas por admin se aceptan localmente aunque la sesión
-    // de desarrollo no traiga accessToken. No debe quedarse silencioso.
     if (!isDriverAvailable) {
       setError(
         "Estás no disponible. Activa disponible para confirmar esta reserva.",
@@ -17531,6 +17806,15 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       return;
     }
 
+    guardCategoryConfirmation(ride, () =>
+      performAcceptScheduledReservation(ride),
+    );
+    return;
+  }
+
+  async function performAcceptScheduledReservation(
+    ride: DriverScheduledReservationOffer,
+  ): Promise<void> {
     setAcceptingId(String(ride.id));
     setError(null);
 
@@ -18514,11 +18798,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
               {rideVehicleEmoji} {rideVehicleShortLabel}
             </div>
             {(() => {
-              const driverCat = getDriverRegisteredVehicleCategory(
+              const driverCat = getApprovedDriverCategoryForComparison(
+                session?.accessToken,
                 session?.user,
               );
-              const matches =
-                toCanonicalVehicleCategory(rideVehicleCategory) === driverCat;
+              if (!driverCat) return null;
+              const matches = rideVehicleCategory === driverCat;
               return (
                 <div
                   style={{
@@ -19825,15 +20110,52 @@ La reserva fue retirada. No continúes hacia la recogida.`,
       )}
 
       <IonAlert
+        isOpen={categoryGateLoading}
+        header="Verificando categoría"
+        message={APPROVED_VEHICLE_CATEGORY_LOADING_MESSAGE}
+        backdropDismiss={false}
+      />
+
+      <IonAlert
+        isOpen={Boolean(categoryVerifyErrorRide)}
+        header="Verificación de categoría"
+        message={APPROVED_VEHICLE_CATEGORY_ERROR_MESSAGE}
+        onDidDismiss={() => {
+          setCategoryVerifyErrorRide(null);
+          categoryConfirmActionRef.current = null;
+          releaseDriverCategoryGateLock(
+            categoryGateKeyRef,
+            categoryGateLocksRef,
+          );
+        }}
+        buttons={[
+          {
+            text: "Cancelar",
+            role: "cancel",
+          },
+          {
+            text: "Aceptar viaje",
+            role: "confirm",
+            handler: () => {
+              const action = categoryConfirmActionRef.current;
+              if (!action) return false;
+              categoryConfirmActionRef.current = null;
+              setCategoryVerifyErrorRide(null);
+              void action();
+              return true;
+            },
+          },
+        ]}
+      />
+
+      <IonAlert
         isOpen={Boolean(categoryConfirmRide)}
         header={
           categoryConfirmRide
             ? `⚠️ ${
                 vehicleCategoryMismatchCopy(
-                  toCanonicalVehicleCategory(
-                    getRideVehicleCategory(
-                      categoryConfirmRide as RideWithFarePayload,
-                    ),
+                  getRideVehicleCategory(
+                    categoryConfirmRide as RideWithFarePayload,
                   ),
                 ).title
               }`
@@ -19842,34 +20164,38 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         message={
           categoryConfirmRide
             ? (() => {
-                const requested = toCanonicalVehicleCategory(
-                  getRideVehicleCategory(
-                    categoryConfirmRide as RideWithFarePayload,
-                  ),
+                const requested = getRideVehicleCategory(
+                  categoryConfirmRide as RideWithFarePayload,
                 );
-                const driverCat = getDriverRegisteredVehicleCategory(
+                const driverCat = getApprovedDriverCategoryForComparison(
+                  session?.accessToken,
                   session?.user,
                 );
                 const copy = vehicleCategoryMismatchCopy(requested);
                 return (
                   `Categoría del viaje: ${vehicleCategoryDisplay(requested)}\n` +
-                  `Tu vehículo: ${vehicleCategoryDisplay(driverCat)}\n\n` +
+                  `Tu vehículo: ${driverCat ? vehicleCategoryDisplay(driverCat) : getApprovedVehicleCategoryForDisplay(session?.accessToken, session?.user)}\n\n` +
                   copy.body
                 );
               })()
             : ""
         }
         cssClass="rapago-danger-alert"
-        onDidDismiss={() => setCategoryConfirmRide(null)}
+        onDidDismiss={() => {
+          setCategoryConfirmRide(null);
+          categoryConfirmActionRef.current = null;
+          releaseDriverCategoryGateLock(
+            categoryGateKeyRef,
+            categoryGateLocksRef,
+          );
+        }}
         buttons={[
           {
             text:
               categoryConfirmRide
                 ? vehicleCategoryMismatchCopy(
-                    toCanonicalVehicleCategory(
-                      getRideVehicleCategory(
-                        categoryConfirmRide as RideWithFarePayload,
-                      ),
+                    getRideVehicleCategory(
+                      categoryConfirmRide as RideWithFarePayload,
                     ),
                   ).cancelLabel
                 : "Volver",
@@ -19879,18 +20205,18 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             text:
               categoryConfirmRide
                 ? vehicleCategoryMismatchCopy(
-                    toCanonicalVehicleCategory(
-                      getRideVehicleCategory(
-                        categoryConfirmRide as RideWithFarePayload,
-                      ),
+                    getRideVehicleCategory(
+                      categoryConfirmRide as RideWithFarePayload,
                     ),
                   ).confirmLabel
                 : "Confirmar y aceptar",
             role: "confirm",
             handler: () => {
-              const rideId = categoryConfirmRide?.id;
-              if (!rideId || acceptingId === rideId) return false;
-              void performAcceptRide(rideId);
+              const action = categoryConfirmActionRef.current;
+              if (!action) return false;
+              categoryConfirmActionRef.current = null;
+              setCategoryConfirmRide(null);
+              void action();
               return true;
             },
           },
@@ -22561,6 +22887,8 @@ export function DriverProfilePage(): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [approvedVehicleCategoryState, setApprovedVehicleCategoryState] =
+    useState<ApprovedVehicleCategoryState>({ status: "idle" });
   const [driverRatingSummary, setDriverRatingSummary] =
     useState<DriverRatingSummary>(() =>
       readDriverRatingSummary(session?.user, phone),
@@ -22603,6 +22931,12 @@ export function DriverProfilePage(): JSX.Element {
       const profile = await driverProfileService.getMyProfile(
         session.accessToken,
       );
+      const approvedCategoryState = rememberApprovedVehicleCategoryCache(
+        session.accessToken,
+        session.user,
+        profile?.vehicleCategory,
+      );
+      setApprovedVehicleCategoryState(approvedCategoryState);
       hydrateApprovedDriverProfileLocally(profile, session.user);
       const autoPhone = getAutoDriverPhone(session.user, profile?.phone);
 
@@ -23903,6 +24237,23 @@ export function DriverProfilePage(): JSX.Element {
                   {driverVehicles.length !== 1 ? "s" : ""} registrado
                   {driverVehicles.length !== 1 ? "s" : ""}
                 </span>
+
+                <div className="rapago-driver-card__note" style={{ marginTop: 12 }}>
+                  <strong>Categoría aprobada:</strong>{" "}
+                  {approvedVehicleCategoryState.status === "ready"
+                    ? getApprovedVehicleCategoryDisplay(
+                        approvedVehicleCategoryState,
+                      )
+                    : loading
+                      ? "Verificando..."
+                      : getApprovedVehicleCategoryDisplay(
+                          approvedVehicleCategoryState,
+                        )}
+                  <p style={{ margin: "8px 0 0", fontSize: ".88rem" }}>
+                    Para cambiar esta categoría debes solicitar una nueva
+                    revisión.
+                  </p>
+                </div>
 
                 {driverVehicles.length > 0 && (
                   <div className="rapago-driver-vehicles">

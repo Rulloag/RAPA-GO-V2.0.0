@@ -87,7 +87,6 @@ export interface UpsertDriverProfilePayload {
   vehicleYear?:     number;
   vehiclePlate?:    string;
   vehicleColor?:    string;
-  vehicleCategory?: "standard" | "xl" | "extra_luggage" | "luggage";
   profilePhotoUrl?: string;
   vehiclePhotoUrl?: string;
   bio?:             string;

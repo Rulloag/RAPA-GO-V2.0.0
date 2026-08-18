@@ -51,6 +51,9 @@ import {
   applicationsService,
   type ApplicationData,
 } from "../../../features/applications/applications.service.js";
+import {
+  getApplicationDeclaredVehicleCategoryDisplay,
+} from "../../../features/drivers/driverApprovedVehicleCategory.js";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pendiente",
@@ -1979,6 +1982,13 @@ function AdminApplicationDetailModal({
                       <strong>Vence licencia:</strong> {item.licenseExpiry}
                     </div>
                   )}
+
+                  <div>
+                    <strong>Categoría declarada:</strong>{" "}
+                    {getApplicationDeclaredVehicleCategoryDisplay(
+                      item as unknown as Record<string, unknown>,
+                    )}
+                  </div>
                 </>
               )}
 
