@@ -4441,6 +4441,54 @@ async function reverseGeocodeExact(point: Coords): Promise<PickerResult> {
   });
 }
 
+async function resolveOriginPickerBootstrapPoint(
+  initialPoint?: Coords | null,
+): Promise<{
+  point: Coords;
+  source: "initial" | "cache" | "gps" | "fallback";
+}> {
+  if (initialPoint && isPointInsideRapaNuiServiceArea(initialPoint)) {
+    return { point: initialPoint, source: "initial" };
+  }
+
+  const cached = preSearchLocationService.read();
+  if (cached && isPointInsideRapaNuiServiceArea(cached)) {
+    return {
+      point: { lat: cached.lat, lng: cached.lng, placeId: null },
+      source: "cache",
+    };
+  }
+
+  if (typeof navigator !== "undefined" && navigator.geolocation) {
+    try {
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 4500,
+            maximumAge: 60_000,
+          });
+        },
+      );
+
+      const gpsPoint = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        placeId: null,
+      };
+
+      if (isPointInsideRapaNuiServiceArea(gpsPoint)) {
+        preSearchLocationService.remember(position);
+        return { point: gpsPoint, source: "gps" };
+      }
+    } catch {
+      /* respaldo al centro de la isla */
+    }
+  }
+
+  return { point: RAPA_NUI_CENTER, source: "fallback" };
+}
+
 async function resolveMovedOriginPoint(point: {
   lat: number;
   lng: number;
@@ -6626,6 +6674,98 @@ function MapPointPicker({
     drawAccessiblePickupPreview(candidate, pickupCandidates);
   }
 
+  function getCurrentUserReferencePoint(fallback: Coords): Coords {
+    const bluePosition = realPointMarkerRef.current?.getPosition();
+    if (bluePosition) {
+      return {
+        lat: bluePosition.lat(),
+        lng: bluePosition.lng(),
+        placeId: null,
+      };
+    }
+
+    if (
+      selected?.originalLat != null &&
+      selected.originalLng != null &&
+      Number.isFinite(selected.originalLat) &&
+      Number.isFinite(selected.originalLng)
+    ) {
+      return {
+        lat: selected.originalLat,
+        lng: selected.originalLng,
+        placeId: null,
+      };
+    }
+
+    return fallback;
+  }
+
+  async function resolvePickupFromGreenDrag(draggedPoint: Coords): Promise<void> {
+    if (!isPointInsideRapaNuiServiceArea(draggedPoint)) {
+      setScopeMessage(
+        "Ese punto está fuera de Rapa Nui. Arrastra el punto verde dentro de la isla.",
+      );
+      if (selected) {
+        drawAccessiblePickupPreview(selected, pickupCandidates);
+      }
+      return;
+    }
+
+    const sequence = ++requestSequenceRef.current;
+    setScopeMessage(null);
+    setLoadingAddress(true);
+
+    try {
+      const userPoint = getCurrentUserReferencePoint(draggedPoint);
+      const snapped = await reverseGeocode({
+        lat: draggedPoint.lat,
+        lng: draggedPoint.lng,
+        placeId: null,
+      });
+
+      if (sequence !== requestSequenceRef.current) return;
+
+      const walkMeters = Math.round(
+        distanceMeters(userPoint, {
+          lat: snapped.lat,
+          lng: snapped.lng,
+        }),
+      );
+
+      const next: PickerResult = {
+        ...snapped,
+        originalLat: userPoint.lat,
+        originalLng: userPoint.lng,
+        walkMeters,
+        walkMinutes: Math.max(1, Math.ceil(walkMeters / 75)),
+        isAccessiblePickup: Boolean(snapped.isAccessiblePickup),
+        recommendationKind: snapped.isAccessiblePickup ? "road" : "exact",
+        isRecommended: true,
+        candidateId: `manual:${snapped.lat.toFixed(5)}:${snapped.lng.toFixed(5)}`,
+        recommendationReason: snapped.isAccessiblePickup
+          ? "Recogida en calle accesible elegida manualmente."
+          : "Punto elegido manualmente. Arrastra hacia una calle accesible.",
+      };
+
+      setSelected(next);
+      drawAccessiblePickupPreview(next, pickupCandidates);
+
+      if (!snapped.isAccessiblePickup) {
+        setScopeMessage(
+          "No encontramos una calle cerca. Arrastra el punto verde hacia una vía accesible.",
+        );
+      } else if (walkMeters > 8) {
+        setScopeMessage(
+          `Recogida en calle accesible. Camina aprox. ${walkMeters} m desde tu ubicación.`,
+        );
+      }
+    } finally {
+      if (sequence === requestSequenceRef.current) {
+        setLoadingAddress(false);
+      }
+    }
+  }
+
   function drawAccessiblePickupPreview(
     point: PickerResult | null,
     candidates: PickerResult[] = pickupCandidates,
@@ -6731,7 +6871,7 @@ function MapPointPicker({
     realPointMarkerRef.current = new google.maps.Marker({
       map,
       position: realPoint,
-      title: "Mantén presionado y mueve tu ubicación",
+      title: "Tu ubicación. Arrastra solo si el GPS no es correcto.",
       draggable: true,
       clickable: true,
       optimized: false,
@@ -6745,8 +6885,7 @@ function MapPointPicker({
         strokeWeight: 4,
         anchor: getBlueMarkerVisualAnchor(pointsOverlap),
       },
-      // Debe quedar por encima del verde para recibir siempre el gesto.
-      zIndex: 90,
+      zIndex: 80,
     });
 
     realPointMarkerRef.current.addListener("dragstart", () => {
@@ -6833,11 +6972,13 @@ function MapPointPicker({
     pickupPointMarkerRef.current = new google.maps.Marker({
       map,
       position: pickupPoint,
-      clickable: false,
+      draggable: true,
+      clickable: true,
       optimized: false,
+      cursor: "grab",
       title: point.referenceName
-        ? `Recogida en ${point.referenceName}`
-        : "Punto accesible recomendado",
+        ? `Recogida en ${point.referenceName}. Arrastra a la calle accesible.`
+        : "Arrastra a la calle donde te recoge el vehículo",
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 18,
@@ -6852,7 +6993,82 @@ function MapPointPicker({
         fontSize: "14px",
         fontWeight: "900",
       },
-      zIndex: 55,
+      zIndex: 95,
+    });
+
+    pickupPointMarkerRef.current.addListener("dragstart", () => {
+      map.setOptions({ draggableCursor: "grabbing" });
+    });
+
+    pickupPointMarkerRef.current.addListener("drag", () => {
+      const position = pickupPointMarkerRef.current?.getPosition();
+      if (!position) return;
+
+      const movedPickup = {
+        lat: position.lat(),
+        lng: position.lng(),
+      };
+
+      if (walkingDotsRef.current && walkingDotsShadowRef.current) {
+        walkingDotsRef.current.setPath([realPoint, movedPickup]);
+        walkingDotsShadowRef.current.setPath([realPoint, movedPickup]);
+      } else if ((point.walkMeters ?? 0) <= 8) {
+        walkingDotsShadowRef.current = new google.maps.Polyline({
+          map,
+          path: [realPoint, movedPickup],
+          strokeOpacity: 0,
+          zIndex: 20,
+          icons: [
+            {
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                fillColor: "#111111",
+                fillOpacity: 0.72,
+                strokeColor: "#111111",
+                strokeOpacity: 0.72,
+                scale: 6,
+              },
+              offset: "0",
+              repeat: "18px",
+            },
+          ],
+        });
+
+        walkingDotsRef.current = new google.maps.Polyline({
+          map,
+          path: [realPoint, movedPickup],
+          strokeOpacity: 0,
+          zIndex: 21,
+          icons: [
+            {
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                fillColor: "#ffffff",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeOpacity: 1,
+                scale: 3.8,
+              },
+              offset: "0",
+              repeat: "18px",
+            },
+          ],
+        });
+      }
+    });
+
+    pickupPointMarkerRef.current.addListener("dragend", () => {
+      map.setOptions({ draggableCursor: undefined });
+
+      const position = pickupPointMarkerRef.current?.getPosition();
+      if (!position) return;
+
+      lastResolvedCenterRef.current = null;
+      void resolvePickupFromGreenDrag({
+        lat: position.lat(),
+        lng: position.lng(),
+        placeId: null,
+      });
     });
 
     if ((point.walkMeters ?? 0) > 8) {
@@ -7044,13 +7260,25 @@ function MapPointPicker({
         const initialPointIsInside = Boolean(
           initialPoint && isPointInsideRapaNuiServiceArea(initialPoint),
         );
-        const center = initialPointIsInside
-          ? (initialPoint as Coords)
-          : RAPA_NUI_CENTER;
+        const originBootstrap =
+          mode === "origin"
+            ? await resolveOriginPickerBootstrapPoint(initialPoint)
+            : null;
+        const center =
+          originBootstrap?.point ??
+          (initialPointIsInside
+            ? (initialPoint as Coords)
+            : RAPA_NUI_CENTER);
 
-        if (initialPoint && !initialPointIsInside) {
+        if (initialPoint && !initialPointIsInside && mode !== "origin") {
           setScopeMessage(
             "Tu GPS está fuera de Rapa Nui. El mapa se mantuvo dentro de la isla para que elijas el punto correcto.",
+          );
+        }
+
+        if (initialPoint && !initialPointIsInside && mode === "origin") {
+          setScopeMessage(
+            "Tu GPS está fuera de Rapa Nui. Elige manualmente un punto dentro de la isla.",
           );
         }
 
@@ -7135,7 +7363,7 @@ function MapPointPicker({
           setReady(true);
         }, 120);
 
-        await (initialPointIsInside
+        await (mode === "origin" || initialPointIsInside
           ? resolveMapPoint(
               {
                 lat: center.lat,
@@ -7145,15 +7373,14 @@ function MapPointPicker({
             )
           : Promise.resolve());
 
-        if (initialPoint && !initialPointIsInside) {
+        if (mode === "origin" && originBootstrap?.source === "fallback") {
           setScopeMessage(
-            "Tu GPS está fuera de Rapa Nui. Elige manualmente un punto dentro de la isla.",
+            "Arrastra el punto verde ✓ a la calle donde te recoge el vehículo.",
           );
         }
 
-        // El mapa se puede explorar libremente, pero el punto del pasajero
-        // solo cambia al arrastrar el círculo azul, usar GPS o elegir una
-        // búsqueda. Así el usuario no pierde su ubicación por mover el mapa.
+        // El mapa se puede explorar libremente. El azul marca tu ubicación y
+        // el verde ✓ la recogida vehicular; ambos se mueven solo al arrastrarlos.
       })
       .catch(() => {
         setReady(true);
@@ -7211,7 +7438,7 @@ function MapPointPicker({
           setPickerSuggestions(suggestions);
           setScopeMessage(
             suggestions.length === 0
-              ? "No encontramos ese lugar dentro de Rapa Nui. Prueba con otro nombre o mueve el punto azul."
+              ? "No encontramos ese lugar dentro de Rapa Nui. Prueba con otro nombre o arrastra el punto verde."
               : null,
           );
         })
@@ -7674,6 +7901,28 @@ function MapPointPicker({
                     ))}
                   </div>
                 )}
+
+                {mode === "origin" &&
+                  pickerSuggestions.length === 0 &&
+                  selected &&
+                  (selected.walkMeters == null || selected.walkMeters <= 8) && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        background: "rgba(17,17,17,.94)",
+                        color: "#ffffff",
+                        border: "1px solid rgba(34,197,94,.65)",
+                        borderRadius: "16px",
+                        padding: "8px 14px",
+                        textAlign: "center",
+                        fontWeight: 800,
+                        fontSize: ".72rem",
+                        boxShadow: "0 5px 14px rgba(0,0,0,.35)",
+                        pointerEvents: "none",
+                      }}>
+                      Arrastra el punto verde ✓ a la calle accesible
+                    </div>
+                  )}
 
                 {mode === "origin" &&
                   pickerSuggestions.length === 0 &&
