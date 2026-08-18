@@ -407,12 +407,10 @@ async function provisionApprovedDriver(
     vehicleYear: application.vehicleYear,
     vehiclePlate: application.vehiclePlate,
     vehicleColor: application.vehicleColor,
-<<<<<<< HEAD
-=======
     vehicleCategory: resolveProvisionDriverVehicleCategory(
-      application.vehicleCategory,
+      (application as Application & { vehicleCategory?: string | null })
+        .vehicleCategory,
     ),
->>>>>>> d454351 (feat(vehicle-categories): unify requested and assigned categories)
     licenseNumber: application.licenseNumber,
     licenseExpiry: application.licenseExpiry,
     profilePhotoUrl: application.profilePhotoUrl,
