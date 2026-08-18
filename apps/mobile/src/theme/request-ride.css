@@ -2652,8 +2652,13 @@ ion-tabs:has(.rapago-request-page:not(.ion-page-hidden))
   background-size: 2px 8px;
 }
 
+.rapago-request-page .rq-field {
+  cursor: pointer;
+}
+
 .rapago-request-page .rq-field__input {
   min-width: 0;
+  cursor: pointer;
   --background: transparent;
   --color: var(--rq-text);
   --placeholder-color: var(--rq-muted);

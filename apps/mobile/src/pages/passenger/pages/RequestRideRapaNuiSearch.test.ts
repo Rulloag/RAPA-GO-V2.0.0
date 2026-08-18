@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getPlaceDetailsExact,
   getRapaNuiLocalAutocompletePredictions,
   isGoogleSuggestionMainlandChile,
   mergeRapaNuiAutocompletePredictions,
@@ -25,6 +26,16 @@ describe("búsquedas clave en Rapa Nui", () => {
     expect(
       getRapaNuiLocalAutocompletePredictions("comisaria")[0]?.mainText,
     ).toBe("Comisaría Rapa Nui");
+  });
+
+  it("Comisaría Rapa Nui cae en Manutara, no cerca del hospital", async () => {
+    const place = await getPlaceDetailsExact(
+      "rapago-local:comisaria-rapa-nui",
+    );
+
+    expect(place?.lat).toBeCloseTo(-27.16073, 3);
+    expect(place?.lng).toBeCloseTo(-109.43719, 3);
+    expect(place?.address).toContain("Manutara");
   });
 
   it('"hospital" prioriza Hospital de Hanga Roa', () => {
