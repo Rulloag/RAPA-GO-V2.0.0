@@ -49,4 +49,13 @@ describe("RAPA_NUI_LOCAL_PLACES", () => {
       "Huri",
     );
   });
+
+  it("encuentra calles principales por nombre o alias", () => {
+    expect(findLocalRapaNuiPlaceByName("Atamu Tekena")?.name).toBe(
+      "Atamu Tekena",
+    );
+    expect(findLocalRapaNuiPlaceByName("atamu")?.name).toBe("Atamu Tekena");
+    expect(findLocalRapaNuiPlaceByName("Manutara")?.name).toBe("Manutara");
+    expect(findLocalRapaNuiPlaceByName("petero")?.name).toBe("Petero Atamu");
+  });
 });

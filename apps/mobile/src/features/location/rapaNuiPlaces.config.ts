@@ -246,7 +246,136 @@ export const RAPA_NUI_LOCAL_PLACES: readonly RapaNuiLocalPlace[] = [
     aliases: ["silvio", "casa silvio"],
     placeTypes: ["point_of_interest", "establishment"],
   },
+  /* ── Calles principales de Hanga Roa (coords OSM, centro de vía) ── */
+  {
+    id: "calle-atamu-tekena",
+    name: "Atamu Tekena",
+    subtitle: "Calle principal",
+    address: "Atamu Tekena, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.14974,
+    lng: -109.42915,
+    aliases: ["atamu", "tekena", "atamu tekena", "calle atamu"],
+    placeTypes: ["route", "geocode"],
+  },
+  {
+    id: "calle-petero-atamu",
+    name: "Petero Atamu",
+    subtitle: "Calle principal",
+    address: "Petero Atamu, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.14655,
+    lng: -109.42489,
+    aliases: ["petero", "petero atamu", "calle petero"],
+    placeTypes: ["route", "geocode"],
+  },
+  {
+    id: "calle-manutara",
+    name: "Manutara",
+    subtitle: "Calle principal",
+    address: "Manutara, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.16193,
+    lng: -109.43835,
+    aliases: ["manutara", "calle manutara"],
+    placeTypes: ["route", "geocode"],
+  },
+  {
+    id: "calle-mataveri",
+    name: "Mataveri",
+    subtitle: "Calle principal",
+    address: "Mataveri, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.16198,
+    lng: -109.43715,
+    aliases: ["calle mataveri", "mataveri calle"],
+    placeTypes: ["route", "geocode"],
+  },
+  {
+    id: "calle-te-pito-o-te-henua",
+    name: "Te Pito o Te Henua",
+    subtitle: "Calle principal",
+    address: "Te Pito o Te Henua, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.14803,
+    lng: -109.42745,
+    aliases: ["te pito", "te henua", "pito henua"],
+    placeTypes: ["route", "geocode"],
+  },
+  {
+    id: "calle-policarpo-toro",
+    name: "Policarpo Toro",
+    subtitle: "Calle principal",
+    address: "Policarpo Toro, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.14982,
+    lng: -109.43483,
+    aliases: ["policarpo", "policarpo toro", "toro"],
+    placeTypes: ["route", "geocode"],
+  },
+  {
+    id: "calle-hotu-matua",
+    name: "Hotu Matu'a",
+    subtitle: "Calle principal",
+    address: "Hotu Matu'a, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.15814,
+    lng: -109.42513,
+    aliases: ["hotu", "hotu matua", "matua"],
+    placeTypes: ["route", "geocode"],
+  },
+  {
+    id: "calle-tuu-maheke",
+    name: "Tu'u Maheke",
+    subtitle: "Calle principal",
+    address: "Tu'u Maheke, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.14916,
+    lng: -109.43011,
+    aliases: ["tuu maheke", "tu'u maheke", "maheke"],
+    placeTypes: ["route", "geocode"],
+  },
 ] as const;
+
+/** Atajos visibles en el selector de mapa (recogida y destino). */
+export const RAPA_NUI_MAIN_STREET_SUGGESTIONS: readonly {
+  name: string;
+  subtitle: string;
+  search: string;
+}[] = [
+  {
+    name: "Atamu Tekena",
+    subtitle: "Calle principal",
+    search: "Atamu Tekena Hanga Roa Rapa Nui",
+  },
+  {
+    name: "Petero Atamu",
+    subtitle: "Calle principal",
+    search: "Petero Atamu Hanga Roa Rapa Nui",
+  },
+  {
+    name: "Manutara",
+    subtitle: "Calle principal",
+    search: "Manutara Hanga Roa Rapa Nui",
+  },
+  {
+    name: "Mataveri",
+    subtitle: "Calle principal",
+    search: "Mataveri Hanga Roa Rapa Nui",
+  },
+  {
+    name: "Te Pito o Te Henua",
+    subtitle: "Calle principal",
+    search: "Te Pito o Te Henua Hanga Roa Rapa Nui",
+  },
+  {
+    name: "Policarpo Toro",
+    subtitle: "Calle principal",
+    search: "Policarpo Toro Hanga Roa Rapa Nui",
+  },
+  {
+    name: "Hotu Matu'a",
+    subtitle: "Calle principal",
+    search: "Hotu Matu'a Hanga Roa Rapa Nui",
+  },
+  {
+    name: "Tu'u Maheke",
+    subtitle: "Calle principal",
+    search: "Tu'u Maheke Hanga Roa Rapa Nui",
+  },
+];
 
 function normalizePlaceKey(value: unknown): string {
   return String(value ?? "")
@@ -255,6 +384,10 @@ function normalizePlaceKey(value: unknown): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+export function isRapaNuiMainStreet(place: RapaNuiLocalPlace): boolean {
+  return place.placeTypes.includes("route");
 }
 
 export function findLocalRapaNuiPlaceById(

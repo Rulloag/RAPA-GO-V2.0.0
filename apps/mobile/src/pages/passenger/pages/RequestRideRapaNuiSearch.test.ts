@@ -61,6 +61,12 @@ describe("búsquedas clave en Rapa Nui", () => {
       "Ahu Tahai",
     );
   });
+
+  it('"atamu" prioriza la calle Atamu Tekena', () => {
+    expect(getRapaNuiLocalAutocompletePredictions("atamu")[0]?.mainText).toBe(
+      "Atamu Tekena",
+    );
+  });
 });
 
 describe("isGoogleSuggestionMainlandChile", () => {

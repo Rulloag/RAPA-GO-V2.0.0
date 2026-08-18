@@ -40,6 +40,7 @@ import {
   alertCircleOutline,
   walkOutline,
   walletOutline,
+  navigateOutline,
 } from "ionicons/icons";
 import {
   useCallback,
@@ -87,6 +88,8 @@ import {
   RAPA_NUI_LOCAL_PLACES,
   RAPA_NUI_LOCAL_PLACE_PREFIX,
   RAPA_NUI_MAP_CENTER,
+  RAPA_NUI_MAIN_STREET_SUGGESTIONS,
+  isRapaNuiMainStreet,
   type RapaNuiLocalPlace,
 } from "../../../features/location/rapaNuiPlaces.config.js";
 import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
@@ -2398,7 +2401,9 @@ export function getRapaNuiLocalAutocompleteMatches(
         placeId: `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${place.id}`,
         description: `${place.name}, ${place.address}`,
         mainText: place.name,
-        secondaryText: `${place.subtitle} · Sugerencia RAPA GO`,
+        secondaryText: isRapaNuiMainStreet(place)
+          ? `${place.subtitle} · Hanga Roa, Rapa Nui`
+          : `${place.subtitle} · Sugerencia RAPA GO`,
       },
     }));
 }
@@ -7632,8 +7637,8 @@ function MapPointPicker({
                     value={searchText}
                     placeholder={
                       mode === "origin"
-                        ? "Busca origen: hospital, aeropuerto, hotel..."
-                        : "Busca destino: hospital, playa, mercado..."
+                        ? "Busca calle, hospital, comisaría..."
+                        : "Busca calle, playa, mercado..."
                     }
                     onIonFocus={closeSheetForSearch}
                     onIonInput={(event) => {
@@ -7801,6 +7806,46 @@ function MapPointPicker({
               </div>
 
               <div className="rp-request-map-sheet-scroll">
+                <section
+                  className="request-map-frequent request-map-frequent--streets"
+                  aria-label="Calles principales de Hanga Roa">
+                  <div className="request-map-frequent__heading">
+                    <div>
+                      <strong>Calles principales</strong>
+                      <span>
+                        Toca una calle o busca por nombre en el mapa.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="request-map-frequent__list">
+                    {RAPA_NUI_MAIN_STREET_SUGGESTIONS.map((street) => {
+                      const active =
+                        normalizePlaceStreetCompare(selected?.text ?? "") ===
+                        normalizePlaceStreetCompare(street.name);
+
+                      return (
+                        <button
+                          key={street.name}
+                          type="button"
+                          className={`request-map-frequent__item request-map-frequent__item--street ${
+                            active ? "request-map-frequent__item--active" : ""
+                          }`}
+                          onClick={() => void pickFrequentDestination(street)}
+                          disabled={loadingAddress}
+                          aria-pressed={active}>
+                          <IonIcon icon={navigateOutline} />
+
+                          <span>
+                            <strong>{street.name}</strong>
+                            <small>{street.subtitle}</small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
                 {mode === "destination" && (
                   <section
                     className="request-map-frequent"
