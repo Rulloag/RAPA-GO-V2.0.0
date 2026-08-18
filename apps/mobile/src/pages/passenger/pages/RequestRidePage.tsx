@@ -81,6 +81,14 @@ import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
 import { recentLocationHistoryService } from "../../../features/location/recentLocationHistory.service.js";
+import {
+  findLocalRapaNuiPlaceByName,
+  findLocalRapaNuiPlaceByPlaceId,
+  RAPA_NUI_LOCAL_PLACES,
+  RAPA_NUI_LOCAL_PLACE_PREFIX,
+  RAPA_NUI_MAP_CENTER,
+  type RapaNuiLocalPlace,
+} from "../../../features/location/rapaNuiPlaces.config.js";
 import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
 import "../../../theme/request-ride.css";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
@@ -1592,10 +1600,7 @@ declare global {
   }
 }
 
-const RAPA_NUI_CENTER = {
-  lat: -27.1505,
-  lng: -109.4325,
-};
+const RAPA_NUI_CENTER = RAPA_NUI_MAP_CENTER;
 
 /**
  * Área operativa exclusiva de RAPA GO.
@@ -1868,18 +1873,9 @@ const TOURIST_DESTINATION_SUGGESTIONS = [
   },
 ];
 
-type RapaNuiLocalAutocompletePlace = {
-  id: string;
-  name: string;
-  subtitle: string;
-  address: string;
-  lat: number;
-  lng: number;
-  aliases: readonly string[];
-  placeTypes: readonly string[];
-};
+type RapaNuiLocalAutocompletePlace = RapaNuiLocalPlace;
 
-const RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX = "rapago-local:";
+const RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX = RAPA_NUI_LOCAL_PLACE_PREFIX;
 
 /* ── Nombres conocidos que había que escribir enteros ───────────────────────
 
@@ -1977,6 +1973,14 @@ const RAPA_NUI_PLACE_HINTS: readonly RapaNuiPlaceHint[] = [
     query: "Ahu Tahai",
     keywords: ["tahai", "ahu tahai", "ahu"],
   },
+  {
+    query: "Cárcel Rapa Nui (Artesanías)",
+    keywords: ["carcel", "cárcel", "artesanias carcel", "artesanías"],
+  },
+  {
+    query: "Ahu Huri A Urenga",
+    keywords: ["huri", "huri a urenga", "ahu huri", "4 manos"],
+  },
 ];
 
 /** Nombre completo que pedirle a Google, o null si nada encaja con confianza.
@@ -2047,212 +2051,7 @@ export function matchRapaNuiPlaceHint(input: string): string | null {
 }
 
 const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace[] =
-  [
-    {
-      id: "hospital-hanga-roa",
-      name: "Hospital de Hanga Roa",
-      subtitle: "Salud y urgencias",
-      address: "Hospital Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1502,
-      lng: -109.4216,
-      aliases: [
-        "hospital",
-        "hosp",
-        "urgencia",
-        "urgencias",
-        "salud",
-        "hanga roa hospital",
-      ],
-      placeTypes: ["hospital", "health", "point_of_interest", "establishment"],
-    },
-    {
-      id: "aeropuerto-mataveri",
-      name: "Aeropuerto Internacional Mataveri",
-      subtitle: "Terminal de pasajeros",
-      address:
-        "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.16395,
-      lng: -109.42465,
-      /* La DGAC (Dirección General de Aeronáutica Civil) no tiene oficina
-         propia en otra dirección: administra el aeropuerto y opera desde ahí
-         mismo, en Calle Hotu Matúa s/n. Antes "dgac" solo reescribía la
-         búsqueda hacia Google con el nombre oficial completo, y Google no lo
-         reconoce como establecimiento, así que la lista quedaba vacía. Con el
-         alias aquí, responde al instante y con las coordenadas ya
-         verificadas del aeropuerto, sin depender de la red. */
-      aliases: [
-        "aero",
-        "aeropuerto",
-        "airport",
-        "mataveri",
-        "terminal",
-        "dgac",
-        "aeronautica",
-        "aeronautica civil",
-      ],
-      placeTypes: ["airport", "point_of_interest", "establishment"],
-    },
-    {
-      id: "ahu-tahai",
-      name: "Ahu Tahai",
-      subtitle: "Cultura y atardecer",
-      address: "Ahu Tahai, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1398,
-      lng: -109.4298,
-      aliases: ["tah", "tahai", "ahu tahai", "atardecer"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "playa-pea",
-      name: "Playa Pea",
-      subtitle: "Playa y zona céntrica",
-      address: "Playa Pea, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1482,
-      lng: -109.4336,
-      aliases: ["pea", "playa pea", "playa", "centro"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "playa-poko-poko",
-      name: "Playa Poko Poko",
-      subtitle: "Costa y paseo familiar",
-      address: "Playa Poko Poko, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.149,
-      lng: -109.4319,
-      aliases: ["poko", "poko poko", "playa poko", "playa poko poko"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "mercado-artesanal",
-      name: "Mercado Artesanal Rapa Nui",
-      subtitle: "Artesanía local",
-      address: "Mercado Artesanal, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1508,
-      lng: -109.4289,
-      aliases: [
-        "mercado",
-        "artesania",
-        "artesanía",
-        "mercado artesanal",
-        "souvenir",
-      ],
-      placeTypes: ["market", "store", "point_of_interest", "establishment"],
-    },
-    {
-      id: "feria-hare-umanga",
-      name: "Feria Artesanal Hare Umanga",
-      subtitle: "Feria y recuerdos",
-      address: "Feria Artesanal Hare Umanga, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1503,
-      lng: -109.4277,
-      aliases: ["feria", "hare", "hare umanga", "feria artesanal"],
-      placeTypes: ["market", "store", "point_of_interest", "establishment"],
-    },
-    {
-      id: "caleta-hanga-roa",
-      name: "Caleta Hanga Roa",
-      subtitle: "Puerto y restaurantes",
-      address: "Caleta Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1478,
-      lng: -109.4356,
-      aliases: ["caleta", "puerto", "caleta hanga roa", "restaurantes"],
-      placeTypes: ["point_of_interest", "establishment"],
-    },
-    {
-      id: "comisaria-rapa-nui",
-      name: "Comisaría Rapa Nui",
-      subtitle: "Carabineros y seguridad",
-      address: "Manutara, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.16073,
-      lng: -109.43719,
-      aliases: [
-        "comisaria",
-        "comisaría",
-        "carabineros",
-        "policia",
-        "policía",
-        "seguridad",
-      ],
-      placeTypes: ["police", "point_of_interest", "establishment"],
-    },
-    {
-      id: "iglesia-santa-cruz",
-      name: "Iglesia de la Santa Cruz Rapa Nui",
-      subtitle: "Iglesia principal",
-      address: "Iglesia de la Santa Cruz, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1506,
-      lng: -109.4271,
-      aliases: ["iglesia", "santa cruz", "iglesia santa cruz", "misa"],
-      placeTypes: [
-        "church",
-        "place_of_worship",
-        "point_of_interest",
-        "establishment",
-      ],
-    },
-    {
-      id: "jardin-taukiani",
-      name: "Jardín Botánico TauKiani",
-      subtitle: "Naturaleza y visita",
-      address: "Jardín Botánico TauKiani, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1482,
-      lng: -109.4069,
-      aliases: [
-        "jardin",
-        "jardín",
-        "botanico",
-        "botánico",
-        "taukiani",
-        "jardin botanico",
-      ],
-      placeTypes: [
-        "park",
-        "tourist_attraction",
-        "point_of_interest",
-        "establishment",
-      ],
-    },
-    {
-      id: "anakena",
-      name: "Anakena",
-      subtitle: "Playa y experiencia",
-      address: "Playa Anakena, Rapa Nui, Chile",
-      lat: -27.0732,
-      lng: -109.3233,
-      aliases: ["anakena", "playa anakena"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "terevaka",
-      name: "Terevaka",
-      subtitle: "Cerro y excursión",
-      address: "Maunga Terevaka, Rapa Nui, Chile",
-      lat: -27.0917,
-      lng: -109.382,
-      aliases: ["terevaka", "tere vaka", "cerro", "maunga terevaka"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "cabanas-tahonga",
-      name: "Cabañas Tahonga",
-      subtitle: "Alojamiento",
-      address: "Cabañas Tahonga, Rapa Nui, Chile",
-      lat: -27.1647,
-      lng: -109.4218,
-      aliases: ["tahonga", "cabanas tahonga", "cabana tahonga"],
-      placeTypes: ["lodging", "point_of_interest", "establishment"],
-    },
-    {
-      id: "casa-silvio",
-      name: "Casa Silvio",
-      subtitle: "Punto de recogida",
-      address: "Casa Silvio, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1478,
-      lng: -109.4296,
-      aliases: ["silvio", "casa silvio"],
-      placeTypes: ["point_of_interest", "establishment"],
-    },
-  ] as const;
+  RAPA_NUI_LOCAL_PLACES;
 
 /* Fuente ÚNICA de lugares tocables del mapa: los mismos POIs locales que
    alimentan los buscadores de origen y destino. Identidad estable a nivel de
@@ -2436,12 +2235,7 @@ export function fuzzyAutocompleteScore(value: string, query: string): number {
 function getRapaNuiLocalAutocompletePlace(
   placeId: string,
 ): RapaNuiLocalAutocompletePlace | null {
-  if (!placeId.startsWith(RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX)) return null;
-
-  const id = placeId.slice(RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX.length);
-  return (
-    RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.find((place) => place.id === id) ?? null
-  );
+  return findLocalRapaNuiPlaceByPlaceId(placeId);
 }
 
 /* Cuánto baja una coincidencia que ocurre fuera del nombre del lugar. Está
@@ -3591,15 +3385,15 @@ const ROUND_TRIP_DESTINATION_FIXED_POINTS: Record<
   anakena: {
     text: "Anakena",
     address: "Playa Anakena, Rapa Nui, Chile",
-    lat: -27.0732,
-    lng: -109.3233,
+    lat: -27.07381,
+    lng: -109.323,
     placeId: "rapago-fixed-anakena",
   },
   terevaka: {
     text: "Terevaka",
     address: "Maunga Terevaka, Rapa Nui, Chile",
-    lat: -27.0917,
-    lng: -109.382,
+    lat: -27.086,
+    lng: -109.38039,
     placeId: "rapago-fixed-terevaka",
   },
 };
@@ -3611,8 +3405,8 @@ const RAPA_NUI_AIRPORT_DESTINATION: PickerResult = {
   // Referencia fija del Aeropuerto Internacional Mataveri (IPC/SCIP).
   // Se usa una sola coordenada canónica para Reserva para evitar que el origen
   // quede desplazado por un punto antiguo guardado localmente.
-  lat: -27.16472,
-  lng: -109.42167,
+  lat: -27.16467,
+  lng: -109.42133,
   placeId: "rapago-fixed-mataveri-airport-terminal",
   originalLat: null,
   originalLng: null,
@@ -5249,7 +5043,7 @@ export async function getPlaceDetailsExact(
           return;
         }
 
-        resolve({
+        const googleResult: PickerResult = {
           text: place.name ?? place.formatted_address ?? "Destino seleccionado",
           address: place.formatted_address ?? "Rapa Nui, Chile",
           lat: placePoint.lat,
@@ -5260,7 +5054,20 @@ export async function getPlaceDetailsExact(
           originalLng: null,
           walkMeters: 0,
           isAccessiblePickup: false,
-        });
+        };
+
+        /* Si Google devolvió un POI que ya tenemos curado en el catálogo local,
+           usamos nuestras coordenadas verificadas — Google a veces desplaza
+           lugares de Rapa Nui cientos de metros. */
+        const localMatch = findLocalRapaNuiPlaceByName(
+          place.name ?? place.formatted_address ?? "",
+        );
+        if (localMatch) {
+          resolve(localRapaNuiPlaceToPickerResult(localMatch));
+          return;
+        }
+
+        resolve(googleResult);
       },
     );
   });
@@ -7424,6 +7231,37 @@ function MapPointPicker({
   /* Un lugar de Google elegido dentro del selector, venga del buscador o de un
      icono tocado sobre el mapa: en ambos casos lo único que hay es un
      place_id, así que comparten el mismo camino. */
+  async function resolveDestinationFromExplicitPlace(
+    exact: PickerResult,
+  ): Promise<void> {
+    if (
+      !isPointInsideRapaNuiServiceArea({
+        lat: exact.lat,
+        lng: exact.lng,
+      })
+    ) {
+      setScopeMessage("Ese destino está fuera de Rapa Nui.");
+      return;
+    }
+
+    const exactCandidate: PickerResult = {
+      ...exact,
+      originalLat: exact.lat,
+      originalLng: exact.lng,
+      recommendationKind: "exact",
+      isRecommended: true,
+      walkMeters: 0,
+      walkMinutes: 0,
+      candidateId: `exact:${exact.placeId ?? `${exact.lat}:${exact.lng}`}`,
+      recommendationReason: `${exact.text} en Rapa Nui.`,
+    };
+
+    setScopeMessage(null);
+    setPickupCandidates([]);
+    setSelected(exactCandidate);
+    drawAccessiblePickupPreview(exactCandidate, []);
+  }
+
   async function resolveOriginFromExplicitPlace(
     exact: PickerResult,
   ): Promise<void> {
@@ -7486,7 +7324,7 @@ function MapPointPicker({
       if (mode === "origin") {
         await resolveOriginFromExplicitPlace(exact);
       } else {
-        await resolveMapPoint(exactPoint, true);
+        await resolveDestinationFromExplicitPlace(exact);
       }
 
       openSheetDetails();
