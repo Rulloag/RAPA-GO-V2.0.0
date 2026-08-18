@@ -9,6 +9,9 @@ Options -MultiViews
     # Si un archivo no existe, debe responder 404 real y no HTML con nombre .js.
     RewriteRule ^assets(?:/|$) - [END]
 
+    # Certificado Apple Pay: debe servirse tal cual, sin SPA fallback.
+    RewriteRule ^\.well-known/ - [END]
+
     # Servir directamente cualquier archivo o carpeta real.
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d

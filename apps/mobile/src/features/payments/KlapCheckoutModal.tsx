@@ -27,6 +27,8 @@ import {
   waitForKlapPaymentResolution,
   type PendingKlapPaymentRecord,
 } from "./klapCheckout.service.js";
+import { isKlapElementsEnabled } from "./klapElements.service.js";
+import { KlapElementsWallets } from "./KlapElementsWallets.js";
 
 type RejectionState = {
   message: string;
@@ -72,6 +74,8 @@ export function KlapCheckoutModal({
   const [checkoutOpened, setCheckoutOpened] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [rejection, setRejection] = useState<RejectionState | null>(null);
+  const [walletSpinnerVisible, setWalletSpinnerVisible] = useState(false);
+  const [walletLoadError, setWalletLoadError] = useState<string | null>(null);
   const verificationRunningRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const cancelledRef = useRef(false);
@@ -92,8 +96,12 @@ export function KlapCheckoutModal({
         : null,
     );
     setRejection(null);
+    setWalletSpinnerVisible(false);
+    setWalletLoadError(null);
     cancelledRef.current = false;
   }, [payment?.paymentId, payment?.checkoutStartedAt]);
+
+  const elementsEnabled = isKlapElementsEnabled();
 
   const verifyWithBackend = useCallback(async (): Promise<void> => {
     if (!payment || !accessToken) return;
@@ -174,6 +182,17 @@ export function KlapCheckoutModal({
       setProcessing(false);
     }
   }, [accessToken, onApproved, onRejected, payment]);
+
+  const handleWalletFinished = useCallback((): void => {
+    if (!payment) return;
+
+    markPendingKlapPaymentStarted(payment);
+    setCheckoutOpened(true);
+    setMessage(
+      "Procesando el pago con billetera digital. Verificando con Klap...",
+    );
+    void verifyWithBackend();
+  }, [payment, verifyWithBackend]);
 
   useEffect(() => {
     if (!payment || !accessToken || !checkoutStarted) return undefined;
@@ -326,14 +345,85 @@ export function KlapCheckoutModal({
         >
           <div style={panelStyle}>
             <div style={{ fontWeight: 950, fontSize: "1.05rem" }}>
-              Checkout oficial alojado por Klap
+              {elementsEnabled
+                ? "Pago seguro con Klap Elements"
+                : "Checkout oficial alojado por Klap"}
             </div>
             <div style={{ marginTop: 7, fontSize: ".86rem" }}>
-              RAPA GO abrirá el <strong>redirect_url</strong> entregado por la
-              API oficial. El número de tarjeta, vencimiento y CVV se ingresan
-              únicamente en el dominio de Klap.
+              {elementsEnabled ? (
+                <>
+                  Usa <strong>Apple Pay</strong> o <strong>Google Pay</strong>{" "}
+                  aquí mismo, o continúa con tarjeta en el checkout alojado de
+                  Klap.
+                </>
+              ) : (
+                <>
+                  RAPA GO abrirá el <strong>redirect_url</strong> entregado por
+                  la API oficial. El número de tarjeta, vencimiento y CVV se
+                  ingresan únicamente en el dominio de Klap.
+                </>
+              )}
             </div>
           </div>
+
+          {elementsEnabled && payment?.orderId && !rejection ? (
+            <div
+              style={{
+                borderRadius: 18,
+                padding: 16,
+                background: "#ffffff",
+                border: "1px solid rgba(15, 23, 42, .14)",
+                display: "grid",
+                gap: 12,
+              }}
+            >
+              <KlapElementsWallets
+                orderId={payment.orderId}
+                disabled={busy}
+                onSpinnerChange={setWalletSpinnerVisible}
+                onLoadError={setWalletLoadError}
+                onWalletSuccess={() => handleWalletFinished()}
+                onWalletError={() => {
+                  setMessage(
+                    "Apple Pay no pudo completarse. Prueba Google Pay o tarjeta.",
+                  );
+                }}
+              />
+
+              {walletSpinnerVisible ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: ".78rem",
+                    color: "#64748b",
+                    fontWeight: 700,
+                  }}
+                >
+                  <IonSpinner name="crescent" />
+                  Procesando billetera digital...
+                </div>
+              ) : null}
+
+              {walletLoadError ? (
+                <div
+                  role="alert"
+                  style={{
+                    borderRadius: 12,
+                    padding: "10px 12px",
+                    background: "#fff8df",
+                    color: "#5f3f00",
+                    border: "1px solid rgba(210,164,58,.52)",
+                    fontSize: ".78rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  {walletLoadError}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div
             style={{
@@ -419,6 +509,8 @@ export function KlapCheckoutModal({
                 <IonSpinner name="dots" />
               ) : checkoutStarted ? (
                 "VOLVER A ABRIR CHECKOUT KLAP"
+              ) : elementsEnabled ? (
+                "PAGAR CON TARJETA EN KLAP"
               ) : (
                 "IR AL CHECKOUT SEGURO DE KLAP"
               )}

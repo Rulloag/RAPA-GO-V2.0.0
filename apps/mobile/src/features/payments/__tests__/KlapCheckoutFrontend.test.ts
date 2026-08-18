@@ -5,14 +5,16 @@ import modalSource from "../KlapCheckoutModal.tsx?raw";
 import serviceSource from "../klapCheckout.service.ts?raw";
 
 describe("Klap V109 frontend — checkout alojado directo", () => {
-  it("crea la orden hosted y abre redirect_url directamente desde Solicitar viaje", () => {
+  it("crea la orden hosted y abre redirect_url directamente desde Solicitar viaje cuando Elements está apagado", () => {
     expect(requestRideSource).toContain("createKlapHostedOrder");
     expect(requestRideSource).toContain(
       "redirectUrl: order.publicCheckoutData.redirectUrl",
     );
     expect(requestRideSource).toContain("markPendingKlapPaymentStarted");
     expect(requestRideSource).toContain("openKlapHostedCheckout");
-    expect(requestRideSource).not.toContain("<KlapCheckoutModal");
+    expect(requestRideSource).toContain("isKlapElementsEnabled");
+    expect(requestRideSource).toContain("setKlapPayment(pendingKlapPayment)");
+    expect(requestRideSource).toContain("<KlapCheckoutModal");
   });
 
   it("abre únicamente el host oficial de Klap por HTTPS y en la misma ventana", () => {

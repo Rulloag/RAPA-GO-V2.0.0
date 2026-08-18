@@ -78,6 +78,8 @@ import {
   cancelPendingKlapRide,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
+import { isKlapElementsEnabled } from "../../../features/payments/klapElements.service.js";
+import { KlapCheckoutModal } from "../../../features/payments/KlapCheckoutModal.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
@@ -11126,6 +11128,13 @@ export default function RequestRidePage(): JSX.Element {
           );
         }
 
+        savePendingKlapPayment(pendingKlapPayment);
+
+        if (isKlapElementsEnabled()) {
+          setKlapPayment(pendingKlapPayment);
+          return;
+        }
+
         // Flujo directo: el botón de pago abre inmediatamente el Checkout
         // oficial alojado por Klap. No mostramos un modal intermedio de RAPA GO.
         const startedPayment =
@@ -13827,6 +13836,16 @@ export default function RequestRidePage(): JSX.Element {
           />
         )}
       </IonContent>
+
+      <KlapCheckoutModal
+        payment={klapPayment}
+        accessToken={session?.accessToken}
+        onApproved={handleKlapApproved}
+        onRejected={handleKlapRejected}
+        onRetryRequest={handleRetryKlapPayment}
+        onClose={handleCloseKlapCheckout}
+        onCancelRequest={handleCancelKlapRequest}
+      />
     </IonPage>
   );
 }
