@@ -78,7 +78,6 @@ import {
   cancelPendingKlapRide,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
-import { isKlapElementsEnabled } from "../../../features/payments/klapElements.service.js";
 import { KlapCheckoutModal } from "../../../features/payments/KlapCheckoutModal.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
@@ -11130,13 +11129,8 @@ export default function RequestRidePage(): JSX.Element {
 
         savePendingKlapPayment(pendingKlapPayment);
 
-        if (isKlapElementsEnabled()) {
-          setKlapPayment(pendingKlapPayment);
-          return;
-        }
-
-        // Flujo directo: el botón de pago abre inmediatamente el Checkout
-        // oficial alojado por Klap. No mostramos un modal intermedio de RAPA GO.
+        // Apple Pay y Google Pay se pinchan en el checkout alojado de Klap
+        // (klap.cl/pagos/order/...), no en un modal de RAPA GO.
         const startedPayment =
           markPendingKlapPaymentStarted(pendingKlapPayment);
         openKlapHostedCheckout(

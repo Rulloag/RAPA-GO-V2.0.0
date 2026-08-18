@@ -20,11 +20,11 @@ VITE_KLAP_CHECKOUT_FLEX_SCRIPT_URL=https://sandbox.mcdesaqa.cl/pagos/checkout-fl
 Flujo:
 
 1. El backend crea la orden (`POST /payments/klap/orders`).
-2. Si `VITE_KLAP_ELEMENTS_ENABLED=true`, se abre el modal con:
-   - `KLAP_FLEX.initWallets({ orderId, wallets: ["applePay","googlePay"], transparent: true })`
-   - `#klap-apple-pay` con callbacks `klap-fn-success` / `klap-fn-error`
-   - `#klap-google-pay`
-3. Tarjeta sigue disponible por `redirect_url` (checkout alojado).
+2. RAPA GO abre el `redirect_url` de Klap. Apple Pay y Google Pay se pinchan
+   ahí (`klap.cl/pagos/order/...`), no en un modal de RAPA GO.
+3. `VITE_KLAP_ELEMENTS_ENABLED` queda en `false` por defecto: inyectar Elements
+   en nuestra pantalla duplicaba el botón de Google Pay. El código queda listo
+   si Klap pide Elements embebido después de entregar el certificado.
 
 ## Backend
 

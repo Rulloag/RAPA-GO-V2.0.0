@@ -30,6 +30,7 @@ export const KLAP_APPLE_PAY_ERROR_FN = "rapagoKlapApplePayError";
 const SCRIPT_ATTR = "data-rapago-klap-flex";
 
 let scriptLoadPromise: Promise<void> | null = null;
+let lastInitializedOrderId: string | null = null;
 
 export function isKlapElementsEnabled(): boolean {
   return String(import.meta.env.VITE_KLAP_ELEMENTS_ENABLED ?? "")
@@ -100,10 +101,25 @@ export function loadKlapCheckoutFlexScript(): Promise<void> {
   return scriptLoadPromise;
 }
 
+export function clearKlapWalletContainers(): void {
+  for (const id of [
+    KLAP_APPLE_PAY_CONTAINER_ID,
+    KLAP_GOOGLE_PAY_CONTAINER_ID,
+  ]) {
+    const node = document.getElementById(id);
+    if (node) node.replaceChildren();
+  }
+}
+
 export function initKlapWalletElements(config: KlapWalletsInitConfig): void {
   if (!window.KLAP_FLEX?.initWallets) {
     throw new Error("Klap Elements no está inicializado.");
   }
+
+  if (lastInitializedOrderId === config.orderId) return;
+
+  clearKlapWalletContainers();
+  lastInitializedOrderId = config.orderId;
 
   window.KLAP_FLEX.initWallets({
     orderId: config.orderId,

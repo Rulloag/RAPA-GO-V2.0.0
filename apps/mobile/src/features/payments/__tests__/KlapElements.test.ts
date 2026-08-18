@@ -19,8 +19,9 @@ describe("Klap Elements — Apple Pay y Google Pay", () => {
     expect(walletsSource).toContain('wallets: ["applePay", "googlePay"]');
   });
 
-  it("integra Elements en el modal de checkout", () => {
-    expect(modalSource).toContain("KlapElementsWallets");
-    expect(modalSource).toContain("isKlapElementsEnabled");
+  it("no inyecta botones Elements en el modal; Apple Pay se pincha en el checkout alojado", () => {
+    expect(modalSource).not.toContain("KlapElementsWallets");
+    expect(elementsSource).toContain("lastInitializedOrderId === config.orderId");
+    expect(elementsSource).toContain("clearKlapWalletContainers");
   });
 });

@@ -31,7 +31,17 @@ export function KlapElementsWallets({
   onSpinnerChange,
 }: Props): JSX.Element | null {
   const [loading, setLoading] = useState(false);
-  const initializedOrderRef = useRef<string | null>(null);
+  const onReadyRef = useRef(onReady);
+  const onLoadErrorRef = useRef(onLoadError);
+  const onWalletSuccessRef = useRef(onWalletSuccess);
+  const onWalletErrorRef = useRef(onWalletError);
+  const onSpinnerChangeRef = useRef(onSpinnerChange);
+
+  onReadyRef.current = onReady;
+  onLoadErrorRef.current = onLoadError;
+  onWalletSuccessRef.current = onWalletSuccess;
+  onWalletErrorRef.current = onWalletError;
+  onSpinnerChangeRef.current = onSpinnerChange;
 
   useEffect(() => {
     if (!isKlapElementsEnabled() || disabled || !orderId.trim()) return undefined;
@@ -40,40 +50,34 @@ export function KlapElementsWallets({
 
     const releaseCallbacks = bindApplePayTransparentCallbacks({
       onSuccess: (data) => {
-        if (!cancelled) onWalletSuccess?.(data);
+        if (!cancelled) onWalletSuccessRef.current?.(data);
       },
       onError: (data) => {
-        if (!cancelled) onWalletError?.(data);
+        if (!cancelled) onWalletErrorRef.current?.(data);
       },
     });
-
-    const setSpinner = (visible: boolean): void => {
-      if (!cancelled) onSpinnerChange?.(visible);
-    };
 
     setLoading(true);
 
     void loadKlapCheckoutFlexScript()
       .then(() => {
         if (cancelled) return;
-        if (initializedOrderRef.current === orderId) return;
 
         initKlapWalletElements({
           orderId,
           wallets: ["applePay", "googlePay"],
           transparent: true,
           spinner: {
-            show: () => setSpinner(true),
-            hide: () => setSpinner(false),
+            show: () => onSpinnerChangeRef.current?.(true),
+            hide: () => onSpinnerChangeRef.current?.(false),
           },
         });
 
-        initializedOrderRef.current = orderId;
-        onReady?.();
+        onReadyRef.current?.();
       })
       .catch((error) => {
         if (cancelled) return;
-        onLoadError?.(
+        onLoadErrorRef.current?.(
           error instanceof Error
             ? error.message
             : "No se pudieron cargar Apple Pay ni Google Pay.",
@@ -86,19 +90,8 @@ export function KlapElementsWallets({
     return () => {
       cancelled = true;
       releaseCallbacks();
-      if (initializedOrderRef.current === orderId) {
-        initializedOrderRef.current = null;
-      }
     };
-  }, [
-    disabled,
-    onLoadError,
-    onReady,
-    onSpinnerChange,
-    onWalletError,
-    onWalletSuccess,
-    orderId,
-  ]);
+  }, [disabled, orderId]);
 
   if (!isKlapElementsEnabled()) return null;
 
@@ -131,12 +124,8 @@ export function KlapElementsWallets({
       <div
         id={KLAP_GOOGLE_PAY_CONTAINER_ID}
         className="klap-wallet-container"
+        style={{ overflow: "hidden" }}
       />
-
-      <p style={{ margin: 0, fontSize: ".72rem", color: "#64748b", lineHeight: 1.45 }}>
-        Apple Pay requiere Safari en iPhone o Mac y el certificado de dominio
-        publicado en <code>/.well-known/</code>.
-      </p>
     </div>
   );
 }
