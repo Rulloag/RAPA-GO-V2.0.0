@@ -53,35 +53,48 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #202124;
+  background: #000000;
   border: 0;
-  /* El borde va como sombra interior en vez de como border: así no consume
-     caja y el control sigue midiendo exactamente --rp-control-h, igual que
-     "Crear cuenta" e "Iniciar sesión". */
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
   isolation: isolate;
   overflow: hidden;
   transition: background 160ms ease;
 }
 
-/* Google pinta su hover sobre el nodo que abajo dejamos transparente, así que
-   la respuesta al puntero se recupera aquí. La capa de ondas del SDK
-   (.nsm7Bb-HzV7m-LgbsSe-MJoBVe, absoluta e inset 0) no se toca y sigue
-   funcionando encima. */
 .rapago-google-button__shell:not([aria-disabled="true"]):hover {
-  background: #2e2f33;
+  background: #1a1a1a;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .rapago-google-button__shell {
-    transition: none;
-  }
+/* Cara visible: misma composición que Apple (negro, alto token, logo + texto). */
+.rapago-google-button__face {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px;
+  pointer-events: none;
+  color: #ffffff;
+  font-size: 0.96rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.rapago-google-button__face .rapago-google-button__label {
+  text-align: center;
+  color: #ffffff;
+}
+
+.rapago-google-button__face .rapago-google-button__spinner {
+  justify-self: start;
 }
 
 /*
  * Contenedor del botón oficial de Google.
- * Usamos flexbox directo en lugar de position: absolute con translate,
- * permitiendo que el iframe tome su espacio natural sin cortarse.
+ * Overlay transparente encima de la cara: el usuario ve nuestro diseño y
+ * Google captura el clic (GIS / FedCM).
  */
 .rapago-google-button__official {
   position: relative;
@@ -92,6 +105,15 @@
   width: 100%;
   max-width: 100%;
   height: 100%;
+}
+
+.rapago-google-button__official--overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  opacity: 0;
+  overflow: hidden;
+  cursor: pointer;
 }
 
 /*
@@ -128,28 +150,16 @@
    (.nsm7Bb-HzV7m-LgbsSe), porque esas están ofuscadas y cambian sin aviso;
    el rol es parte del contrato de accesibilidad y se mantiene.
    ========================================================================== */
-.rapago-google-button__official > div,
-.rapago-google-button__official > div > div {
-  width: 100% !important;
-}
-
-.rapago-google-button__official div[role="button"] {
-  /* Google topa el ancho en 400px con estilo en línea; hay que soltar también
-     el max-width o el width:100% no llega a aplicarse. */
+.rapago-google-button__official--overlay > div,
+.rapago-google-button__official--overlay > div > div,
+.rapago-google-button__official--overlay div[role="button"] {
   width: 100% !important;
   max-width: none !important;
   min-width: 0 !important;
-  /* Los mismos tokens que "Crear cuenta", "Iniciar sesión" y el botón de
-     Apple. Al ser clamp() fluidos, el botón de Google acompaña a sus vecinos
-     en cualquier ancho sin media queries propias.
-
-     La altura se fija en píxeles reales, nunca con transform: scale(): escalar
-     deja el texto y el logo borrosos, mientras que con height los hijos se
-     reacomodan solos y la etiqueta queda centrada al pixel (medido en
-     producción: 0.0px de desvío respecto del centro). */
-  height: var(--rp-control-h) !important;
-  max-height: var(--rp-control-h) !important;
-  border-radius: var(--rp-radius-sm) !important;
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 100% !important;
+  border-radius: 0 !important;
 }
 
 /* Neutraliza el pintado propio de Google para que se vea el fondo del shell,
@@ -217,10 +227,9 @@
   padding: 0 18px;
   overflow: hidden;
   cursor: pointer;
-  /* Mismo negro de Google que en web, para que la app nativa y el navegador
-     muestren el mismo botón en lugar de uno blanco y otro negro. */
-  background: #202124;
-  color: #e8eaed;
+  /* Mismo negro que Apple (#000). Google GIS queda oculto detrás. */
+  background: #000000;
+  color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.10);
   box-shadow: 0 8px 20px rgba(20, 15, 5, 0.16);
   font: inherit;
@@ -391,8 +400,8 @@
    había aquí, para que la app nativa y la web muestren el mismo botón, y el
    borde dorado de la casa, que es lo que le da silueta sobre fondo oscuro. */
 [data-rapago-theme="dark"] .rapago-google-button__custom {
-  background: #202124;
-  color: #e8eaed;
+  background: #000000;
+  color: #ffffff;
   border-color: rgba(214, 166, 64, 0.48);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.35),
@@ -411,9 +420,7 @@
 
 /* Estado activo / press modo noche */
 [data-rapago-theme="dark"] .rapago-google-button__custom:active:not(:disabled) {
-  /* Aclarar el negro al pulsar, en vez del degradado marrón anterior: sobre
-     #202124 el marrón cambiaba el tono del botón, no solo su brillo. */
-  background: #2e2f33;
+  background: #1a1a1a;
   transform: scale(0.990);
 }
 

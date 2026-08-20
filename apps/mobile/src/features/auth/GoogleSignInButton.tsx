@@ -9,6 +9,7 @@ import {
   getGoogleIdentityServices,
   loadGoogleIdentityServices,
 } from "./googleIdentityServices.js";
+import { getRapaGoLanguage } from "../../i18n/rapagoI18n.js";
 import "./GoogleSignInButton.css";
 
 type MaybePromise = void | Promise<void>;
@@ -239,10 +240,11 @@ export function GoogleSignInButton({
       shell.getBoundingClientRect().width,
     );
 
-    // Google acepta un ancho fijo entre ~160 y 400px.
+    // Google acepta un ancho fijo entre ~160 y 400px. La cara visible es 100%
+    // del shell; este ancho solo define el área clicable del overlay GIS.
     const renderWidth = Math.max(
       180,
-      Math.min(400, measuredWidth),
+      Math.min(400, measuredWidth || 400),
     );
 
     if (
@@ -278,22 +280,13 @@ export function GoogleSignInButton({
 
     googleApi.renderButton(target, {
       type: "standard",
-      /* "filled_black" (#202124) queda a un tono del negro del botón de Apple
-         (#222428), en vez del blanco de "outline", que era el único elemento
-         claro de toda la tarjeta. Los tres temas de Google son igual de
-         válidos, así que se elige el que encaja en las dos paletas: de día
-         empareja con Apple sobre la crema, y de noche el borde dorado lo pone
-         nuestro CSS, que sí alcanza a este nodo (ver GoogleSignInButton.css). */
       theme: "filled_black",
       size: "large",
       text: "continue_with",
-      /* Rectangular, no "pill": el radio real lo fija el CSS en 16px para que
-         coincida con "Crear cuenta" e "Iniciar sesión". Con "pill" Google
-         escribe 20px, que sobre 52px de alto ya no es un óvalo. */
       shape: "rectangular",
       logo_alignment: "left",
       width: renderWidth,
-      locale: "es",
+      locale: getRapaGoLanguage() === "en" ? "en" : "es",
     });
   }, [
     clientId,
@@ -309,6 +302,12 @@ export function GoogleSignInButton({
     renderOfficialButton();
 
     const shell = shellRef.current;
+    const handleLanguageChanged = (): void => {
+      lastRenderedWidthRef.current = 0;
+      renderOfficialButton();
+    };
+
+    window.addEventListener("rapago:language-changed", handleLanguageChanged);
 
     if (!shell || typeof ResizeObserver === "undefined") {
       const handleResize = (): void => {
@@ -320,6 +319,10 @@ export function GoogleSignInButton({
 
       return () => {
         window.removeEventListener("resize", handleResize);
+        window.removeEventListener(
+          "rapago:language-changed",
+          handleLanguageChanged,
+        );
       };
     }
 
@@ -335,6 +338,10 @@ export function GoogleSignInButton({
 
     return () => {
       observer.disconnect();
+      window.removeEventListener(
+        "rapago:language-changed",
+        handleLanguageChanged,
+      );
     };
   }, [
     isNative,
@@ -404,27 +411,25 @@ export function GoogleSignInButton({
         className="rapago-google-button__shell"
         ref={shellRef}
       >
-        {!scriptReady && (
-          <div className="rapago-google-button__placeholder">
-            {loading ? (
-              <span
-                aria-hidden="true"
-                className="rapago-google-button__spinner"
-              />
-            ) : (
-              <GoogleLogo />
-            )}
+        {/* Cara visible: misma geometría que Apple. El botón oficial de Google
+            queda encima en overlay transparente para capturar el clic GIS. */}
+        <div aria-hidden="true" className="rapago-google-button__face">
+          {loading || !scriptReady ? (
+            <span
+              aria-hidden="true"
+              className="rapago-google-button__spinner"
+            />
+          ) : (
+            <GoogleLogo />
+          )}
 
-            <span className="rapago-google-button__label">
-              {renderError
-                ? "Google no pudo cargar"
-                : visibleLabel}
-            </span>
-          </div>
-        )}
+          <span className="rapago-google-button__label">
+            {renderError ? "Google no pudo cargar" : visibleLabel}
+          </span>
+        </div>
 
         <div
-          className="rapago-google-button__official"
+          className="rapago-google-button__official rapago-google-button__official--overlay"
           ref={officialButtonRef}
         />
 

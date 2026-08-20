@@ -11,8 +11,9 @@ import {
   IonSpinner,
   IonText,
 } from "@ionic/react";
-import { arrowBackOutline, mailOutline, lockClosedOutline, logoFacebook, eyeOutline, eyeOffOutline, moonOutline, sunnyOutline } from "ionicons/icons";
+import { arrowBackOutline, mailOutline, lockClosedOutline, logoFacebook, eyeOutline, eyeOffOutline, moonOutline, sunnyOutline, globeOutline } from "ionicons/icons";
 import { useRapagoSectionTheme } from "../../theme/rapagoTheme.js";
+import { useRapaGoLanguage } from "../../i18n/rapagoI18n.js";
 import { useHistory } from "react-router-dom";
 import { loginRequestSchema, type UserRole } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
@@ -584,6 +585,57 @@ export function LoginPage(): JSX.Element {
   const googleLinkSubmitInFlightRef = useRef(false);
   /* Tema propio del flujo de acceso (compartido con Registro). */
   const { theme, isDark, toggleTheme } = useRapagoSectionTheme("auth");
+  const { language, setLanguage } = useRapaGoLanguage();
+  const authCopy =
+    language === "en"
+      ? {
+          title: "Welcome to Rapa Go",
+          tagline: "Mobility, Tours, Car Rental and Events on Rapa Nui",
+          createEmail: "Create account with email + password",
+          hasAccount: "Already have an email account?",
+          email: "Email",
+          emailPlaceholder: "you@email.com",
+          password: "Password",
+          passwordPlaceholder: "At least 8 characters",
+          signIn: "Sign in",
+          forgot: "Forgot your password?",
+          backHome: "Back to home",
+          googleLabel: "Continue with Google",
+          langAria: "Switch app to Spanish",
+          langTitle: "Spanish",
+          langShort: "ES",
+          themeDay: "Switch to day mode",
+          themeNight: "Switch to night mode",
+          legalTerms: "Terms",
+          legalUsers: "User conditions",
+          legalPrivacy: "Privacy",
+          legalEula: "EULA",
+          legalSupport: "Support",
+        }
+      : {
+          title: "Bienvenido a Rapa Go",
+          tagline: "Movilidad, Tours, Rent a Car y Eventos en Rapa Nui",
+          createEmail: "Crear cuenta con correo + contraseña",
+          hasAccount: "¿Ya tienes cuenta con correo?",
+          email: "Correo electrónico",
+          emailPlaceholder: "tu@correo.com",
+          password: "Contraseña",
+          passwordPlaceholder: "Mínimo 8 caracteres",
+          signIn: "Iniciar sesión",
+          forgot: "¿Olvidaste tu contraseña?",
+          backHome: "Volver al inicio",
+          googleLabel: "Continuar con Google",
+          langAria: "Cambiar aplicación a inglés",
+          langTitle: "English",
+          langShort: "EN",
+          themeDay: "Activar modo día",
+          themeNight: "Activar modo nocturno",
+          legalTerms: "Términos",
+          legalUsers: "Condiciones",
+          legalPrivacy: "Privacidad",
+          legalEula: "EULA",
+          legalSupport: "Soporte",
+        };
 
   function handleGoogleOutcome(outcome: GoogleSignInOutcome): void {
     if (outcome.kind === "success") {
@@ -1571,27 +1623,35 @@ export function LoginPage(): JSX.Element {
               />
             </div>
 
-            {/* Ocupa la tercera columna de la grilla 42px/1fr/42px de la
-                cabecera, que hasta ahora quedaba vacía. Permite elegir el tema
-                antes de entrar. */}
-            <button
-              type="button"
-              className="rapago-auth-theme-btn"
-              onClick={toggleTheme}
-              aria-label={isDark ? "Activar modo día" : "Activar modo nocturno"}
-              title={isDark ? "Modo día" : "Modo nocturno"}
-            >
-              <IonIcon icon={isDark ? sunnyOutline : moonOutline} />
-            </button>
+            {/* Idioma + tema en la tercera columna de la cabecera. */}
+            <div className="rapago-auth-header-actions">
+              <button
+                type="button"
+                className="rapago-auth-lang-btn"
+                onClick={() => setLanguage(language === "es" ? "en" : "es")}
+                aria-label={authCopy.langAria}
+                title={authCopy.langTitle}
+              >
+                <IonIcon icon={globeOutline} />
+                <span>{authCopy.langShort}</span>
+              </button>
+              <button
+                type="button"
+                className="rapago-auth-theme-btn"
+                onClick={toggleTheme}
+                aria-label={isDark ? authCopy.themeDay : authCopy.themeNight}
+                title={isDark ? authCopy.themeDay : authCopy.themeNight}
+              >
+                <IonIcon icon={isDark ? sunnyOutline : moonOutline} />
+              </button>
+            </div>
           </div>
 
           <IonText>
-            <h2 className="rapago-auth-title">Bienvenido a Rapa Go</h2>
+            <h2 className="rapago-auth-title">{authCopy.title}</h2>
           </IonText>
 
-          <p className="rapago-auth-tagline">
-            Movilidad, Tours, Rent a Car y Eventos en Rapa Nui
-          </p>
+          <p className="rapago-auth-tagline">{authCopy.tagline}</p>
 
           {serverError && (
             <IonText color="danger">
@@ -1613,6 +1673,7 @@ export function LoginPage(): JSX.Element {
               isAvailable={google.isAvailable}
               loading={google.loading}
               disabled={loading || apple.loading}
+              label={authCopy.googleLabel}
               onNativePress={() => void startGoogleNativeSignIn()}
               onWebCredential={(idToken) => {
                 void handleGoogleWebCredential(idToken);
@@ -1627,18 +1688,18 @@ export function LoginPage(): JSX.Element {
               type="button"
               className="rapago-auth-btn-primary rapago-auth-create-email"
             >
-              Crear cuenta con correo + contraseña
+              {authCopy.createEmail}
             </IonButton>
           </div>
 
-          <div className="rapago-auth-divider">¿Ya tienes cuenta con correo?</div>
+          <div className="rapago-auth-divider">{authCopy.hasAccount}</div>
 
           <IonItem
             className={`rapago-auth-field ${fieldErrors.email ? "ion-invalid" : ""}`}
             lines="none"
           >
             <IonIcon slot="start" icon={mailOutline} className="rapago-auth-field-icon" />
-            <IonLabel position="stacked">Correo electrónico</IonLabel>
+            <IonLabel position="stacked">{authCopy.email}</IonLabel>
             <IonInput
               type="email"
               value={email}
@@ -1650,7 +1711,7 @@ export function LoginPage(): JSX.Element {
                   setPassengerEmail(nextEmail);
                 }
               }}
-              placeholder="tu@correo.com"
+              placeholder={authCopy.emailPlaceholder}
               autocomplete="email"
               inputmode="email"
               disabled={loading}
@@ -1664,14 +1725,14 @@ export function LoginPage(): JSX.Element {
             lines="none"
           >
             <IonIcon slot="start" icon={lockClosedOutline} className="rapago-auth-field-icon" />
-            <IonLabel position="stacked">Contraseña</IonLabel>
+            <IonLabel position="stacked">{authCopy.password}</IonLabel>
             <IonInput
               type={showPassword ? "text" : "password"}
               value={password}
               onIonInput={(e) => {
                 setPassword(String(e.detail.value ?? ""));
               }}
-              placeholder="Mínimo 8 caracteres"
+              placeholder={authCopy.passwordPlaceholder}
               autocomplete="current-password"
               disabled={loading}
               required
@@ -1697,7 +1758,7 @@ export function LoginPage(): JSX.Element {
             disabled={loading}
             className="rapago-auth-btn-primary"
           >
-            {loading ? <IonSpinner name="crescent" /> : "Iniciar sesión"}
+            {loading ? <IonSpinner name="crescent" /> : authCopy.signIn}
           </IonButton>
 
           <div className="rapago-auth-forgot">
@@ -1708,7 +1769,7 @@ export function LoginPage(): JSX.Element {
               disabled={loading}
               onClick={() => history.push("/auth/forgot-password")}
             >
-              ¿Olvidaste tu contraseña?
+              {authCopy.forgot}
             </IonButton>
           </div>
 
@@ -1741,8 +1802,45 @@ export function LoginPage(): JSX.Element {
             type="button"
             className="rapago-auth-btn-outline"
           >
-            Volver al inicio
+            {authCopy.backHome}
           </IonButton>
+
+          <nav className="rapago-auth-legal-links" aria-label="Legal">
+            <button
+              type="button"
+              onClick={() => history.push(ROUTES.PUBLIC.TERMS)}
+            >
+              {authCopy.legalTerms}
+            </button>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => history.push(ROUTES.PUBLIC.USER_CONDITIONS)}
+            >
+              {authCopy.legalUsers}
+            </button>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => history.push(ROUTES.PUBLIC.PRIVACY)}
+            >
+              {authCopy.legalPrivacy}
+            </button>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => history.push(ROUTES.PUBLIC.EULA)}
+            >
+              {authCopy.legalEula}
+            </button>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => history.push(ROUTES.PUBLIC.SUPPORT)}
+            >
+              {authCopy.legalSupport}
+            </button>
+          </nav>
         </form>
 
         <PassengerSocialSetupForm
