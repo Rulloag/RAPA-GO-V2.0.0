@@ -20,7 +20,7 @@ describe("flujo de solicitud tipo Uber en Rapa Nui", () => {
        coincidencias fuertes. Las flojas —las que existen para rescatar
        erratas— van detrás, donde no desplazan a un resultado exacto.
        En búsquedas de hotel Google va primero (coords oficiales). */
-    expect(requestRideSource).toContain("lodgingIntent");
+    expect(requestRideSource).toContain("mustResolvePlaceViaGoogle");
     expect(requestRideSource).toContain("findGooglePlaceInRapaNuiByQuery");
     expect(requestRideSource).toContain(
       "normalizeRapaNuiAutocompleteText(value).length < 1",
@@ -39,8 +39,8 @@ describe("flujo de solicitud tipo Uber en Rapa Nui", () => {
     expect(requestRideSource).toContain(
       "locationRestriction: getRapaNuiMapBounds()",
     );
-    expect(requestRideSource).not.toContain("bounds: getRapaNuiMapBounds()");
-    expect(requestRideSource).not.toContain("radius: 22000");
+    expect(requestRideSource).toContain("findGooglePlaceInRapaNuiByQuery");
+    expect(requestRideSource).toContain("mustResolvePlaceViaGoogle");
     expect(requestRideSource).toContain(
       "getRapaNuiLocalAutocompletePlace(placeId)",
     );

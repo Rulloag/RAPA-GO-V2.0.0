@@ -86,12 +86,14 @@ describe("RAPA_NUI_LOCAL_PLACES", () => {
     );
   });
 
-  it("la feria solo responde a feria/umanga, no a hotel hare", () => {
-    expect(findLocalRapaNuiPlaceByName("Feria Artesanal Hare Umanga")?.id).toBe(
-      "feria-hare-umanga",
+  it("Cabañas Tahonga no usa coords de la pista del aeropuerto", () => {
+    const tahonga = findLocalRapaNuiPlaceByName("Cabañas Tahonga");
+    const airport = findLocalRapaNuiPlaceByName(
+      "Aeropuerto Internacional Mataveri",
     );
-    expect(findLocalRapaNuiPlaceByName("hotel hare")?.id).not.toBe(
-      "feria-hare-umanga",
-    );
+    expect(tahonga).not.toBeNull();
+    expect(airport).not.toBeNull();
+    expect(tahonga!.lat).not.toBeCloseTo(airport!.lat, 3);
+    expect(tahonga!.lng).not.toBeCloseTo(airport!.lng, 3);
   });
 });

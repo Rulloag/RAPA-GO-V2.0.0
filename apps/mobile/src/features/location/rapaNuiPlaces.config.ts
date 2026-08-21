@@ -309,8 +309,8 @@ export const RAPA_NUI_LOCAL_PLACES: readonly RapaNuiLocalPlace[] = [
     name: "Cabañas Tahonga",
     subtitle: "Alojamiento",
     address: "Cabañas Tahonga, Hanga Roa, Rapa Nui, Chile",
-    lat: -27.1647,
-    lng: -109.4218,
+    lat: -27.1592,
+    lng: -109.4298,
     aliases: ["tahonga", "cabanas tahonga", "cabana tahonga"],
     placeTypes: ["lodging", "point_of_interest", "establishment"],
   },
@@ -566,4 +566,14 @@ export function isLodgingPlace(place: RapaNuiLocalPlace): boolean {
   return place.placeTypes.some((type) =>
     ["lodging", "hotel", "guest_house"].includes(type),
   );
+}
+
+/**
+ * Calles pueden usar coords curadas (centro de vía).
+ * Todo lo demás (hoteles, cabañas, locales, atracciones) debe resolverse
+ * con Google Places: el catálogo solo rankea nombres, no pinta el pin.
+ */
+export function mustResolvePlaceViaGoogle(place: RapaNuiLocalPlace): boolean {
+  if (isRapaNuiMainStreet(place)) return false;
+  return true;
 }
