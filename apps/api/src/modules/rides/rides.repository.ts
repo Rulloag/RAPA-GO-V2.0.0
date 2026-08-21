@@ -372,7 +372,11 @@ export class RidesRepository {
       paymentMethod?: "cash" | "card";
       paymentProvider?: string | null;
       useWalletBenefit?: boolean;
-      requestedVehicleCategory?: "standard" | "xl" | "extra_luggage";
+      requestedVehicleCategory?:
+        | "standard"
+        | "xl"
+        | "extra_luggage"
+        | "comfort";
     } = {},
   ): Promise<RideCreatedWithPolicyCharges> {
     try {

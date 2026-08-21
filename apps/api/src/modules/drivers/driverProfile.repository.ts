@@ -54,4 +54,34 @@ export class DriverProfileRepository {
       throw AppError.internal(`Failed to upsert driver profile: ${String(err)}`);
     }
   }
+
+  async setApprovedVehicleCategory(
+    userId: string,
+    vehicleCategory: "standard" | "xl" | "extra_luggage" | "comfort",
+  ): Promise<DriverProfile> {
+    try {
+      const existing = await this.findByUserId(userId);
+      if (!existing) {
+        throw AppError.notFound("Driver profile not found.");
+      }
+
+      const rows = await db
+        .update(driverProfiles)
+        .set({
+          vehicleCategory,
+          updatedAt: new Date(),
+        })
+        .where(eq(driverProfiles.userId, userId))
+        .returning();
+
+      const row = rows[0];
+      if (!row) throw AppError.internal("Category update returned no rows.");
+      return row;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(
+        `Failed to set approved vehicle category: ${String(err)}`,
+      );
+    }
+  }
 }

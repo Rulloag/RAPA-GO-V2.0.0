@@ -568,4 +568,89 @@ export class AdminService {
     if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found after sync.", statusCode: 404 };
     return { ok: true, ride: toRideResponse(ride) };
   }
+
+  /**
+   * Administración aprueba la categoría del vehículo del conductor.
+   * Confort exige año >= mínimo configurable; el conductor no puede autoasignarse.
+   */
+  async setDriverVehicleCategory(
+    accessToken: string,
+    driverUserId: string,
+    vehicleCategory: import("@rapa-go/shared").VehicleCategory,
+  ) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Admin access required.",
+        statusCode: 403,
+      };
+    }
+
+    const user = await usersRepo.findById(driverUserId);
+    if (!user || user.role !== "driver") {
+      return {
+        ok: false as const,
+        code: "NOT_FOUND",
+        message: "Driver not found.",
+        statusCode: 404,
+      };
+    }
+
+    const { DriverProfileRepository } = await import(
+      "../drivers/driverProfile.repository.js"
+    );
+    const { evaluateComfortCategoryApproval } = await import(
+      "../drivers/comfortEligibility.service.js"
+    );
+    const { serializeDriverProfile } = await import(
+      "../drivers/driverProfile.serializer.js"
+    );
+
+    const profileRepo = new DriverProfileRepository();
+    const profile = await profileRepo.findByUserId(driverUserId);
+    if (!profile) {
+      return {
+        ok: false as const,
+        code: "NOT_FOUND",
+        message: "Driver profile not found.",
+        statusCode: 404,
+      };
+    }
+
+    const eligibility = await evaluateComfortCategoryApproval({
+      targetCategory: vehicleCategory,
+      vehicleYear: profile.vehicleYear,
+    });
+    if (!eligibility.ok) {
+      return {
+        ok: false as const,
+        code: eligibility.code,
+        message: eligibility.message,
+        statusCode: 400,
+      };
+    }
+
+    const updated = await profileRepo.setApprovedVehicleCategory(
+      driverUserId,
+      vehicleCategory,
+    );
+
+    auditService.recordSafe({
+      eventType: "admin.driver_vehicle_category_set",
+      metadata: {
+        adminUserId: auth.userId,
+        driverUserId,
+        vehicleCategory,
+        vehicleYear: profile.vehicleYear ?? null,
+      },
+    });
+
+    return {
+      ok: true as const,
+      profile: serializeDriverProfile(updated),
+    };
+  }
 }

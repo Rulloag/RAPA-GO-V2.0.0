@@ -261,9 +261,24 @@ export interface CreateRideInput {
   scheduledReturnActivationAt?: string | null;
   airportWelcomeOption?: "none" | "flower_lei";
   flowerLeiQuantity?: number | null;
-  requestedVehicleCategory?: "standard" | "xl" | "extra_luggage" | "luggage";
-  vehicleCategory?: "standard" | "xl" | "extra_luggage" | "luggage";
-  fareVehicleCategory?: "standard" | "xl" | "extra_luggage" | "luggage";
+  requestedVehicleCategory?:
+    | "standard"
+    | "xl"
+    | "extra_luggage"
+    | "comfort"
+    | "luggage";
+  vehicleCategory?:
+    | "standard"
+    | "xl"
+    | "extra_luggage"
+    | "comfort"
+    | "luggage";
+  fareVehicleCategory?:
+    | "standard"
+    | "xl"
+    | "extra_luggage"
+    | "comfort"
+    | "luggage";
 }
 
 export const ridesService = {

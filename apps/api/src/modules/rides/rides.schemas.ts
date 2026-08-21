@@ -1,8 +1,12 @@
 import { z } from "zod";
 
 const vehicleCategorySchema = z
-  .enum(["standard", "xl", "extra_luggage", "luggage"])
-  .transform((v) => (v === "luggage" ? "extra_luggage" : v));
+  .enum(["standard", "xl", "extra_luggage", "luggage", "comfort", "confort"])
+  .transform((v) => {
+    if (v === "luggage") return "extra_luggage" as const;
+    if (v === "confort") return "comfort" as const;
+    return v as Exclude<typeof v, "luggage" | "confort">;
+  });
 
 export const createRideRequestSchema = z.object({
   originText: z

@@ -181,8 +181,11 @@ export class DriverStatusService {
 
     // Rides with null estimatedFareClp are excluded (no fare to sum).
     const grossFareClp = rides.reduce((sum, r) => sum + (r.estimatedFareClp ?? 0), 0);
-    const appCommissionClp = Math.round(grossFareClp * 0.23);
-    const netEarningsClp   = grossFareClp - appCommissionClp;
+    // Comisión fija 23% / 77% — independiente de la categoría (incl. Confort).
+    const { splitPlatformCommission } = await import("@rapa-go/shared");
+    const split = splitPlatformCommission(grossFareClp);
+    const appCommissionClp = split.platformFeeClp;
+    const netEarningsClp = split.driverAmountClp;
 
     const dateStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, "0")}-${String(today.getUTCDate()).padStart(2, "0")}`;
 
