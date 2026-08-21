@@ -23,6 +23,12 @@
  * (Fase 0) y no depende de nada de este archivo.
  */
 
+import {
+  capabilitiesFromLegacyCategory,
+  isVehicleEligibleForRequestedCategory,
+  type VehicleCapabilities,
+} from "@rapa-go/shared";
+
 export const QUEUE_MATCH_CONFIG = {
   /** Minutos máximos restantes del viaje A para considerar ofrecer B. */
   maxCurrentTripRemainingMin: 8,
@@ -66,6 +72,9 @@ export interface QueueMatchDriverStatus {
   currentLng: number | null;
   locationUpdatedAtMs: number | null;
   vehicleCategory: string | null;
+  /** Capacidades independientes; si faltan se derivan de vehicleCategory. */
+  capabilities?: Partial<VehicleCapabilities> | null;
+  comfortMinVehicleYear?: number;
 }
 
 export interface EvaluateQueueEligibilityInput {
@@ -144,6 +153,43 @@ export function cheapGeoFilter(
   return { passes: distanceKm <= config.maxPickupDistanceKm, distanceKm };
 }
 
+function resolveDriverCapabilitiesForQueue(
+  driverStatus: QueueMatchDriverStatus,
+): VehicleCapabilities {
+  if (
+    driverStatus.capabilities &&
+    (typeof driverStatus.capabilities.xl === "boolean" ||
+      typeof driverStatus.capabilities.extraLuggage === "boolean" ||
+      typeof driverStatus.capabilities.comfort === "boolean")
+  ) {
+    return {
+      xl: driverStatus.capabilities.xl === true,
+      extraLuggage: driverStatus.capabilities.extraLuggage === true,
+      comfort: driverStatus.capabilities.comfort === true,
+      vehicleYear:
+        driverStatus.capabilities.vehicleYear != null &&
+        Number.isFinite(Number(driverStatus.capabilities.vehicleYear))
+          ? Number(driverStatus.capabilities.vehicleYear)
+          : null,
+    };
+  }
+  return capabilitiesFromLegacyCategory(driverStatus.vehicleCategory, null);
+}
+
+function isDriverEligibleForRequestedCategory(
+  driverStatus: QueueMatchDriverStatus,
+  requestedCategory: string | null,
+): boolean {
+  if (requestedCategory == null) return true;
+  return isVehicleEligibleForRequestedCategory(
+    resolveDriverCapabilitiesForQueue(driverStatus),
+    requestedCategory,
+    driverStatus.comfortMinVehicleYear != null
+      ? { comfortMinVehicleYear: driverStatus.comfortMinVehicleYear }
+      : {},
+  );
+}
+
 /**
  * Evalúa si un conductor con un viaje activo (A) es elegible para recibir
  * una oferta en cola del viaje B, y calcula su score.
@@ -179,11 +225,9 @@ export function evaluateQueueEligibility(
 
   if (
     newRideRequest.vehicleCategory != null &&
-    driverStatus.vehicleCategory != null &&
-    newRideRequest.vehicleCategory !== driverStatus.vehicleCategory
+    !isDriverEligibleForRequestedCategory(driverStatus, newRideRequest.vehicleCategory)
   ) {
-    // Informativo: NO bloquea elegibilidad. Las categorías advierten en UI,
-    // nunca restringen ofertas en cola.
+    reasons.push("VEHICLE_CATEGORY_INELIGIBLE");
   }
 
   const locationAgeSeconds =

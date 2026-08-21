@@ -1470,7 +1470,53 @@ export class RidesService {
       .filter((item) => item.approved)
       .map((item) => item.ride);
 
-    return { ok: true, rides: payableRows.map(toAvailableResponse) };
+    const { capabilitiesFromDriverProfile } = await import(
+      "./vehicleEligibility.js"
+    );
+    const {
+      isVehicleEligibleForRequestedCategory,
+      DEFAULT_COMFORT_MIN_VEHICLE_YEAR,
+    } = await import("@rapa-go/shared");
+
+    let comfortMinVehicleYear = DEFAULT_COMFORT_MIN_VEHICLE_YEAR;
+    try {
+      const { getComfortMinVehicleYear } = await import(
+        "../drivers/comfortEligibility.service.js"
+      );
+      comfortMinVehicleYear = await getComfortMinVehicleYear();
+    } catch {
+      comfortMinVehicleYear = DEFAULT_COMFORT_MIN_VEHICLE_YEAR;
+    }
+
+    let capabilities;
+    try {
+      const snapshot = await ridesRepo.findDriverVehicleEligibilitySnapshot(
+        auth.userId,
+      );
+      capabilities = capabilitiesFromDriverProfile(
+        snapshot
+          ? {
+              vehicleCategory: snapshot.vehicleCategory ?? "standard",
+              vehicleYear: snapshot.vehicleYear,
+              capabilityXl: snapshot.capabilityXl,
+              capabilityExtraLuggage: snapshot.capabilityExtraLuggage,
+              capabilityComfort: snapshot.capabilityComfort,
+            }
+          : null,
+      );
+    } catch {
+      capabilities = capabilitiesFromDriverProfile(null);
+    }
+
+    const eligibleRows = payableRows.filter((ride) =>
+      isVehicleEligibleForRequestedCategory(
+        capabilities,
+        ride.requestedVehicleCategory,
+        { comfortMinVehicleYear },
+      ),
+    );
+
+    return { ok: true, rides: eligibleRows.map(toAvailableResponse) };
   }
 
   async acceptRideRequest(
@@ -1532,7 +1578,21 @@ export class RidesService {
       };
     }
 
-    const accepted = await ridesRepo.accept(rideId, auth.userId);
+    let accepted;
+    try {
+      accepted = await ridesRepo.accept(rideId, auth.userId);
+    } catch (err) {
+      await driverStatusRepo.releaseCurrentRideClaim(auth.userId, rideId);
+      if (err instanceof AppError) {
+        return {
+          ok: false as const,
+          code: err.code,
+          message: err.message,
+          statusCode: err.statusCode,
+        };
+      }
+      throw err;
+    }
 
     if (!accepted) {
       // El slot se reclamó pero el ride ya no estaba disponible (otro

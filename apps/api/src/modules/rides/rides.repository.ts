@@ -12,7 +12,6 @@ import {
 } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
-import { resolveAssignedVehicleCategory } from "./resolveAssignedVehicleCategory.js";
 import { formatDatabaseErrorDetails } from "../../shared/errors/databaseErrorDetails.js";
 import type { RideRequest } from "../../db/schema/index.js";
 import {
@@ -659,6 +658,48 @@ export class RidesRepository {
     }
   }
 
+  async findDriverVehicleEligibilitySnapshot(driverUserId: string): Promise<{
+    vehicleCategory: string | null;
+    vehicleYear: number | null;
+    vehiclePlate: string | null;
+    capabilityXl: boolean;
+    capabilityExtraLuggage: boolean;
+    capabilityComfort: boolean;
+  } | null> {
+    try {
+      const row = (
+        await db
+          .select({
+            vehicleCategory: driverProfiles.vehicleCategory,
+            vehicleYear: driverProfiles.vehicleYear,
+            vehiclePlate: driverProfiles.vehiclePlate,
+            capabilityXl: driverProfiles.capabilityXl,
+            capabilityExtraLuggage: driverProfiles.capabilityExtraLuggage,
+            capabilityComfort: driverProfiles.capabilityComfort,
+          })
+          .from(driverProfiles)
+          .where(eq(driverProfiles.userId, driverUserId))
+          .limit(1)
+      )[0];
+      if (!row) return null;
+      return {
+        vehicleCategory: row.vehicleCategory ?? null,
+        vehicleYear:
+          row.vehicleYear != null && Number.isFinite(Number(row.vehicleYear))
+            ? Number(row.vehicleYear)
+            : null,
+        vehiclePlate: row.vehiclePlate ?? null,
+        capabilityXl: row.capabilityXl === true,
+        capabilityExtraLuggage: row.capabilityExtraLuggage === true,
+        capabilityComfort: row.capabilityComfort === true,
+      };
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to query driver vehicle capabilities: ${String(err)}`,
+      );
+    }
+  }
+
   /**
    * Atomically accept a ride as a queued offer (driver is still on current ride).
    * Sets assignmentMode='queued_offer' and queuedOfferDriverId.
@@ -668,17 +709,31 @@ export class RidesRepository {
     try {
       return await db.transaction(async (tx) => {
         const now = new Date();
+
+        const ride = (
+          await tx
+            .select()
+            .from(rideRequests)
+            .where(eq(rideRequests.id, id))
+            .limit(1)
+        )[0];
+        if (!ride || ride.status !== "requested") return null;
+
         const profile = (
           await tx
-            .select({ vehicleCategory: driverProfiles.vehicleCategory })
+            .select()
             .from(driverProfiles)
             .where(eq(driverProfiles.userId, driverUserId))
             .limit(1)
         )[0];
 
-        const assignedVehicleCategory = resolveAssignedVehicleCategory(
-          profile?.vehicleCategory,
+        const { assertVehicleEligibleForRide } = await import(
+          "./vehicleEligibility.js"
         );
+        const eligibility = await assertVehicleEligibleForRide({
+          profile,
+          requestedVehicleCategory: ride.requestedVehicleCategory,
+        });
 
         const rows = await tx
           .update(rideRequests)
@@ -688,7 +743,8 @@ export class RidesRepository {
             acceptedAt: now,
             assignmentMode: "queued_offer",
             queuedOfferDriverId: driverUserId,
-            assignedVehicleCategory,
+            assignedVehicleCategory: eligibility.assignedVehicleCategory,
+            assignedVehiclePlate: profile?.vehiclePlate ?? null,
             updatedAt: now,
           })
           .where(
@@ -736,17 +792,30 @@ export class RidesRepository {
       return await db.transaction(async (tx) => {
         const acceptedAt = new Date();
 
+        const ride = (
+          await tx
+            .select()
+            .from(rideRequests)
+            .where(eq(rideRequests.id, id))
+            .limit(1)
+        )[0];
+        if (!ride || ride.status !== "requested") return null;
+
         const profile = (
           await tx
-            .select({ vehicleCategory: driverProfiles.vehicleCategory })
+            .select()
             .from(driverProfiles)
             .where(eq(driverProfiles.userId, driverUserId))
             .limit(1)
         )[0];
 
-        const assignedVehicleCategory = resolveAssignedVehicleCategory(
-          profile?.vehicleCategory,
+        const { assertVehicleEligibleForRide } = await import(
+          "./vehicleEligibility.js"
         );
+        const eligibility = await assertVehicleEligibleForRide({
+          profile,
+          requestedVehicleCategory: ride.requestedVehicleCategory,
+        });
 
         const rows = await tx
           .update(rideRequests)
@@ -754,7 +823,8 @@ export class RidesRepository {
             status: "accepted",
             driverUserId,
             acceptedAt,
-            assignedVehicleCategory,
+            assignedVehicleCategory: eligibility.assignedVehicleCategory,
+            assignedVehiclePlate: profile?.vehiclePlate ?? null,
             updatedAt: acceptedAt,
           })
           .where(

@@ -200,7 +200,22 @@ export class DriverOffersService {
     }
 
     // Accept the ride atomically — only if still requested
-    const assignedRide = await ridesRepo.acceptAsQueued(accepted.rideRequestId, auth.userId);
+    let assignedRide;
+    try {
+      assignedRide = await ridesRepo.acceptAsQueued(accepted.rideRequestId, auth.userId);
+    } catch (err) {
+      await offersRepo.markCancelledByRideId(accepted.rideRequestId);
+      await driverStatusRepo.releaseQueuedRideClaim(auth.userId, offer.rideRequestId);
+      if (err instanceof AppError) {
+        return {
+          ok: false,
+          code: err.code,
+          message: err.message,
+          statusCode: err.statusCode,
+        };
+      }
+      throw err;
+    }
     if (!assignedRide) {
       // Race: admin or another driver already took the ride — cancel the
       // offer and release the queue claim so the driver isn't left blocked.

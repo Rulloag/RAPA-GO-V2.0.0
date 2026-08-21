@@ -8,8 +8,7 @@ import type { DriverStatus } from "../../db/schema/index.js";
  * Candidato a preasignación encadenada: conductor con viaje activo (A) en un
  * estado donde ya tiene sentido ofrecerle un viaje en cola (B).
  *
- * `vehicleCategory` es informativa (desde driver_profiles). Un mismatch NO
- * bloquea elegibilidad — solo sirve para scoring/UI.
+ * Capacidades reales del perfil bloquean ofertas incompatibles.
  */
 export interface QueueCandidateRow {
   driverUserId:            string;
@@ -21,6 +20,10 @@ export interface QueueCandidateRow {
   currentLng:              number;
   locationUpdatedAt:       Date | null;
   vehicleCategory:         string | null;
+  capabilityXl:            boolean;
+  capabilityExtraLuggage:  boolean;
+  capabilityComfort:       boolean;
+  vehicleYear:             number | null;
 }
 
 export interface AvailableDriverCandidate {
@@ -232,6 +235,10 @@ export class DriverStatusRepository {
           currentLng:                driverStatuses.currentLng,
           locationUpdatedAt:         driverStatuses.locationUpdatedAt,
           vehicleCategory:           driverProfiles.vehicleCategory,
+          capabilityXl:              driverProfiles.capabilityXl,
+          capabilityExtraLuggage:    driverProfiles.capabilityExtraLuggage,
+          capabilityComfort:         driverProfiles.capabilityComfort,
+          vehicleYear:               driverProfiles.vehicleYear,
         })
         .from(driverStatuses)
         .innerJoin(rideRequests, eq(driverStatuses.currentRideId, rideRequests.id))
@@ -250,6 +257,13 @@ export class DriverStatusRepository {
           currentLng:                r.currentLng as number,
           locationUpdatedAt:         r.locationUpdatedAt,
           vehicleCategory:           r.vehicleCategory ?? null,
+          capabilityXl:              r.capabilityXl === true,
+          capabilityExtraLuggage:    r.capabilityExtraLuggage === true,
+          capabilityComfort:         r.capabilityComfort === true,
+          vehicleYear:
+            r.vehicleYear != null && Number.isFinite(Number(r.vehicleYear))
+              ? Number(r.vehicleYear)
+              : null,
         }));
     } catch (err) {
       throw AppError.internal(`Failed to query queue candidates: ${String(err)}`);
