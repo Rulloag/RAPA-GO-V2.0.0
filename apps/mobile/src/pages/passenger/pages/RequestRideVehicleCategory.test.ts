@@ -42,8 +42,13 @@ describe("categorías de vehículo — contrato canónico Fase 1", () => {
     expect(adminFareSource).not.toMatch(/type VehicleKey = .*"luggage"/);
   });
 
-  it("multiplicadores tarifarios sin cambios", () => {
-    expect(VEHICLE_CATEGORIES).toEqual(["standard", "xl", "extra_luggage"]);
+  it("multiplicadores tarifarios incluyen categorías canónicas + Confort", () => {
+    expect(VEHICLE_CATEGORIES).toEqual([
+      "standard",
+      "xl",
+      "extra_luggage",
+      "comfort",
+    ]);
 
     const multiplierBlock = requestRideSource.match(
       /vehicleMultipliers:\s*\{[^}]+\}/,
@@ -51,5 +56,6 @@ describe("categorías de vehículo — contrato canónico Fase 1", () => {
     expect(multiplierBlock).toContain("standard: 1");
     expect(multiplierBlock).toContain("xl: 1.4");
     expect(multiplierBlock).toContain("extra_luggage: 1.25");
+    expect(multiplierBlock).toContain("comfort:");
   });
 });

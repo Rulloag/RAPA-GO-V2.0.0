@@ -38,6 +38,15 @@ describe("resolveAssignedVehicleCategory — Fase 2B", () => {
     expect(() => resolveAssignedVehicleCategory("xl")).not.toThrow();
   });
 
+  it("comfort profile → assigned comfort", () => {
+    expect(resolveAssignedVehicleCategory("comfort")).toBe("comfort");
+  });
+
+  it("assigned nunca inventa comfort si el perfil no es comfort", () => {
+    expect(resolveAssignedVehicleCategory("standard")).not.toBe("comfort");
+    expect(resolveAssignedVehicleCategory("xl")).not.toBe("comfort");
+  });
+
   it("assigned is computed from profile, not from client input", () => {
     // The function takes only profile value — no client input parameter exists
     expect(resolveAssignedVehicleCategory.length).toBe(1);
