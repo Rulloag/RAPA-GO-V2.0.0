@@ -167,12 +167,14 @@ const VEHICLE_LABEL: Record<VehicleKey, string> = {
   standard: "General / estándar",
   xl: "Vehículo XL",
   extra_luggage: vehicleCategoryLabel("extra_luggage"),
+  comfort: vehicleCategoryLabel("comfort"),
 };
 
 const VEHICLE_DESCRIPTION: Record<VehicleKey, string> = {
   standard: "Tarifa base urbana.",
   xl: "Mayor capacidad o comodidad.",
   extra_luggage: "Orientado a viajes con equipaje relevante.",
+  comfort: "Vehículos más nuevos y mayor comodidad.",
 };
 
 const DEFAULT_CONFIG: FareEngineConfig = {
@@ -197,6 +199,7 @@ const DEFAULT_CONFIG: FareEngineConfig = {
     standard: 1,
     xl: 1.4,
     extra_luggage: 1.25,
+    comfort: 1.35,
   },
   passengerActive: {
     resident: true,
@@ -207,6 +210,7 @@ const DEFAULT_CONFIG: FareEngineConfig = {
     standard: true,
     xl: true,
     extra_luggage: true,
+    comfort: true,
   },
   fixedDestinations: [
     {
@@ -576,6 +580,11 @@ function readStoredConfig(): FareEngineConfig {
           "extra_luggage",
           fallback.vehicleMultipliers.extra_luggage,
         ),
+        comfort: readStoredVehicleCategoryMultiplier(
+          parsed.vehicleMultipliers,
+          "comfort",
+          fallback.vehicleMultipliers.comfort,
+        ),
       },
       passengerActive: getActiveRecord<PassengerKey>(
         parsed.passengerActive,
@@ -588,6 +597,7 @@ function readStoredConfig(): FareEngineConfig {
           parsed.vehicleActive,
           "extra_luggage",
         ),
+        comfort: readStoredVehicleCategoryActive(parsed.vehicleActive, "comfort"),
       },
       fixedDestinations:
         Array.isArray(parsed.fixedDestinations) && parsed.fixedDestinations.length > 0
@@ -650,6 +660,7 @@ function buildCompatibilityRules(config: FareEngineConfig): CompatibilityFareRul
     standard: "standard",
     xl: "xl",
     extra_luggage: "extra_luggage",
+    comfort: "comfort",
   };
 
   for (const vehicle of VEHICLE_CATEGORIES) {
