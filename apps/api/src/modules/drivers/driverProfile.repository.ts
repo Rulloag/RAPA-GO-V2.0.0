@@ -18,6 +18,7 @@ export class DriverProfileRepository {
 
   async upsert(userId: string, input: UpsertDriverProfileInput): Promise<DriverProfile> {
     try {
+      const existing = await this.findByUserId(userId);
       const setValues: Partial<NewDriverProfile> = {
         updatedAt: new Date(),
       };
@@ -31,6 +32,33 @@ export class DriverProfileRepository {
       if (input.vehiclePhotoUrl !== undefined) setValues.vehiclePhotoUrl = input.vehiclePhotoUrl;
       if (input.bio !== undefined)             setValues.bio             = input.bio;
       if (input.languages !== undefined)       setValues.languages       = input.languages;
+
+      // Cambio de identidad del vehículo: revocar capacidades aprobadas.
+      // Las aprobaciones no pueden transferirse a otro auto (p. ej. Accent 2017
+      // heredando Confort/XL del RAV4 2024).
+      if (existing) {
+        const norm = (v: string | null | undefined) =>
+          String(v ?? "").trim().toLowerCase();
+        const plateChanged =
+          input.vehiclePlate !== undefined &&
+          norm(input.vehiclePlate) !== norm(existing.vehiclePlate);
+        const yearChanged =
+          input.vehicleYear !== undefined &&
+          Number(input.vehicleYear) !== Number(existing.vehicleYear ?? NaN);
+        const brandChanged =
+          input.vehicleBrand !== undefined &&
+          norm(input.vehicleBrand) !== norm(existing.vehicleBrand);
+        const modelChanged =
+          input.vehicleModel !== undefined &&
+          norm(input.vehicleModel) !== norm(existing.vehicleModel);
+
+        if (plateChanged || yearChanged || brandChanged || modelChanged) {
+          setValues.capabilityXl = false;
+          setValues.capabilityExtraLuggage = false;
+          setValues.capabilityComfort = false;
+          setValues.vehicleCategory = "standard";
+        }
+      }
 
       const insertValues: NewDriverProfile = {
         userId,

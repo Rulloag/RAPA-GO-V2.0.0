@@ -84,7 +84,10 @@ function capabilitiesFromProfilePayload(
     };
   }
 
-  return capabilitiesFromLegacyCategory(profile?.vehicleCategory, year);
+  return capabilitiesFromLegacyCategory(
+    profile?.vehicleCategory as string | null | undefined,
+    year,
+  );
 }
 
 export function getApprovedVehicleCategoryState(

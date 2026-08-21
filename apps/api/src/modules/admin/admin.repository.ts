@@ -416,18 +416,60 @@ export class AdminRepository {
   }
 
   /**
-   * Atomically assign a driver to a ride.
-   * WHERE id=? AND status='requested' — returns null if no row updated.
+   * Atomically assign a driver to a ride WITH eligibility enforcement.
+   * Prefer RidesRepository.accept from services; this path must not bypass
+   * vehicle category validation if invoked.
    */
   async assignDriver(rideId: string, driverUserId: string): Promise<RideRequest | null> {
     try {
-      const rows = await db
-        .update(rideRequests)
-        .set({ status: "accepted", driverUserId, acceptedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(rideRequests.id, rideId), eq(rideRequests.status, "requested")))
-        .returning();
-      return rows[0] ?? null;
+      return await db.transaction(async (tx) => {
+        const ride = (
+          await tx
+            .select()
+            .from(rideRequests)
+            .where(eq(rideRequests.id, rideId))
+            .limit(1)
+        )[0];
+        if (!ride || ride.status !== "requested") return null;
+
+        const profile = (
+          await tx
+            .select()
+            .from(driverProfiles)
+            .where(eq(driverProfiles.userId, driverUserId))
+            .limit(1)
+        )[0];
+
+        const { assertVehicleEligibleForRide } = await import(
+          "../rides/vehicleEligibility.js"
+        );
+        const eligibility = await assertVehicleEligibleForRide({
+          profile,
+          requestedVehicleCategory: ride.requestedVehicleCategory,
+        });
+
+        const now = new Date();
+        const rows = await tx
+          .update(rideRequests)
+          .set({
+            status: "accepted",
+            driverUserId,
+            acceptedAt: now,
+            assignedVehicleCategory: eligibility.assignedVehicleCategory,
+            assignedVehiclePlate: profile?.vehiclePlate ?? null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(rideRequests.id, rideId),
+              eq(rideRequests.status, "requested"),
+            ),
+          )
+          .returning();
+        return rows[0] ?? null;
+      });
     } catch (err) {
+      if (err instanceof AppError) throw err;
       throw AppError.internal(`Failed to assign driver: ${String(err)}`);
     }
   }
