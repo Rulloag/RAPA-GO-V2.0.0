@@ -584,7 +584,30 @@ export class AdminService {
         restAccess.allowed &&
         driverStatus?.availability === "available"
       ) {
-        await ridesRepo.accept(newRide.id, input.driverUserId);
+        try {
+          await ridesRepo.accept(newRide.id, input.driverUserId);
+        } catch (err) {
+          if (err instanceof AppError) {
+            // Ride ya creado y booking sincronizado, pero sin conductor.
+            // No setBusy / no audit de asignación exitosa.
+            const ride = await adminRepo.findRideById(newRide.id);
+            if (!ride) {
+              return {
+                ok: false,
+                code: "NOT_FOUND",
+                message: "Ride not found after sync.",
+                statusCode: 404,
+              };
+            }
+            return {
+              ok: false,
+              code: err.code,
+              message: err.message,
+              statusCode: err.statusCode,
+            };
+          }
+          throw err;
+        }
         await driverStatusRepo.setBusy(input.driverUserId, newRide.id);
         auditService.recordSafe({
           eventType: "admin.ride_driver_assigned",

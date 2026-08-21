@@ -716,6 +716,7 @@ export class RidesRepository {
             .from(rideRequests)
             .where(eq(rideRequests.id, id))
             .limit(1)
+            .for("update")
         )[0];
         if (!ride || ride.status !== "requested") return null;
 
@@ -725,6 +726,7 @@ export class RidesRepository {
             .from(driverProfiles)
             .where(eq(driverProfiles.userId, driverUserId))
             .limit(1)
+            .for("update")
         )[0];
 
         const { assertVehicleEligibleForRide } = await import(
@@ -798,6 +800,7 @@ export class RidesRepository {
             .from(rideRequests)
             .where(eq(rideRequests.id, id))
             .limit(1)
+            .for("update")
         )[0];
         if (!ride || ride.status !== "requested") return null;
 
@@ -807,6 +810,7 @@ export class RidesRepository {
             .from(driverProfiles)
             .where(eq(driverProfiles.userId, driverUserId))
             .limit(1)
+            .for("update")
         )[0];
 
         const { assertVehicleEligibleForRide } = await import(

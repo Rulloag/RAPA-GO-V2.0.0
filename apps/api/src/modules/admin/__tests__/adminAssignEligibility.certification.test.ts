@@ -34,6 +34,7 @@ describe("CERT — admin assign eligibility", () => {
     expect(fnBody).toContain("assignedVehicleCategory");
     expect(fnBody).toContain("assignedVehiclePlate");
     expect(fnBody).toContain("requestedVehicleCategory");
+    expect(fnBody).toContain('.for("update")');
   });
 
   it("ATTACK8 simulation: eligibility AppError → 409, no setBusy side effect", async () => {
