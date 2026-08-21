@@ -1,7 +1,10 @@
 import {
+  capabilitiesFromLegacyCategory,
   normalizeVehicleCategory,
+  primaryCategoryFromCapabilities,
   vehicleCategoryDisplay,
   vehicleCategoryLabel,
+  type VehicleCapabilities,
   type VehicleCategory,
 } from "@rapa-go/shared";
 
@@ -10,7 +13,11 @@ import { driverProfileService } from "./driverProfile.service.js";
 export type ApprovedVehicleCategoryState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; category: VehicleCategory }
+  | {
+      status: "ready";
+      category: VehicleCategory;
+      capabilities: VehicleCapabilities;
+    }
   | { status: "missing" }
   | { status: "error"; message: string };
 
@@ -41,6 +48,43 @@ function getApprovedCategoryCacheKey(
   }
 
   return accessToken;
+}
+
+function capabilitiesFromProfilePayload(
+  profile: Record<string, unknown> | null | undefined,
+): VehicleCapabilities {
+  const yearRaw = profile?.vehicleYear;
+  const year =
+    yearRaw != null && Number.isFinite(Number(yearRaw))
+      ? Number(yearRaw)
+      : null;
+
+  const capsObj =
+    profile?.capabilities && typeof profile.capabilities === "object"
+      ? (profile.capabilities as Record<string, unknown>)
+      : null;
+
+  if (
+    typeof profile?.capabilityXl === "boolean" ||
+    typeof profile?.capabilityExtraLuggage === "boolean" ||
+    typeof profile?.capabilityComfort === "boolean" ||
+    capsObj
+  ) {
+    return {
+      xl:
+        profile?.capabilityXl === true ||
+        capsObj?.xl === true,
+      extraLuggage:
+        profile?.capabilityExtraLuggage === true ||
+        capsObj?.extraLuggage === true,
+      comfort:
+        profile?.capabilityComfort === true ||
+        capsObj?.comfort === true,
+      vehicleYear: year,
+    };
+  }
+
+  return capabilitiesFromLegacyCategory(profile?.vehicleCategory, year);
 }
 
 export function getApprovedVehicleCategoryState(
@@ -86,12 +130,35 @@ export function clearApprovedVehicleCategoryStateForSession(session?: {
 export function rememberApprovedVehicleCategoryCache(
   accessToken: string | null | undefined,
   user: unknown,
-  category: unknown,
+  categoryOrProfile: unknown,
 ): ApprovedVehicleCategoryState {
-  const normalized = normalizeVehicleCategory(category);
-  const state: ApprovedVehicleCategoryState = normalized
-    ? { status: "ready", category: normalized }
-    : { status: "missing" };
+  let state: ApprovedVehicleCategoryState;
+
+  if (
+    categoryOrProfile &&
+    typeof categoryOrProfile === "object" &&
+    ("vehicleCategory" in (categoryOrProfile as object) ||
+      "capabilityXl" in (categoryOrProfile as object) ||
+      "capabilities" in (categoryOrProfile as object))
+  ) {
+    const profile = categoryOrProfile as Record<string, unknown>;
+    const capabilities = capabilitiesFromProfilePayload(profile);
+    const category =
+      normalizeVehicleCategory(profile.vehicleCategory) ??
+      primaryCategoryFromCapabilities(capabilities);
+    state = { status: "ready", category, capabilities };
+  } else {
+    const normalized = normalizeVehicleCategory(categoryOrProfile);
+    if (!normalized) {
+      state = { status: "missing" };
+    } else {
+      state = {
+        status: "ready",
+        category: normalized,
+        capabilities: capabilitiesFromLegacyCategory(normalized, null),
+      };
+    }
+  }
 
   setApprovedVehicleCategoryState(accessToken, user, state);
   return state;
@@ -124,7 +191,7 @@ export async function ensureApprovedVehicleCategoryLoaded(
       return rememberApprovedVehicleCategoryCache(
         accessToken,
         user,
-        profile?.vehicleCategory,
+        profile ?? null,
       );
     } catch (error) {
       if ((approvedCategoryGenerations.get(cacheKey) ?? 0) !== generation) {

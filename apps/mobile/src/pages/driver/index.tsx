@@ -89,7 +89,7 @@ import {
 } from "../../features/drivers/driverApprovedVehicleCategory.js";
 import { driverVehiclePhotoService } from "../../features/drivers/driverVehiclePhoto.service";
 import {
-  needsVehicleCategoryConfirmation,
+  isVehicleEligibleForRequestedCategory,
   normalizeVehicleCategory,
   vehicleCategoryDisplay,
   vehicleCategoryEmoji,
@@ -11289,7 +11289,7 @@ function getApprovedVehicleCategoryForDisplay(
 
 type DriverCategoryGateResult =
   | { status: "proceed" }
-  | { status: "confirm"; ride: AvailableRideData }
+  | { status: "blocked"; ride: AvailableRideData }
   | { status: "verify_error"; ride: AvailableRideData };
 
 async function runDriverCategoryGate(
@@ -11318,19 +11318,15 @@ async function runDriverCategoryGate(
   }
 
   const requested = getRideVehicleCategory(ride as RideWithFarePayload);
-  const driverCat =
-    approvedState.status === "ready" ? approvedState.category : null;
 
-  if (
-    driverCat &&
-    !needsVehicleCategoryConfirmation(requested, driverCat)
-  ) {
-    void action();
-    return { status: "proceed" };
-  }
-
-  if (driverCat) {
-    return { status: "confirm", ride: ride as AvailableRideData };
+  if (approvedState.status === "ready") {
+    const eligible = isVehicleEligibleForRequestedCategory(
+      approvedState.capabilities,
+      requested,
+    );
+    if (!eligible) {
+      return { status: "blocked", ride: ride as AvailableRideData };
+    }
   }
 
   void action();
@@ -13685,8 +13681,10 @@ function driverCategoryGate(
       return;
     }
 
+    // blocked: mostrar aviso; NO permitir continuar
     setConfirmRide(result.ride);
-    actionRef.current = actionWithUnlock;
+    actionRef.current = null;
+    releaseDriverCategoryGateLock(activeGateKeyRef, gateLocksRef);
   });
 }
 
@@ -15655,8 +15653,8 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
         isOpen={Boolean(alertCategoryConfirmRide)}
         header={
           alertCategoryConfirmRide
-            ? `⚠️ ${vehicleCategoryMismatchCopy(getRideVehicleCategory(alertCategoryConfirmRide as RideWithFarePayload)).title}`
-            : "Confirma la categoría"
+            ? vehicleCategoryMismatchCopy(getRideVehicleCategory(alertCategoryConfirmRide as RideWithFarePayload)).title
+            : "Vehículo no elegible"
         }
         message={
           alertCategoryConfirmRide
@@ -15666,11 +15664,10 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
                   session?.accessToken,
                   session?.user,
                 );
-                const copy = vehicleCategoryMismatchCopy(requested);
                 return (
+                  `Tu vehículo actual no cumple los requisitos de este tipo de viaje.\n\n` +
                   `Categoría del viaje: ${vehicleCategoryDisplay(requested)}\n` +
-                  `Tu vehículo: ${driverCat ? vehicleCategoryDisplay(driverCat) : getApprovedVehicleCategoryForDisplay(session?.accessToken, session?.user)}\n\n` +
-                  copy.body
+                  `Tu vehículo: ${driverCat ? vehicleCategoryDisplay(driverCat) : getApprovedVehicleCategoryForDisplay(session?.accessToken, session?.user)}`
                 );
               })()
             : ""
@@ -15686,24 +15683,8 @@ export function DriverGlobalRideAlert(): JSX.Element | null {
         }}
         buttons={[
           {
-            text: alertCategoryConfirmRide
-              ? vehicleCategoryMismatchCopy(getRideVehicleCategory(alertCategoryConfirmRide as RideWithFarePayload)).cancelLabel
-              : "Volver",
+            text: "Entendido",
             role: "cancel",
-          },
-          {
-            text: alertCategoryConfirmRide
-              ? vehicleCategoryMismatchCopy(getRideVehicleCategory(alertCategoryConfirmRide as RideWithFarePayload)).confirmLabel
-              : "Confirmar y aceptar",
-            role: "confirm",
-            handler: () => {
-              const action = alertCategoryConfirmActionRef.current;
-              if (!action) return false;
-              alertCategoryConfirmActionRef.current = null;
-              setAlertCategoryConfirmRide(null);
-              void action();
-              return true;
-            },
           },
         ]}
       />
@@ -20152,14 +20133,12 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         isOpen={Boolean(categoryConfirmRide)}
         header={
           categoryConfirmRide
-            ? `⚠️ ${
-                vehicleCategoryMismatchCopy(
-                  getRideVehicleCategory(
-                    categoryConfirmRide as RideWithFarePayload,
-                  ),
-                ).title
-              }`
-            : "Confirma la categoría"
+            ? vehicleCategoryMismatchCopy(
+                getRideVehicleCategory(
+                  categoryConfirmRide as RideWithFarePayload,
+                ),
+              ).title
+            : "Vehículo no elegible"
         }
         message={
           categoryConfirmRide
@@ -20171,11 +20150,10 @@ La reserva fue retirada. No continúes hacia la recogida.`,
                   session?.accessToken,
                   session?.user,
                 );
-                const copy = vehicleCategoryMismatchCopy(requested);
                 return (
+                  `Tu vehículo actual no cumple los requisitos de este tipo de viaje.\n\n` +
                   `Categoría del viaje: ${vehicleCategoryDisplay(requested)}\n` +
-                  `Tu vehículo: ${driverCat ? vehicleCategoryDisplay(driverCat) : getApprovedVehicleCategoryForDisplay(session?.accessToken, session?.user)}\n\n` +
-                  copy.body
+                  `Tu vehículo: ${driverCat ? vehicleCategoryDisplay(driverCat) : getApprovedVehicleCategoryForDisplay(session?.accessToken, session?.user)}`
                 );
               })()
             : ""
@@ -20191,34 +20169,8 @@ La reserva fue retirada. No continúes hacia la recogida.`,
         }}
         buttons={[
           {
-            text:
-              categoryConfirmRide
-                ? vehicleCategoryMismatchCopy(
-                    getRideVehicleCategory(
-                      categoryConfirmRide as RideWithFarePayload,
-                    ),
-                  ).cancelLabel
-                : "Volver",
+            text: "Entendido",
             role: "cancel",
-          },
-          {
-            text:
-              categoryConfirmRide
-                ? vehicleCategoryMismatchCopy(
-                    getRideVehicleCategory(
-                      categoryConfirmRide as RideWithFarePayload,
-                    ),
-                  ).confirmLabel
-                : "Confirmar y aceptar",
-            role: "confirm",
-            handler: () => {
-              const action = categoryConfirmActionRef.current;
-              if (!action) return false;
-              categoryConfirmActionRef.current = null;
-              setCategoryConfirmRide(null);
-              void action();
-              return true;
-            },
           },
         ]}
       />

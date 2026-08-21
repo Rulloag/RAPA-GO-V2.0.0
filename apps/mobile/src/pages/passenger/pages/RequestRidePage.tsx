@@ -4000,10 +4000,14 @@ function vehicleCategoryTitle(category: VehicleCategory): string {
 }
 
 function vehicleCategoryDescription(category: VehicleCategory): string {
-  if (category === "xl") return "Más espacio y comodidad";
-  if (category === "extra_luggage") return "Ideal si llevas equipaje";
-  if (category === "comfort") return "Vehículos más nuevos y mayor comodidad";
-  return "Viaje normal urbano";
+  if (category === "xl") return "Mayor capacidad para pasajeros";
+  if (category === "extra_luggage") {
+    return "Vehículo con capacidad adicional para equipaje";
+  }
+  if (category === "comfort") {
+    return "Vehículos más nuevos y aprobados para una experiencia superior";
+  }
+  return "Viaje estándar";
 }
 
 function vehicleCategoryIcon(category: VehicleCategory): string {
