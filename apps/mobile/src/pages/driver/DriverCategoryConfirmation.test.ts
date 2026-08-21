@@ -55,7 +55,7 @@ describe("Fase 4 — compuerta basada en categoría aprobada del servidor", () =
     expect(driverSource).toContain("categoryConfirmActionRef.current = null;");
   });
 
-  it("modal de mismatch usa categoría aprobada del servidor", () => {
+  it("modal de inelegibilidad usa categoría aprobada del servidor", () => {
     expect(driverSource).toContain("getApprovedDriverCategoryForComparison(");
     expect(driverSource).not.toContain("getDriverRegisteredVehicleCategory(");
   });
@@ -91,7 +91,7 @@ describe("Fase 4 — compuerta basada en categoría aprobada del servidor", () =
     expect(gateSection).not.toContain("DRIVER_VEHICLE_CATEGORY_STORAGE_KEY");
   });
 
-  it("missing/error no muestran Tu vehículo: Estándar en el modal de mismatch", () => {
+  it("missing/error no muestran Tu vehículo: Estándar en el modal de inelegibilidad", () => {
     const mismatchModal = driverSource.slice(
       driverSource.indexOf("isOpen={Boolean(categoryConfirmRide)}"),
     );
@@ -108,15 +108,23 @@ describe("Fase 4 — compuerta basada en categoría aprobada del servidor", () =
     expect(driverSource).toContain("isOpen={Boolean(alertCategoryVerifyErrorRide)}");
   });
 
-  it("runDriverCategoryGate solo usa ready para categoría aprobada", () => {
+  it("runDriverCategoryGate usa capacidades para elegibilidad", () => {
     const gateSection = driverSource.slice(
       driverSource.indexOf("async function runDriverCategoryGate("),
       driverSource.indexOf("function getApprovedDriverCategoryForComparison("),
     );
-    expect(gateSection).toContain(
-      'approvedState.status === "ready" ? approvedState.category : null',
-    );
+    expect(gateSection).toContain("isVehicleEligibleForRequestedCategory(");
+    expect(gateSection).toContain("approvedState.capabilities");
+    expect(gateSection).toContain('status: "blocked"');
     expect(gateSection).not.toContain('?? "standard"');
+  });
+
+  it("modal blocked no permite Continuar de todas formas", () => {
+    const mismatchModal = driverSource.slice(
+      driverSource.indexOf("isOpen={Boolean(categoryConfirmRide)}"),
+    );
+    expect(mismatchModal).toContain("Entendido");
+    expect(mismatchModal).not.toContain("Confirmar y aceptar");
   });
 
   it("bloquea doble clic antes de esperar GET /drivers/me/profile", () => {

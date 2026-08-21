@@ -78,6 +78,7 @@ vi.mock("../rides.repository.js", () => ({
     findByPassengerIdWithDriver: mockFindByPassengerIdWithDriver,
     findByDriverId: mockFindByDriverId,
     findAvailable: mockFindAvailable,
+    findDriverVehicleEligibilitySnapshot: vi.fn().mockResolvedValue(null),
     accept: mockAccept,
     complete: mockComplete,
     start: mockStart,

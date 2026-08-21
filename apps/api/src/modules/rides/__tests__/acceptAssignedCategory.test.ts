@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { resolveAssignedVehicleCategory } from "../resolveAssignedVehicleCategory.js";
 
-describe("resolveAssignedVehicleCategory — Fase 2B", () => {
+describe("resolveAssignedVehicleCategory — Fase 2B + capabilities", () => {
   it("standard profile → assigned standard", () => {
     expect(resolveAssignedVehicleCategory("standard")).toBe("standard");
   });
 
-  it("xl profile → assigned xl", () => {
+  it("xl profile → assigned xl for standard request (primary snapshot)", () => {
     expect(resolveAssignedVehicleCategory("xl")).toBe("xl");
   });
 
@@ -34,10 +34,6 @@ describe("resolveAssignedVehicleCategory — Fase 2B", () => {
     expect(resolveAssignedVehicleCategory("")).toBe("standard");
   });
 
-  it("mismatch between requested and assigned does not throw", () => {
-    expect(() => resolveAssignedVehicleCategory("xl")).not.toThrow();
-  });
-
   it("comfort profile → assigned comfort", () => {
     expect(resolveAssignedVehicleCategory("comfort")).toBe("comfort");
   });
@@ -47,8 +43,14 @@ describe("resolveAssignedVehicleCategory — Fase 2B", () => {
     expect(resolveAssignedVehicleCategory("xl")).not.toBe("comfort");
   });
 
-  it("assigned is computed from profile, not from client input", () => {
-    // The function takes only profile value — no client input parameter exists
-    expect(resolveAssignedVehicleCategory.length).toBe(1);
+  it("multi-capability overrides exclusive category when provided", () => {
+    expect(
+      resolveAssignedVehicleCategory("standard", {
+        xl: true,
+        extraLuggage: true,
+        comfort: true,
+        vehicleYear: 2024,
+      }, "xl"),
+    ).toBe("xl");
   });
 });

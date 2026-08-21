@@ -94,19 +94,19 @@ describe("Confort — assigned truthful (no falsificación)", () => {
   });
 });
 
-describe("Confort — mismatch gate (política informativa conservada)", () => {
-  it("comfort vs standard requiere confirmación", () => {
+describe("Confort — elegibilidad autoritativa", () => {
+  it("comfort vs standard: legacy confirm helper still detects mismatch", () => {
     expect(needsVehicleCategoryConfirmation("comfort", "standard")).toBe(true);
   });
 
-  it("comfort vs comfort no requiere confirmación", () => {
+  it("comfort vs comfort: no mismatch", () => {
     expect(needsVehicleCategoryConfirmation("comfort", "comfort")).toBe(false);
   });
 
-  it("copy de mismatch Confort existe", () => {
+  it("copy Confort indica requisitos no cumplidos", () => {
     const copy = vehicleCategoryMismatchCopy("comfort");
     expect(copy.title).toContain("Confort");
-    expect(copy.body).toMatch(/Confort|comodidad/i);
+    expect(copy.body).toMatch(/Confort|requisitos/i);
   });
 });
 

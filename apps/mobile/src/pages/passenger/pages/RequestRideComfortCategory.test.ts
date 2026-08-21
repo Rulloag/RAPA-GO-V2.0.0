@@ -23,7 +23,7 @@ describe("Confort — mobile integración", () => {
   it("RequestRidePage expone comfort en el picker y multiplicador", () => {
     expect(requestRideSource).toContain("comfort:");
     expect(requestRideSource).toContain(
-      "Vehículos más nuevos y mayor comodidad",
+      "Vehículos más nuevos y aprobados para una experiencia superior",
     );
     expect(requestRideSource).toContain("VEHICLE_CATEGORIES.map");
   });
@@ -48,9 +48,9 @@ describe("Confort — mobile integración", () => {
     expect(split.driverAmountClp).toBe(15400);
   });
 
-  it("gate de mismatch sigue activa para comfort vs standard", () => {
+  it("gate de elegibilidad usa capacidades (sin bypass Continuar)", () => {
     expect(needsVehicleCategoryConfirmation("comfort", "standard")).toBe(true);
-    expect(driverSource).toContain("needsVehicleCategoryConfirmation");
+    expect(driverSource).toContain("isVehicleEligibleForRequestedCategory");
     expect(driverSource).toContain("guardCategoryConfirmation");
   });
 

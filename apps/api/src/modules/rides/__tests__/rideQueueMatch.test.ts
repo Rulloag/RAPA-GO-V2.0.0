@@ -110,15 +110,39 @@ describe("rideQueueMatch — evaluateQueueEligibility", () => {
     expect(result.reasons).toContain("DRIVER_UNAVAILABLE");
   });
 
-  it("6. categoría de vehículo distinta NO bloquea (informa, no restringe)", () => {
+  it("6. categoría de vehículo incompatible SÍ bloquea ofertas en cola", () => {
     const result = evaluateQueueEligibility(
       baseInput({
         newRideRequest: { id: "ride-b-1", originLat: ORIGIN_B_NEAR.lat, originLng: ORIGIN_B_NEAR.lng, vehicleCategory: "xl" },
         driverStatus: { ...baseInput().driverStatus, vehicleCategory: "standard" },
       }),
     );
+    expect(result.eligible).toBe(false);
+    expect(result.reasons).toContain("VEHICLE_CATEGORY_INELIGIBLE");
+  });
+
+  it("6b. multi-capability XL+Confort puede recibir XL en cola", () => {
+    const result = evaluateQueueEligibility(
+      baseInput({
+        newRideRequest: {
+          id: "ride-b-xl",
+          originLat: ORIGIN_B_NEAR.lat,
+          originLng: ORIGIN_B_NEAR.lng,
+          vehicleCategory: "xl",
+        },
+        driverStatus: {
+          ...baseInput().driverStatus,
+          vehicleCategory: "standard",
+          capabilities: {
+            xl: true,
+            extraLuggage: false,
+            comfort: true,
+            vehicleYear: 2024,
+          },
+        },
+      }),
+    );
     expect(result.eligible).toBe(true);
-    expect(result.reasons).not.toContain("VEHICLE_CATEGORY_MISMATCH");
   });
 
   it("7. ubicación desactualizada (stale) es rechazada", () => {
