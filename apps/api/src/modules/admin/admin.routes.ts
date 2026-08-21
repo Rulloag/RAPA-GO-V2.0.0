@@ -16,6 +16,10 @@ export async function adminRoutes(app: FastifyInstance) {
     "/drivers/:userId/vehicle-category",
     adminController.setDriverVehicleCategory,
   );
+  app.patch(
+    "/drivers/:userId/vehicle-capabilities",
+    adminController.setDriverVehicleCapabilities,
+  );
   app.post("/rides/:id/assign",                       adminController.assignDriver);
   app.post("/rides/:id/cancel",                       adminController.adminCancelRide);
   app.post("/offline-bookings/:id/sync-to-ride",      adminController.syncToRide);

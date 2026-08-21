@@ -6,6 +6,7 @@ import {
   notifications,
   rideRequests,
   driverStatuses,
+  driverProfiles,
 } from "../../db/schema/index.js";
 import { eq, and, or, ilike, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -460,7 +461,20 @@ export class AdminRepository {
     }
   }
 
-  async listActiveDrivers(): Promise<(User & { availability: string | null; currentRideId: string | null; lastSeenAt: Date | null; currentZone: string | null })[]> {
+  async listActiveDrivers(): Promise<(User & {
+    availability: string | null;
+    currentRideId: string | null;
+    lastSeenAt: Date | null;
+    currentZone: string | null;
+    vehicleBrand: string | null;
+    vehicleModel: string | null;
+    vehicleYear: number | null;
+    vehiclePlate: string | null;
+    vehicleCategory: string | null;
+    capabilityXl: boolean | null;
+    capabilityExtraLuggage: boolean | null;
+    capabilityComfort: boolean | null;
+  })[]> {
     try {
       const rows = await db
         .select({
@@ -477,11 +491,33 @@ export class AdminRepository {
           currentRideId: driverStatuses.currentRideId,
           lastSeenAt:    driverStatuses.lastSeenAt,
           currentZone:   driverStatuses.currentZone,
+          vehicleBrand:  driverProfiles.vehicleBrand,
+          vehicleModel:  driverProfiles.vehicleModel,
+          vehicleYear:   driverProfiles.vehicleYear,
+          vehiclePlate:  driverProfiles.vehiclePlate,
+          vehicleCategory: driverProfiles.vehicleCategory,
+          capabilityXl: driverProfiles.capabilityXl,
+          capabilityExtraLuggage: driverProfiles.capabilityExtraLuggage,
+          capabilityComfort: driverProfiles.capabilityComfort,
         })
         .from(users)
         .leftJoin(driverStatuses, eq(users.id, driverStatuses.driverUserId))
+        .leftJoin(driverProfiles, eq(users.id, driverProfiles.userId))
         .where(and(eq(users.role, "driver"), eq(users.status, "active")));
-      return rows as (User & { availability: string | null; currentRideId: string | null; lastSeenAt: Date | null; currentZone: string | null })[];
+      return rows as (User & {
+        availability: string | null;
+        currentRideId: string | null;
+        lastSeenAt: Date | null;
+        currentZone: string | null;
+        vehicleBrand: string | null;
+        vehicleModel: string | null;
+        vehicleYear: number | null;
+        vehiclePlate: string | null;
+        vehicleCategory: string | null;
+        capabilityXl: boolean | null;
+        capabilityExtraLuggage: boolean | null;
+        capabilityComfort: boolean | null;
+      })[];
     } catch (err) {
       throw AppError.internal(`Failed to list active drivers: ${String(err)}`);
     }

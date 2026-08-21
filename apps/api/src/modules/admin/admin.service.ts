@@ -78,7 +78,20 @@ function toRideResponse(r: AdminRideRow): AdminRideResponse {
   };
 }
 
-function toDriverResponse(u: User & { availability?: string | null; currentRideId?: string | null; lastSeenAt?: Date | null; currentZone?: string | null }): ActiveDriverResponse {
+function toDriverResponse(u: User & {
+  availability?: string | null;
+  currentRideId?: string | null;
+  lastSeenAt?: Date | null;
+  currentZone?: string | null;
+  vehicleBrand?: string | null;
+  vehicleModel?: string | null;
+  vehicleYear?: number | null;
+  vehiclePlate?: string | null;
+  vehicleCategory?: string | null;
+  capabilityXl?: boolean | null;
+  capabilityExtraLuggage?: boolean | null;
+  capabilityComfort?: boolean | null;
+}): ActiveDriverResponse {
   return {
     id:            u.id,
     name:          u.name,
@@ -90,6 +103,14 @@ function toDriverResponse(u: User & { availability?: string | null; currentRideI
     currentRideId: u.currentRideId ?? null,
     lastSeenAt:    u.lastSeenAt?.toISOString() ?? null,
     currentZone:   u.currentZone ?? null,
+    vehicleBrand:  u.vehicleBrand ?? null,
+    vehicleModel:  u.vehicleModel ?? null,
+    vehicleYear:   u.vehicleYear ?? null,
+    vehiclePlate:  u.vehiclePlate ?? null,
+    vehicleCategory: u.vehicleCategory ?? null,
+    capabilityXl: u.capabilityXl === true,
+    capabilityExtraLuggage: u.capabilityExtraLuggage === true,
+    capabilityComfort: u.capabilityComfort === true,
   };
 }
 
@@ -373,7 +394,20 @@ export class AdminService {
       };
     }
 
-    const updated = await ridesRepo.accept(rideId, input.driverUserId);
+    let updated;
+    try {
+      updated = await ridesRepo.accept(rideId, input.driverUserId);
+    } catch (err) {
+      if (err instanceof AppError) {
+        return {
+          ok: false,
+          code: err.code,
+          message: err.message,
+          statusCode: err.statusCode,
+        };
+      }
+      throw err;
+    }
     if (!updated) {
       const refetch = await adminRepo.findRideById(rideId);
       return {
@@ -645,6 +679,106 @@ export class AdminService {
         driverUserId,
         vehicleCategory,
         vehicleYear: profile.vehicleYear ?? null,
+      },
+    });
+
+    return {
+      ok: true as const,
+      profile: serializeDriverProfile(updated),
+    };
+  }
+
+  /**
+   * Administración configura capacidades no excluyentes del vehículo.
+   * Confort exige año >= mínimo configurable.
+   */
+  async setDriverVehicleCapabilities(
+    accessToken: string,
+    driverUserId: string,
+    capabilities: {
+      xl: boolean;
+      extraLuggage: boolean;
+      comfort: boolean;
+    },
+  ) {
+    const auth = await authenticate(accessToken);
+    if (!auth.ok) return auth;
+    if (auth.role !== "admin") {
+      return {
+        ok: false as const,
+        code: "AUTH_FORBIDDEN",
+        message: "Admin access required.",
+        statusCode: 403,
+      };
+    }
+
+    const user = await usersRepo.findById(driverUserId);
+    if (!user || user.role !== "driver") {
+      return {
+        ok: false as const,
+        code: "NOT_FOUND",
+        message: "Driver not found.",
+        statusCode: 404,
+      };
+    }
+
+    const { DriverProfileRepository } = await import(
+      "../drivers/driverProfile.repository.js"
+    );
+    const { evaluateComfortCategoryApproval } = await import(
+      "../drivers/comfortEligibility.service.js"
+    );
+    const { serializeDriverProfile } = await import(
+      "../drivers/driverProfile.serializer.js"
+    );
+
+    const profileRepo = new DriverProfileRepository();
+    const profile = await profileRepo.findByUserId(driverUserId);
+    if (!profile) {
+      return {
+        ok: false as const,
+        code: "NOT_FOUND",
+        message: "Driver profile not found.",
+        statusCode: 404,
+      };
+    }
+
+    if (capabilities.comfort) {
+      const eligibility = await evaluateComfortCategoryApproval({
+        targetCategory: "comfort",
+        vehicleYear: profile.vehicleYear,
+      });
+      if (!eligibility.ok) {
+        return {
+          ok: false as const,
+          code: eligibility.code,
+          message: eligibility.message,
+          statusCode: 400,
+        };
+      }
+    }
+
+    const previous = {
+      xl: profile.capabilityXl === true,
+      extraLuggage: profile.capabilityExtraLuggage === true,
+      comfort: profile.capabilityComfort === true,
+      vehicleCategory: profile.vehicleCategory,
+    };
+
+    const updated = await profileRepo.setVehicleCapabilities(
+      driverUserId,
+      capabilities,
+    );
+
+    auditService.recordSafe({
+      eventType: "admin.driver_vehicle_capabilities_set",
+      metadata: {
+        adminUserId: auth.userId,
+        driverUserId,
+        previous,
+        next: capabilities,
+        vehicleYear: profile.vehicleYear ?? null,
+        vehiclePlate: profile.vehiclePlate ?? null,
       },
     });
 
