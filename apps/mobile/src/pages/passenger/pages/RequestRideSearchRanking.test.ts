@@ -60,6 +60,17 @@ describe("mergeRapaNuiAutocompletePredictions", () => {
     ]);
   });
 
+  it("con búsqueda de hotel prioriza el place_id de Google sobre el catálogo", () => {
+    const merged = mergeRapaNuiAutocompletePredictions(
+      [local("Hotel Taha Tai", 1200)],
+      [google("Hotel Taha Tai", "ChIJgoogle-taha-tai")],
+      "Hotel Taha Tai",
+    );
+
+    expect(merged[0].mainText).toBe("Hotel Taha Tai");
+    expect(merged[0].placeId).toBe("ChIJgoogle-taha-tai");
+  });
+
   it("no descarta la corazonada, solo la baja", () => {
     /* Sigue estando: si Google no acertó, es la única salida que le queda al
        pasajero antes de tener que tocar el mapa. */
@@ -103,6 +114,26 @@ describe("mergeRapaNuiAutocompletePredictions", () => {
     );
 
     expect(merged[0].placeId).not.toBe("google-anakena");
+  });
+
+  it("en hoteles gana el place_id de Google aunque el catálogo también tenga el nombre", () => {
+    const merged = mergeRapaNuiAutocompletePredictions(
+      [
+        {
+          score: 1200,
+          suggestion: {
+            placeId: "rapago-local:hotel-taha-tai",
+            description: "Hotel Taha Tai, Rapa Nui",
+            mainText: "Hotel Taha Tai",
+            secondaryText: "Hotel · Apina",
+          },
+        },
+      ],
+      [google("Hotel Taha Tai", "ChIJ-google-taha-tai")],
+      "hotel taha tai",
+    );
+
+    expect(merged[0].placeId).toBe("ChIJ-google-taha-tai");
   });
 
   it("no devuelve más de dieciséis para no enterrar el resto de la pantalla", () => {

@@ -2468,11 +2468,21 @@ export function getRapaNuiLocalAutocompletePredictions(
 export function mergeRapaNuiAutocompletePredictions(
   localMatches: LocalAutocompleteMatch[],
   googleSuggestions: GoogleSuggestion[],
+  query = "",
 ): GoogleSuggestion[] {
   /* Lo fuerte del catálogo primero: son lugares con coordenadas curadas, así
      que al tocarlos el viaje queda listo sin pedirle a Google los detalles.
      Después Google. Y al final las corazonadas del catálogo, que están para
-     rescatar erratas, no para encabezar la lista. */
+     rescatar erratas, no para encabezar la lista.
+
+     EXCEPCIÓN hoteles/lodging: el catálogo local tuvo coords inventadas que
+     movían el pin (Taha Tai → Gobernación Marítima). Con intención de hotel
+     Google va primero y el place_id oficial manda. */
+  const lodgingIntent =
+    /\b(hotel|hostal|lodge|caba|cabana|cabanas|hare)\b/.test(
+      normalizeRapaNuiAutocompleteText(query),
+    );
+
   const strong = localMatches
     .filter((match) => match.score >= LOCAL_STRONG_AUTOCOMPLETE_SCORE)
     .map((match) => match.suggestion);
@@ -2489,13 +2499,16 @@ export function mergeRapaNuiAutocompletePredictions(
 
   const seen = new Set<string>();
   const merged: GoogleSuggestion[] = [];
+  const ordered = lodgingIntent
+    ? [...googleFiltered, ...strong, ...weak]
+    : [...strong, ...googleFiltered, ...weak];
 
-  for (const suggestion of [...strong, ...googleFiltered, ...weak]) {
+  for (const suggestion of ordered) {
     /* La clave es solo el nombre. Antes incluía el subtítulo, y como el del
        catálogo termina en "· Sugerencia RAPA GO" y el de Google es la
        dirección, el MISMO lugar aparecía dos veces seguidas: una versión
        nuestra y otra de Google. Con el nombre a secas se colapsan, y gana el
-       del catálogo por llegar antes en el recorrido. */
+       del catálogo por llegar antes en el recorrido (salvo lodgingIntent). */
     const key = normalizeRapaNuiAutocompleteText(suggestion.mainText);
 
     if (!key || seen.has(key)) continue;
@@ -5093,6 +5106,7 @@ async function resolveGooglePredictions(
     const merged = mergeRapaNuiAutocompletePredictions(
       localMatches,
       answer.suggestions,
+      cleanInput,
     );
 
     if (answer.usable) rememberAutocompleteResult(cacheKey, merged);
@@ -5101,8 +5115,94 @@ async function resolveGooglePredictions(
     /* Sin SDK —sin red, sin clave— queda el catálogo local, que es lo que
        sostiene la pantalla. Tampoco se guarda: en cuanto vuelva la red, la
        misma búsqueda tiene que poder llegar a Google. */
-    return mergeRapaNuiAutocompletePredictions(localMatches, []);
+    return mergeRapaNuiAutocompletePredictions(localMatches, [], cleanInput);
   }
+}
+
+/**
+ * Resuelve un establecimiento por nombre usando Google Places (Text Search /
+ * findPlace). Obligatorio para hoteles: el catálogo local no puede inventar
+ * lat/lng que desplacen el pin (caso Hotel Taha Tai → Gobernación Marítima).
+ */
+async function findGooglePlaceInRapaNuiByQuery(
+  query: string,
+): Promise<PickerResult | null> {
+  const clean = String(query ?? "").trim();
+  if (!clean) return null;
+
+  await loadRapaGoGoogleMaps();
+  if (!window.google?.maps?.places?.PlacesService) return null;
+
+  const container = document.createElement("div");
+  const service = new google.maps.places.PlacesService(container);
+  const requestQuery = /rapa nui|isla de pascua|hanga roa/i.test(clean)
+    ? clean
+    : `${clean} Hanga Roa Rapa Nui`;
+
+  return await new Promise((resolve) => {
+    service.findPlaceFromQuery(
+      {
+        query: requestQuery,
+        fields: [
+          "name",
+          "formatted_address",
+          "geometry",
+          "place_id",
+          "types",
+          "business_status",
+        ],
+        locationBias: {
+          center: RAPA_NUI_CENTER,
+          radius: 18_000,
+        },
+      },
+      (results, status) => {
+        if (
+          status !== google.maps.places.PlacesServiceStatus.OK ||
+          !results?.length
+        ) {
+          resolve(null);
+          return;
+        }
+
+        const place =
+          results.find((candidate) => {
+            const location = candidate.geometry?.location;
+            if (!location) return false;
+            return isPointInsideRapaNuiServiceArea({
+              lat: location.lat(),
+              lng: location.lng(),
+            });
+          }) ?? null;
+
+        if (!place?.geometry?.location || !place.place_id) {
+          resolve(null);
+          return;
+        }
+
+        if (
+          String(place.business_status ?? "").toUpperCase() ===
+          "CLOSED_PERMANENTLY"
+        ) {
+          resolve(null);
+          return;
+        }
+
+        resolve({
+          text: place.name ?? clean,
+          address: place.formatted_address ?? "Rapa Nui, Chile",
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+          placeId: place.place_id,
+          placeTypes: Array.isArray(place.types) ? [...place.types] : [],
+          originalLat: null,
+          originalLng: null,
+          walkMeters: 0,
+          isAccessiblePickup: false,
+        });
+      },
+    );
+  });
 }
 
 export async function getPlaceDetailsExact(
@@ -5110,6 +5210,13 @@ export async function getPlaceDetailsExact(
 ): Promise<PickerResult | null> {
   const localPlace = getRapaNuiLocalAutocompletePlace(placeId);
   if (localPlace) {
+    /* Hoteles/lodging: SIEMPRE coordenadas de Google Places. El catálogo
+       solo ayuda a encontrar el nombre; no puede pintar el pin. */
+    if (isLodgingPlace(localPlace)) {
+      const fromGoogle = await findGooglePlaceInRapaNuiByQuery(localPlace.name);
+      if (fromGoogle) return fromGoogle;
+    }
+
     return localRapaNuiPlaceToPickerResult(localPlace);
   }
 
@@ -5155,7 +5262,9 @@ export async function getPlaceDetailsExact(
           return;
         }
 
-        const googleResult: PickerResult = {
+        /* Nunca reemplazar geometry de Google con el catálogo local: eso
+           movía Hotel Taha Tai a coords inventadas (Gobernación Marítima). */
+        resolve({
           text: place.name ?? place.formatted_address ?? "Destino seleccionado",
           address: place.formatted_address ?? "Rapa Nui, Chile",
           lat: placePoint.lat,
@@ -5166,41 +5275,7 @@ export async function getPlaceDetailsExact(
           originalLng: null,
           walkMeters: 0,
           isAccessiblePickup: false,
-        };
-
-        /* Solo sobrescribir con el catálogo local si el NOMBRE coincide de
-           forma fuerte. Antes, un substring ("tah" dentro de "Taha Tai")
-           convertía el Hotel Taha Tai en Ahu Tahai y movía el pin. */
-        const localMatch = findLocalRapaNuiPlaceByName(
-          place.name ?? place.formatted_address ?? "",
-        );
-        if (localMatch) {
-          const googleName = normalizeRapaNuiAutocompleteText(
-            place.name ?? "",
-          );
-          const localName = normalizeRapaNuiAutocompleteText(localMatch.name);
-          const googleIsLodging = (place.types ?? []).some((type) =>
-            ["lodging", "hotel", "guest_house"].includes(String(type)),
-          );
-          const localIsLodging = isLodgingPlace(localMatch);
-          const namesAlign =
-            googleName === localName ||
-            googleName.includes(localName) ||
-            localName.includes(googleName);
-
-          if (namesAlign && googleIsLodging === localIsLodging) {
-            resolve({
-              ...localRapaNuiPlaceToPickerResult(localMatch),
-              /* Conservar el place_id de Google si vino de Places: es la
-                 identidad geográfica oficial del establecimiento. */
-              placeId: place.place_id ?? placeId,
-              address: place.formatted_address ?? localMatch.address,
-            });
-            return;
-          }
-        }
-
-        resolve(googleResult);
+        });
       },
     );
   });
@@ -5264,26 +5339,33 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
 
   if (localPlace) {
     await loadRapaGoGoogleMaps();
-    const localPoint = localRapaNuiPlaceToPickerResult(localPlace);
+
+    /* Lodging: coords de Google primero; luego (solo recogida) se acerca a vía. */
+    const basePoint = isLodgingPlace(localPlace)
+      ? (await findGooglePlaceInRapaNuiByQuery(localPlace.name)) ??
+        localRapaNuiPlaceToPickerResult(localPlace)
+      : localRapaNuiPlaceToPickerResult(localPlace);
 
     try {
       const snapped = await reverseGeocode({
-        lat: localPoint.lat,
-        lng: localPoint.lng,
-        placeId: localPoint.placeId ?? placeId,
+        lat: basePoint.lat,
+        lng: basePoint.lng,
+        placeId: basePoint.placeId ?? placeId,
       });
 
       return {
         ...snapped,
         text: snapped.isAccessiblePickup
-          ? `Recogida en ${localPlace.name}`
-          : localPlace.name,
-        address: localPlace.address,
-        placeId: localPoint.placeId,
-        placeTypes: [...localPlace.placeTypes],
+          ? `Recogida en ${basePoint.text}`
+          : basePoint.text,
+        address: basePoint.address,
+        placeId: basePoint.placeId,
+        placeTypes: basePoint.placeTypes ?? [...localPlace.placeTypes],
+        originalLat: basePoint.lat,
+        originalLng: basePoint.lng,
       };
     } catch {
-      return localPoint;
+      return basePoint;
     }
   }
 
@@ -5296,7 +5378,7 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
     service.getDetails(
       {
         placeId,
-        fields: ["name", "formatted_address", "geometry", "place_id"],
+        fields: ["name", "formatted_address", "geometry", "place_id", "types"],
       },
       (place, status) => {
         if (
@@ -5336,6 +5418,10 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
               ? `Recogida en ${combinedTitle}`
               : combinedTitle,
             address: snapped.address,
+            placeId: place.place_id ?? placeId,
+            placeTypes: Array.isArray(place.types) ? [...place.types] : [],
+            originalLat: placePoint.lat,
+            originalLng: placePoint.lng,
           });
         });
       },
@@ -9722,9 +9808,26 @@ export default function RequestRidePage(): JSX.Element {
     );
     if (!full) return;
 
-    const picker = localRapaNuiPlaceToPickerResult(full);
     setSubmitError(null);
     setActiveSearchField(null);
+
+    /* Hoteles: resolver por Google Places (place_id + geometry oficiales). */
+    if (isLodgingPlace(full)) {
+      void (async () => {
+        const details = await getPlaceDetailsExact(
+          `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${full.id}`,
+        );
+        if (!details) return;
+        if (canChooseOrigin && !originPoint) {
+          applyOrigin(details);
+          return;
+        }
+        applyDestination(details);
+      })();
+      return;
+    }
+
+    const picker = localRapaNuiPlaceToPickerResult(full);
 
     if (canChooseOrigin && !originPoint) {
       applyOrigin(picker);

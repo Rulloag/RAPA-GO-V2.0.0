@@ -15,15 +15,15 @@ describe("flujo de solicitud tipo Uber en Rapa Nui", () => {
     for (const alias of ['"hospital"', '"hosp"', '"urgencia"']) {
       expect(requestRideSource).toContain(alias);
     }
-    expect(requestRideSource).toContain("query.length < 2");
+    expect(requestRideSource).toContain("query.length < 1");
     /* El catálogo ya no va entero por delante de Google: solo sus
        coincidencias fuertes. Las flojas —las que existen para rescatar
-       erratas— van detrás, donde no desplazan a un resultado exacto. */
+       erratas— van detrás, donde no desplazan a un resultado exacto.
+       En búsquedas de hotel Google va primero (coords oficiales). */
+    expect(requestRideSource).toContain("lodgingIntent");
+    expect(requestRideSource).toContain("findGooglePlaceInRapaNuiByQuery");
     expect(requestRideSource).toContain(
-      "for (const suggestion of [...strong, ...googleSuggestions, ...weak])",
-    );
-    expect(requestRideSource).toContain(
-      "normalizeRapaNuiAutocompleteText(value).length < 2",
+      "normalizeRapaNuiAutocompleteText(value).length < 1",
     );
     /* La espera antes de preguntarle a Google dejó de ser un número fijo:
        depende de cuánto se lleve escrito (ver autocompleteDebounceMs). */
