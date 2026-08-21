@@ -28,6 +28,16 @@ export type AdminSetDriverVehicleCategoryInput = z.infer<
   typeof adminSetDriverVehicleCategorySchema
 >;
 
+export const adminSetDriverVehicleCapabilitiesSchema = z.object({
+  xl: z.boolean(),
+  extraLuggage: z.boolean(),
+  comfort: z.boolean(),
+});
+
+export type AdminSetDriverVehicleCapabilitiesInput = z.infer<
+  typeof adminSetDriverVehicleCapabilitiesSchema
+>;
+
 export const upsertDriverProfileSchema = z
   .object({
     vehicleBrand:    z.string().trim().max(50).optional(),

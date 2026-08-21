@@ -65,10 +65,20 @@ export class DriverProfileRepository {
         throw AppError.notFound("Driver profile not found.");
       }
 
+      const { capabilitiesFromLegacyCategory, primaryCategoryFromCapabilities } =
+        await import("@rapa-go/shared");
+      const caps = capabilitiesFromLegacyCategory(
+        vehicleCategory,
+        existing.vehicleYear,
+      );
+
       const rows = await db
         .update(driverProfiles)
         .set({
-          vehicleCategory,
+          vehicleCategory: primaryCategoryFromCapabilities(caps),
+          capabilityXl: caps.xl,
+          capabilityExtraLuggage: caps.extraLuggage,
+          capabilityComfort: caps.comfort,
           updatedAt: new Date(),
         })
         .where(eq(driverProfiles.userId, userId))
@@ -81,6 +91,51 @@ export class DriverProfileRepository {
       if (err instanceof AppError) throw err;
       throw AppError.internal(
         `Failed to set approved vehicle category: ${String(err)}`,
+      );
+    }
+  }
+
+  async setVehicleCapabilities(
+    userId: string,
+    capabilities: {
+      xl: boolean;
+      extraLuggage: boolean;
+      comfort: boolean;
+    },
+  ): Promise<DriverProfile> {
+    try {
+      const existing = await this.findByUserId(userId);
+      if (!existing) {
+        throw AppError.notFound("Driver profile not found.");
+      }
+
+      const { primaryCategoryFromCapabilities } = await import("@rapa-go/shared");
+      const next = {
+        xl: capabilities.xl === true,
+        extraLuggage: capabilities.extraLuggage === true,
+        comfort: capabilities.comfort === true,
+        vehicleYear: existing.vehicleYear ?? null,
+      };
+
+      const rows = await db
+        .update(driverProfiles)
+        .set({
+          capabilityXl: next.xl,
+          capabilityExtraLuggage: next.extraLuggage,
+          capabilityComfort: next.comfort,
+          vehicleCategory: primaryCategoryFromCapabilities(next),
+          updatedAt: new Date(),
+        })
+        .where(eq(driverProfiles.userId, userId))
+        .returning();
+
+      const row = rows[0];
+      if (!row) throw AppError.internal("Capabilities update returned no rows.");
+      return row;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(
+        `Failed to set vehicle capabilities: ${String(err)}`,
       );
     }
   }
