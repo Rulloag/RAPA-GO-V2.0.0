@@ -67,7 +67,9 @@ export const RAPA_NUI_LOCAL_PLACES: readonly RapaNuiLocalPlace[] = [
     address: "Ahu Tahai, Tahai, Hanga Roa, Rapa Nui, Chile",
     lat: -27.1395,
     lng: -109.42693,
-    aliases: ["tah", "tahai", "ahu tahai", "atardecer"],
+    /* Sin alias cortos ("tah"): "Hotel Taha Tai" contenía "tah" y el pin
+       saltaba al Ahu. Solo nombres/alias inequívocos. */
+    aliases: ["tahai", "ahu tahai", "atardecer tahai"],
     placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
   },
   {
@@ -113,8 +115,84 @@ export const RAPA_NUI_LOCAL_PLACES: readonly RapaNuiLocalPlace[] = [
     address: "Feria Hare Umanga, Tu'u Maheke, Mataveri, Hanga Roa, Rapa Nui",
     lat: -27.14945,
     lng: -109.42918,
-    aliases: ["feria", "hare", "hare umanga", "feria artesanal"],
+    /* Sin alias suelto "hare": confundía búsquedas de hoteles (Hare Nua,
+       Hare Uta, Maea Hare…). La feria se encuentra por "feria" / "umanga". */
+    aliases: [
+      "feria",
+      "feria hare",
+      "hare umanga",
+      "feria umanga",
+      "feria artesanal",
+      "feria artesanal hare umanga",
+    ],
     placeTypes: ["market", "store", "point_of_interest", "establishment"],
+  },
+  {
+    id: "hotel-taha-tai",
+    name: "Hotel Taha Tai",
+    subtitle: "Hotel · Apina, Hanga Roa",
+    address: "Apina Nui s/n, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.14972,
+    lng: -109.43694,
+    aliases: [
+      "taha tai",
+      "hotel taha tai",
+      "taha tai hotel",
+      "tahatai",
+      "hotel tahatai",
+    ],
+    placeTypes: ["lodging", "hotel", "point_of_interest", "establishment"],
+  },
+  {
+    id: "hotel-hare-nua",
+    name: "Hotel Hare Nua",
+    subtitle: "Hotel · Atamu Tekena",
+    address: "Atamu Tekena, Hanga Roa, Rapa Nui, Chile",
+    lat: -27.15025,
+    lng: -109.42745,
+    aliases: ["hare nua", "hotel hare nua", "harenua"],
+    placeTypes: ["lodging", "hotel", "point_of_interest", "establishment"],
+  },
+  {
+    id: "hare-rapa-nui-hotel",
+    name: "Hare Rapa Nui Hotel by Chez Joseph",
+    subtitle: "Hotel · Hanga Roa",
+    address: "Hanga Roa, Rapa Nui, Chile",
+    lat: -27.14855,
+    lng: -109.43035,
+    aliases: [
+      "hare rapa nui",
+      "hare rapa nui hotel",
+      "chez joseph",
+      "hotel chez joseph",
+    ],
+    placeTypes: ["lodging", "hotel", "point_of_interest", "establishment"],
+  },
+  {
+    id: "hotel-hare-uta",
+    name: "Hotel Hare Uta",
+    subtitle: "Hotel · Hanga Roa",
+    address: "Hanga Roa, Rapa Nui, Chile",
+    lat: -27.15265,
+    lng: -109.42855,
+    aliases: ["hare uta", "hotel hare uta", "hareuta"],
+    placeTypes: ["lodging", "hotel", "point_of_interest", "establishment"],
+  },
+  {
+    id: "hotel-maea-hare-repa",
+    name: "Hotel Maea Hare Repa",
+    subtitle: "Hotel · Sebastián Englert",
+    address: "Sebastián Englert, Hanga Roa, Isla de Pascua, Chile",
+    lat: -27.14785,
+    lng: -109.43175,
+    aliases: [
+      "maea hare",
+      "maea hare repa",
+      "hotel maea",
+      "hotel maea hare",
+      "hotel maea hare repa",
+    ],
+    placeTypes: ["lodging", "hotel", "point_of_interest", "establishment"],
   },
   {
     id: "caleta-hanga-roa",
@@ -405,7 +483,46 @@ export function findLocalRapaNuiPlaceByPlaceId(
   );
 }
 
-/** Encuentra un POI local por nombre, alias o coincidencia parcial fuerte. */
+function placeKeysMatchStrongly(placeKey: string, queryKey: string): boolean {
+  if (!placeKey || !queryKey) return false;
+  if (placeKey === queryKey) return true;
+
+  /* Prefijo del nombre completo: "hotel taha" → "hotel taha tai". */
+  if (placeKey.startsWith(queryKey) && queryKey.length >= 5) return true;
+  if (queryKey.startsWith(placeKey) && placeKey.length >= 5) return true;
+
+  const placeWords = placeKey.split(" ").filter(Boolean);
+  const queryWords = queryKey.split(" ").filter(Boolean);
+  if (queryWords.length === 0) return false;
+
+  /* Todas las palabras de la consulta aparecen como palabra del nombre
+     (o viceversa si la consulta es el nombre completo + ruido tipo "hotel"). */
+  const queryCovered = queryWords.every((word) =>
+    placeWords.some(
+      (placeWord) =>
+        placeWord === word ||
+        (word.length >= 4 && placeWord.startsWith(word)) ||
+        (placeWord.length >= 4 && word.startsWith(placeWord)),
+    ),
+  );
+  if (queryCovered && queryWords.length >= 2) return true;
+
+  if (
+    queryWords.length === 1 &&
+    queryWords[0]!.length >= 5 &&
+    placeWords.some((placeWord) => placeWord === queryWords[0])
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Resuelve un POI local solo con coincidencia fuerte.
+ * Nunca usar substrings cortos (p. ej. "tah" dentro de "taha tai"): eso
+ * convertía Hotel Taha Tai en Ahu Tahai al confirmar el place_id de Google.
+ */
 export function findLocalRapaNuiPlaceByName(
   name: unknown,
 ): RapaNuiLocalPlace | null {
@@ -419,17 +536,34 @@ export function findLocalRapaNuiPlaceByName(
   });
   if (exact) return exact;
 
-  return (
-    RAPA_NUI_LOCAL_PLACES.find((place) => {
-      const placeKey = normalizePlaceKey(place.name);
-      return (
-        placeKey.includes(key) ||
-        key.includes(placeKey) ||
-        place.aliases.some((alias) => {
-          const aliasKey = normalizePlaceKey(alias);
-          return aliasKey.includes(key) || key.includes(aliasKey);
-        })
-      );
-    }) ?? null
+  const strong = RAPA_NUI_LOCAL_PLACES.filter((place) => {
+    const placeKey = normalizePlaceKey(place.name);
+    if (placeKeysMatchStrongly(placeKey, key)) return true;
+    return place.aliases.some((alias) =>
+      placeKeysMatchStrongly(normalizePlaceKey(alias), key),
+    );
+  });
+
+  if (strong.length === 1) return strong[0] ?? null;
+
+  /* Si hay varios candidatos fuertes, preferir lodging cuando la consulta
+     habla de hotel/hostal/lodge/cabaña. */
+  const lodgingIntent =
+    /\b(hotel|hostal|lodge|caba|cabana|cabanas)\b/.test(key);
+  if (lodgingIntent) {
+    const lodging = strong.find((place) =>
+      place.placeTypes.some((type) =>
+        ["lodging", "hotel", "guest_house"].includes(type),
+      ),
+    );
+    if (lodging) return lodging;
+  }
+
+  return null;
+}
+
+export function isLodgingPlace(place: RapaNuiLocalPlace): boolean {
+  return place.placeTypes.some((type) =>
+    ["lodging", "hotel", "guest_house"].includes(type),
   );
 }

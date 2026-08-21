@@ -86,6 +86,7 @@ import { recentLocationHistoryService } from "../../../features/location/recentL
 import {
   findLocalRapaNuiPlaceByName,
   findLocalRapaNuiPlaceByPlaceId,
+  isLodgingPlace,
   RAPA_NUI_LOCAL_PLACES,
   RAPA_NUI_LOCAL_PLACE_PREFIX,
   RAPA_NUI_MAP_CENTER,
@@ -1598,6 +1599,8 @@ type AirportWelcomeOption = "none" | "flower_lei";
 const AIRPORT_FLOWER_LEI_SURCHARGE_CLP = 4000;
 const AIRPORT_FLOWER_LEI_MAX_QUANTITY = 20;
 const AIRPORT_FLOWER_LEI_LABEL = "Collar de flores Rapa Nui";
+/** Anticipación mínima real (ms) para mostrar/aceptar collares. */
+const FLOWER_LEI_MIN_LEAD_MS = 4 * 60 * 60 * 1000;
 
 declare global {
   interface Window {
@@ -1980,7 +1983,31 @@ const RAPA_NUI_PLACE_HINTS: readonly RapaNuiPlaceHint[] = [
   },
   {
     query: "Ahu Tahai",
-    keywords: ["tahai", "ahu tahai", "ahu"],
+    keywords: ["ahu tahai"],
+  },
+  {
+    query: "Hotel Taha Tai",
+    keywords: ["taha tai", "hotel taha tai", "taha tai hotel", "tahatai"],
+  },
+  {
+    query: "Hotel Hare Nua",
+    keywords: ["hare nua", "hotel hare nua"],
+  },
+  {
+    query: "Hare Rapa Nui Hotel by Chez Joseph",
+    keywords: ["hare rapa nui", "chez joseph", "hare rapa nui hotel"],
+  },
+  {
+    query: "Hotel Hare Uta",
+    keywords: ["hare uta", "hotel hare uta"],
+  },
+  {
+    query: "Hotel Maea Hare Repa",
+    keywords: ["maea hare", "maea hare repa", "hotel maea"],
+  },
+  {
+    query: "Feria Artesanal Hare Umanga",
+    keywords: ["feria hare", "hare umanga", "feria umanga", "feria artesanal"],
   },
   {
     query: "Cárcel Rapa Nui (Artesanías)",
@@ -2392,6 +2419,19 @@ export function getRapaNuiLocalAutocompleteMatches(
 
     return { place, score };
   })
+    .map((item) => {
+      const lodgingIntent =
+        /\b(hotel|hostal|lodge|caba|cabana|cabanas|hare)\b/.test(query);
+      if (!lodgingIntent || item.score < 0) return item;
+
+      if (isLodgingPlace(item.place)) {
+        return { ...item, score: item.score + 180 };
+      }
+
+      /* Mercados/ferias/atracciones no deben ganar a un hotel cuando el
+         pasajero escribió "hotel" / "hare" / "lodge". */
+      return { ...item, score: Math.max(0, item.score - 220) };
+    })
     .filter((item) => item.score >= 0)
     .sort(
       (a, b) =>
@@ -2409,7 +2449,10 @@ export function getRapaNuiLocalAutocompleteMatches(
         mainText: place.name,
         secondaryText: isRapaNuiMainStreet(place)
           ? `${place.subtitle} · Hanga Roa, Rapa Nui`
-          : `${place.subtitle} · Sugerencia RAPA GO`,
+          : place.placeTypes.includes("lodging") ||
+              place.placeTypes.includes("hotel")
+            ? `${place.subtitle}`
+            : `${place.subtitle} · Sugerencia RAPA GO`,
       },
     }));
 }
@@ -5125,15 +5168,36 @@ export async function getPlaceDetailsExact(
           isAccessiblePickup: false,
         };
 
-        /* Si Google devolvió un POI que ya tenemos curado en el catálogo local,
-           usamos nuestras coordenadas verificadas — Google a veces desplaza
-           lugares de Rapa Nui cientos de metros. */
+        /* Solo sobrescribir con el catálogo local si el NOMBRE coincide de
+           forma fuerte. Antes, un substring ("tah" dentro de "Taha Tai")
+           convertía el Hotel Taha Tai en Ahu Tahai y movía el pin. */
         const localMatch = findLocalRapaNuiPlaceByName(
           place.name ?? place.formatted_address ?? "",
         );
         if (localMatch) {
-          resolve(localRapaNuiPlaceToPickerResult(localMatch));
-          return;
+          const googleName = normalizeRapaNuiAutocompleteText(
+            place.name ?? "",
+          );
+          const localName = normalizeRapaNuiAutocompleteText(localMatch.name);
+          const googleIsLodging = (place.types ?? []).some((type) =>
+            ["lodging", "hotel", "guest_house"].includes(String(type)),
+          );
+          const localIsLodging = isLodgingPlace(localMatch);
+          const namesAlign =
+            googleName === localName ||
+            googleName.includes(localName) ||
+            localName.includes(googleName);
+
+          if (namesAlign && googleIsLodging === localIsLodging) {
+            resolve({
+              ...localRapaNuiPlaceToPickerResult(localMatch),
+              /* Conservar el place_id de Google si vino de Places: es la
+                 identidad geográfica oficial del establecimiento. */
+              placeId: place.place_id ?? placeId,
+              address: place.formatted_address ?? localMatch.address,
+            });
+            return;
+          }
         }
 
         resolve(googleResult);
@@ -9048,6 +9112,13 @@ export default function RequestRidePage(): JSX.Element {
   const isRoundTripPromotionSelected = Boolean(selectedRoundTripPromotion);
   const isAirportScheduledRide =
     rideMode === "scheduled" && !isRoundTripPromotionSelected;
+  const flowerLeiLeadOk = useMemo(() => {
+    if (!isAirportScheduledRide || !scheduledAt) return false;
+    const pickup = parseScheduleInput(scheduledAt);
+    if (!pickup) return false;
+    return pickup.getTime() - Date.now() >= FLOWER_LEI_MIN_LEAD_MS;
+  }, [isAirportScheduledRide, scheduledAt]);
+  const canOfferFlowerLei = isAirportScheduledRide && flowerLeiLeadOk;
   const reservationRequiresCard =
     rideMode === "scheduled" || Boolean(selectedRoundTripPromotion);
   const airportScheduledRequiresCard = isAirportScheduledRide;
@@ -9055,6 +9126,12 @@ export default function RequestRidePage(): JSX.Element {
     rideMode !== "scheduled" || isRoundTripPromotionSelected;
   const requireReturnScheduledAt = effectiveTripFareMode === "round_trip";
   const roundTripPromotionReturnOnly = false;
+
+  useEffect(() => {
+    if (!canOfferFlowerLei && airportWelcomeOption === "flower_lei") {
+      setAirportWelcomeOption("none");
+    }
+  }, [airportWelcomeOption, canOfferFlowerLei]);
 
   useEffect(() => {
     if (!reservationRequiresCard) return;
@@ -10210,7 +10287,7 @@ export default function RequestRidePage(): JSX.Element {
     Math.max(1, Math.round(Number(flowerLeiQuantity) || 1)),
   );
   const airportWelcomeSurchargeClp =
-    isAirportScheduledRide && airportWelcomeOption === "flower_lei"
+    canOfferFlowerLei && airportWelcomeOption === "flower_lei"
       ? AIRPORT_FLOWER_LEI_SURCHARGE_CLP * normalizedFlowerLeiQuantity
       : 0;
   const hasAirportFlowerLei = airportWelcomeSurchargeClp > 0;
@@ -10699,6 +10776,25 @@ export default function RequestRidePage(): JSX.Element {
           notes.push(
             `RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`,
           );
+          notes.push(
+            `RAPAGO_ORIGIN_PLACE_ID: ${RAPA_NUI_AIRPORT_DESTINATION.placeId ?? "rapago-local:aeropuerto-mataveri"}.`,
+          );
+          if (destinationPoint?.placeId) {
+            notes.push(
+              `RAPAGO_DESTINATION_PLACE_ID: ${destinationPoint.placeId}.`,
+            );
+          }
+          if (
+            destinationPoint?.lat != null &&
+            destinationPoint?.lng != null
+          ) {
+            notes.push(
+              `RAPAGO_DESTINATION_LAT: ${destinationPoint.lat}.`,
+            );
+            notes.push(
+              `RAPAGO_DESTINATION_LNG: ${destinationPoint.lng}.`,
+            );
+          }
         }
 
         if (effectiveTripFareMode === "round_trip" && returnScheduledAt) {
@@ -10721,7 +10817,10 @@ export default function RequestRidePage(): JSX.Element {
           notes.push(
             "Servicio de aeropuerto: no aplica para esta experiencia.",
           );
-        } else if (airportWelcomeOption === "flower_lei") {
+        } else if (
+          canOfferFlowerLei &&
+          airportWelcomeOption === "flower_lei"
+        ) {
           notes.push(
             `Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`,
           );
@@ -12916,9 +13015,22 @@ export default function RequestRidePage(): JSX.Element {
                         </IonItem>
 
                         <div className="rq-eyebrow">
-                          Recibimiento (opcional)
+                          🌺 Recepción con collar de flores
                         </div>
 
+                        <p
+                          style={{
+                            margin: "0 0 10px",
+                            fontSize: "0.78rem",
+                            lineHeight: 1.35,
+                            opacity: 0.86,
+                          }}>
+                          {canOfferFlowerLei
+                            ? "Agrega collares de bienvenida para recibir a los pasajeros al llegar a Rapa Nui. Disponible hasta 4 horas antes de tu traslado desde el aeropuerto."
+                            : "Los collares solo están disponibles con al menos 4 horas de anticipación respecto de la hora programada del traslado desde Mataveri."}
+                        </p>
+
+                        {canOfferFlowerLei ? (
                         <div
                           style={{
                             display: "grid",
@@ -12936,7 +13048,7 @@ export default function RequestRidePage(): JSX.Element {
                             {
                               id: "flower_lei" as AirportWelcomeOption,
                               icon: flowerOutline,
-                              title: "Collar de flores",
+                              title: "Quiero agregar collares",
                               text: `Bienvenida Rapa Nui al llegar · +${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}`,
                             },
                           ].map((option) => {
@@ -13006,8 +13118,10 @@ export default function RequestRidePage(): JSX.Element {
                             );
                           })}
                         </div>
+                        ) : null}
 
-                        {airportWelcomeOption === "flower_lei" && (
+                        {canOfferFlowerLei &&
+                          airportWelcomeOption === "flower_lei" && (
                           <div
                             style={{
                               background: isDark

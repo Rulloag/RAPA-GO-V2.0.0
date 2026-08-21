@@ -9021,8 +9021,24 @@ function getRideNumberField(ride: AdminRideData, keys: string[]): number | null 
   return null;
 }
 
+function extractAdminRideFlowerLeiQuantityFromNotes(
+  notes: string | null | undefined,
+): number | null {
+  if (!notes) return null;
+  const match = notes.match(/RAPAGO_FLOWER_LEI_QUANTITY:\s*(\d+)/i);
+  if (!match?.[1]) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
 function extractAdminRideFlowerLeiAmountFromNotes(notes: string | null | undefined): number | null {
   if (!notes) return null;
+
+  const surcharge = notes.match(/RAPAGO_FLOWER_LEI_SURCHARGE_CLP:\s*(\d+)/i);
+  if (surcharge?.[1]) {
+    const parsed = Number(surcharge[1]);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+  }
 
   const match = notes.match(/(?:recargo recibimiento|collar[^.]*\+|collar[^.]*:)[^0-9]*(\$?\s*[0-9]{1,3}(?:\.[0-9]{3})*|[0-9]+)/i);
   if (!match?.[1]) return null;
@@ -9031,7 +9047,12 @@ function extractAdminRideFlowerLeiAmountFromNotes(notes: string | null | undefin
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
 }
 
-function getAdminRideAirportWelcomeInfo(ride: AdminRideData): { label: string; amountClp: number } | null {
+function getAdminRideAirportWelcomeInfo(ride: AdminRideData): {
+  label: string;
+  amountClp: number;
+  quantity: number;
+  status: string;
+} | null {
   const rawNotes = typeof ride.notes === "string" ? ride.notes : "";
   const normalizedNotes = normalizeAdminText(rawNotes);
   const option = normalizeAdminText(getRideStringField(ride, ["airportWelcomeOption", "airport_welcome_option"]));
@@ -9044,9 +9065,15 @@ function getAdminRideAirportWelcomeInfo(ride: AdminRideData): { label: string; a
     option === "flower_lei" ||
     normalizedNotes.includes("collar de flores") ||
     normalizedNotes.includes("recibimiento aeropuerto: collar") ||
-    normalizedNotes.includes("recargo recibimiento collar");
+    normalizedNotes.includes("recargo recibimiento collar") ||
+    /RAPAGO_FLOWER_LEI_QUANTITY:\s*\d+/i.test(rawNotes);
 
   if (!requested) return null;
+
+  const quantity =
+    getRideNumberField(ride, ["flowerLeiQuantity", "flower_lei_quantity"]) ??
+    extractAdminRideFlowerLeiQuantityFromNotes(rawNotes) ??
+    1;
 
   const amountClp =
     getRideNumberField(ride, [
@@ -9056,11 +9083,16 @@ function getAdminRideAirportWelcomeInfo(ride: AdminRideData): { label: string; a
       "airport_welcome_surcharge_clp",
     ]) ??
     extractAdminRideFlowerLeiAmountFromNotes(rawNotes) ??
-    4000;
+    quantity * 4000;
+
+  const statusMatch = rawNotes.match(/RAPAGO_FLOWER_LEI_STATUS:\s*([a-z_]+)/i);
+  const status = statusMatch?.[1]?.trim().toLowerCase() || "pending";
 
   return {
     label,
     amountClp,
+    quantity,
+    status,
   };
 }
 
@@ -12222,7 +12254,14 @@ export function AdminTripsPage(): JSX.Element {
 
       try {
         const params: { status?: string } = {};
-        if (filterStatus && filterStatus !== "scheduled" && filterStatus !== "no_show") params.status = filterStatus;
+        if (
+          filterStatus &&
+          filterStatus !== "scheduled" &&
+          filterStatus !== "no_show" &&
+          filterStatus !== "flower_lei"
+        ) {
+          params.status = filterStatus;
+        }
 
         const ridesData = await adminService.listRides(
           session.accessToken,
@@ -12239,9 +12278,11 @@ export function AdminTripsPage(): JSX.Element {
         const byViewMode = viewMode === "scheduled"
           ? merged.filter((ride) => getAdminRideScheduleInfo(ride).isScheduled)
           : merged;
-        const visible = filterStatus
-          ? byViewMode.filter((ride) => getEffectiveAdminRideStatus(ride) === filterStatus)
-          : byViewMode;
+        const visible = filterStatus === "flower_lei"
+          ? byViewMode.filter((ride) => Boolean(getAdminRideAirportWelcomeInfo(ride)))
+          : filterStatus
+            ? byViewMode.filter((ride) => getEffectiveAdminRideStatus(ride) === filterStatus)
+            : byViewMode;
 
         setRides(sortAdminRidesForOperations(visible));
       } catch (err) {
@@ -12595,6 +12636,7 @@ export function AdminTripsPage(): JSX.Element {
               >
                 <IonSelectOption value="">Todos</IonSelectOption>
                 <IonSelectOption value="scheduled">Agendados</IonSelectOption>
+                <IonSelectOption value="flower_lei">Collares (Mataveri)</IonSelectOption>
                 <IonSelectOption value="requested">Solicitado</IonSelectOption>
                 <IonSelectOption value="accepted">
                   Conductor asignado
@@ -12924,6 +12966,11 @@ export function AdminTripsPage(): JSX.Element {
                         }}
                       >
                         <strong>🌺 {airportWelcomeInfo.label} solicitado</strong>
+                        <div>
+                          Cantidad: <strong>{airportWelcomeInfo.quantity}</strong>
+                          {" · "}
+                          Estado: <strong>{airportWelcomeInfo.status}</strong>
+                        </div>
                         <div>Admin debe gestionar el recibimiento del pasajero en Mataveri.</div>
                         <div>Recargo incluido en tarifa: <strong>{formatAdminCashClp(airportWelcomeInfo.amountClp)}</strong>.</div>
                       </div>

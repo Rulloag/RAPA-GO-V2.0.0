@@ -276,6 +276,44 @@ describe("filtro desde una letra del abecedario", () => {
   });
 });
 
+describe("hoteles de Rapa Nui no se confunden entre sí", () => {
+  it('busca "Hotel Taha Tai" y no devuelve la feria ni Ahu Tahai primero', () => {
+    const names = getRapaNuiLocalAutocompletePredictions("Hotel Taha Tai").map(
+      (item) => item.mainText,
+    );
+    expect(names[0]).toBe("Hotel Taha Tai");
+    expect(names[0]).not.toContain("Feria");
+    expect(names[0]).not.toBe("Ahu Tahai");
+  });
+
+  it('busca "Hotel Hare Nua" sin confundirlo con Taha Tai ni la feria', () => {
+    const names = getRapaNuiLocalAutocompletePredictions("Hotel Hare Nua").map(
+      (item) => item.mainText,
+    );
+    expect(names[0]).toBe("Hotel Hare Nua");
+    expect(names).not.toContain("Hotel Taha Tai");
+  });
+
+  it('busca "Hare Rapa Nui" sin caer en Hare Nua', () => {
+    const names = getRapaNuiLocalAutocompletePredictions(
+      "Hare Rapa Nui Hotel",
+    ).map((item) => item.mainText);
+    expect(names[0]).toContain("Hare Rapa Nui");
+    expect(names[0]).not.toBe("Hotel Hare Nua");
+  });
+
+  it('con "hotel hare" prioriza alojamiento sobre la feria', () => {
+    const names = getRapaNuiLocalAutocompletePredictions("hotel hare").map(
+      (item) => item.mainText,
+    );
+    expect(names.length).toBeGreaterThan(0);
+    expect(names[0]).not.toBe("Feria Artesanal Hare Umanga");
+    expect(
+      names.some((name) => /hotel|hare nua|hare uta|maea|rapa nui hotel/i.test(name)),
+    ).toBe(true);
+  });
+});
+
 describe("autocompleteDebounceMs", () => {
   /* Las pulsaciones no valen lo mismo. Con dos o tres letras el pasajero casi
      seguro sigue escribiendo, y esa consulta es además la más cara porque
