@@ -3,7 +3,7 @@
 -- Multiplicador y año mínimo viven en fare_settings (enteros).
 
 COMMENT ON COLUMN ride_requests.requested_vehicle_category IS
-  'Categoría solicitada por el pasajero: standard | xl | extra_luggage | comfort. No filtra visibilidad.';
+  'Categoría solicitada por el pasajero: standard | xl | extra_luggage | comfort. El backend filtra ofertas incompatibles y revalida elegibilidad al accept (XL / Extra Maletas / Confort).';
 
 COMMENT ON COLUMN ride_requests.assigned_vehicle_category IS
   'Snapshot de la categoría del vehículo del conductor al aceptar. No se recalcula luego. Nunca se falsifica como comfort si el perfil no es comfort.';
