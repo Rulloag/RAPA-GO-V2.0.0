@@ -206,6 +206,13 @@ jobs:
         env:
           DATABASE_URL: postgresql://quality_gate:quality_gate@localhost:5432/quality_gate_migrations
         run: npm run db:migrate
+      # Cadena post-journal (0056â†’0057â†’0058): no estÃ¡ en _journal.json; el runner
+      # auditable la aplica con checksum + registro en rapago_manual_migrations.
+      - name: Aplicar cadena manual vehicle categories (0056â†’0058)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://quality_gate:quality_gate@localhost:5432/quality_gate_migrations
+        run: npm run db:migrate:manual
 
   secret-scan:
     name: BÃºsqueda de secretos

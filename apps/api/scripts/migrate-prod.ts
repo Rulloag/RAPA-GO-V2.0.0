@@ -14,12 +14,18 @@ console.log("🚀 START");
 const client = postgres(process.env.DATABASE_URL!, { max: 2 });
 const db = drizzle(client, { schema });
 
-console.log("⏳ migrate...");
+console.log("⏳ migrate (drizzle journal)…");
 
 execSync("npx drizzle-kit migrate", {
   stdio: "inherit",
   env: process.env,
 });
+
+console.log("⏳ migrate (manual chain 0056→0057→0058)…");
+const { applyManualMigrations } = await import(
+  "./manual-migrations/applyManualMigrations.js"
+);
+await applyManualMigrations(client);
 
 await client`SELECT 1`;
 console.log("✅ DB OK");
