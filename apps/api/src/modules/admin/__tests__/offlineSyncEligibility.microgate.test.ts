@@ -8,11 +8,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AppError } from "../../../shared/errors/AppError.js";
 import { VEHICLE_NOT_ELIGIBLE_CODE } from "@rapa-go/shared";
+import { AppError } from "../../../shared/errors/AppError.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 describe("MICRO-GATE offline sync assignment defense", () => {
-  it("admin.service sync catches accept AppError without setBusy/assign audit", () => {
+  it("admin.service sync uses atomic syncOfflineBookingWithDriverAssignment", () => {
     const src = readFileSync(
       path.join(here, "../admin.service.ts"),
       "utf8",
@@ -20,15 +21,8 @@ describe("MICRO-GATE offline sync assignment defense", () => {
     const start = src.indexOf("offlineBookingId: string");
     expect(start).toBeGreaterThan(-1);
     const fn = src.slice(start, src.indexOf("async setDriverVehicleCategory("));
-    expect(fn).toContain("ridesRepo.accept(newRide.id, input.driverUserId)");
-    expect(fn).toContain("if (err instanceof AppError)");
-    expect(fn).toContain("code: err.code");
+    expect(fn).toContain("syncOfflineBookingWithDriverAssignment");
     expect(fn).toContain("admin.ride_driver_assigned");
-    const acceptIdx = fn.indexOf("ridesRepo.accept");
-    const catchIdx = fn.indexOf("} catch (err)");
-    const setBusyIdx = fn.indexOf("setBusy");
-    expect(catchIdx).toBeGreaterThan(acceptIdx);
-    expect(setBusyIdx).toBeGreaterThan(catchIdx);
   });
 
   it("simulated sync assign path: ineligible → REJECT, no assign audit", async () => {

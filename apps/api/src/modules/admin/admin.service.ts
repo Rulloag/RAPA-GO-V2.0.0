@@ -555,15 +555,87 @@ export class AdminService {
     }
 
     const placeholderPassengerId = auth.userId;
+    const notes = input.notes ?? booking.notes ?? null;
+
+    let assignIntent = false;
+    if (input.driverUserId) {
+      const driver = await adminRepo.findById(input.driverUserId);
+      if (driver && driver.role === "driver" && driver.status === "active") {
+        const restAccess = await driverComplianceService.canReceiveNewOffers(
+          input.driverUserId,
+        );
+        const driverStatus = await driverStatusRepo.findByDriverId(input.driverUserId);
+        assignIntent =
+          restAccess.allowed && driverStatus?.availability === "available";
+      }
+    }
+
+    if (assignIntent && input.driverUserId) {
+      try {
+        const assignedRide = await ridesRepo.syncOfflineBookingWithDriverAssignment({
+          offlineBookingId,
+          passengerUserId: placeholderPassengerId,
+          driverUserId: input.driverUserId,
+          originText: booking.originText,
+          destinationText: booking.destinationText,
+          notes,
+          offlinePassengerName: booking.passengerName,
+          offlinePassengerPhone: booking.passengerPhone,
+          offlinePassengerEmail: (booking as { passengerEmail?: string | null }).passengerEmail ?? null,
+        });
+
+        await driverStatusRepo.setBusy(input.driverUserId, assignedRide.id);
+        auditService.recordSafe({
+          eventType: "admin.ride_driver_assigned",
+          metadata: {
+            adminUserId: auth.userId,
+            rideId: assignedRide.id,
+            driverUserId: input.driverUserId,
+            previousStatus: "requested",
+            newStatus: "accepted",
+          },
+        });
+        auditService.recordSafe({
+          eventType: "admin.offline_booking_synced",
+          metadata: {
+            adminUserId: auth.userId,
+            offlineBookingId,
+            rideId: assignedRide.id,
+          },
+        });
+
+        const ride = await adminRepo.findRideById(assignedRide.id);
+        if (!ride) {
+          return {
+            ok: false,
+            code: "NOT_FOUND",
+            message: "Ride not found after sync.",
+            statusCode: 404,
+          };
+        }
+        return { ok: true, ride: toRideResponse(ride) };
+      } catch (err) {
+        if (err instanceof AppError) {
+          return {
+            ok: false,
+            code: err.code,
+            message: err.message,
+            statusCode: err.statusCode,
+          };
+        }
+        throw err;
+      }
+    }
+
     const newRide = await ridesRepo.createOfflineRide({
-      passengerUserId:       placeholderPassengerId,
-      originText:            booking.originText,
-      destinationText:       booking.destinationText,
-      notes:                 input.notes ?? booking.notes ?? null,
-      estimatedFareClp:      0,
-      offlinePassengerName:  booking.passengerName,
+      passengerUserId: placeholderPassengerId,
+      originText: booking.originText,
+      destinationText: booking.destinationText,
+      notes,
+      estimatedFareClp: 0,
+      offlinePassengerName: booking.passengerName,
       offlinePassengerPhone: booking.passengerPhone,
-      offlinePassengerEmail: (booking as any).passengerEmail ?? null,
+      offlinePassengerEmail: (booking as { passengerEmail?: string | null }).passengerEmail ?? null,
     });
 
     await offlineRepo.syncOfflineBooking(offlineBookingId, newRide.id);
@@ -572,57 +644,22 @@ export class AdminService {
       const driver = await adminRepo.findById(input.driverUserId);
       if (!driver || driver.role !== "driver" || driver.status !== "active") {
         const ride = await adminRepo.findRideById(newRide.id);
-        if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found.", statusCode: 404 };
-        return { ok: true, ride: toRideResponse(ride) };
-      }
-
-      const restAccess = await driverComplianceService.canReceiveNewOffers(
-        input.driverUserId,
-      );
-      const driverStatus = await driverStatusRepo.findByDriverId(input.driverUserId);
-      if (
-        restAccess.allowed &&
-        driverStatus?.availability === "available"
-      ) {
-        try {
-          await ridesRepo.accept(newRide.id, input.driverUserId);
-        } catch (err) {
-          if (err instanceof AppError) {
-            // Ride ya creado y booking sincronizado, pero sin conductor.
-            // No setBusy / no audit de asignación exitosa.
-            const ride = await adminRepo.findRideById(newRide.id);
-            if (!ride) {
-              return {
-                ok: false,
-                code: "NOT_FOUND",
-                message: "Ride not found after sync.",
-                statusCode: 404,
-              };
-            }
-            return {
-              ok: false,
-              code: err.code,
-              message: err.message,
-              statusCode: err.statusCode,
-            };
-          }
-          throw err;
+        if (!ride) {
+          return { ok: false, code: "NOT_FOUND", message: "Ride not found.", statusCode: 404 };
         }
-        await driverStatusRepo.setBusy(input.driverUserId, newRide.id);
-        auditService.recordSafe({
-          eventType: "admin.ride_driver_assigned",
-          metadata:  { adminUserId: auth.userId, rideId: newRide.id, driverUserId: input.driverUserId, previousStatus: "requested", newStatus: "accepted" },
-        });
+        return { ok: true, ride: toRideResponse(ride) };
       }
     }
 
     auditService.recordSafe({
       eventType: "admin.offline_booking_synced",
-      metadata:  { adminUserId: auth.userId, offlineBookingId, rideId: newRide.id },
+      metadata: { adminUserId: auth.userId, offlineBookingId, rideId: newRide.id },
     });
 
     const ride = await adminRepo.findRideById(newRide.id);
-    if (!ride) return { ok: false, code: "NOT_FOUND", message: "Ride not found after sync.", statusCode: 404 };
+    if (!ride) {
+      return { ok: false, code: "NOT_FOUND", message: "Ride not found after sync.", statusCode: 404 };
+    }
     return { ok: true, ride: toRideResponse(ride) };
   }
 

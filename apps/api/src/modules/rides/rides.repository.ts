@@ -2,6 +2,7 @@ import { and, asc, avg, count, desc, eq, gte, inArray, isNull, lt, lte, ne, sql 
 import { db } from "../../db/client.js";
 import {
   driverProfiles,
+  offlineBookings,
   rideDriverAssignments,
   rideLocationUpdates,
   rideRatings,
@@ -1594,6 +1595,115 @@ export class RidesRepository {
     } catch (err) {
       throw AppError.internal(
         `Failed to mark ride as no show: ${String(err)}`,
+      );
+    }
+  }
+
+  async syncOfflineBookingWithDriverAssignment(data: {
+    offlineBookingId: string;
+    passengerUserId: string;
+    driverUserId: string;
+    originText: string;
+    destinationText: string;
+    notes: string | null;
+    offlinePassengerName: string;
+    offlinePassengerPhone: string;
+    offlinePassengerEmail?: string | null;
+    requestedVehicleCategory?: string | null;
+  }): Promise<RideRequest> {
+    try {
+      return await db.transaction(async (tx) => {
+        const [newRide] = await tx
+          .insert(rideRequests)
+          .values({
+            passengerUserId: data.passengerUserId,
+            originText: data.originText,
+            destinationText: data.destinationText,
+            notes: data.notes,
+            estimatedFareClp: 0,
+            status: "requested",
+            isOfflineBooking: true,
+            offlinePassengerName: data.offlinePassengerName,
+            offlinePassengerPhone: data.offlinePassengerPhone,
+            offlinePassengerEmail: data.offlinePassengerEmail ?? null,
+            requestedVehicleCategory:
+              data.requestedVehicleCategory ?? "standard",
+          })
+          .returning();
+
+        if (!newRide) {
+          throw AppError.internal("Insert returned no rows.");
+        }
+
+        const profile = (
+          await tx
+            .select()
+            .from(driverProfiles)
+            .where(eq(driverProfiles.userId, data.driverUserId))
+            .limit(1)
+            .for("update")
+        )[0];
+
+        const { assertVehicleEligibleForRide } = await import(
+          "./vehicleEligibility.js"
+        );
+        const eligibility = await assertVehicleEligibleForRide({
+          profile,
+          requestedVehicleCategory: newRide.requestedVehicleCategory,
+        });
+
+        const acceptedAt = new Date();
+        const [acceptedRide] = await tx
+          .update(rideRequests)
+          .set({
+            status: "accepted",
+            driverUserId: data.driverUserId,
+            acceptedAt,
+            assignedVehicleCategory: eligibility.assignedVehicleCategory,
+            assignedVehiclePlate: profile?.vehiclePlate ?? null,
+            updatedAt: acceptedAt,
+          })
+          .where(
+            and(
+              eq(rideRequests.id, newRide.id),
+              eq(rideRequests.status, "requested"),
+            ),
+          )
+          .returning();
+
+        if (!acceptedRide) {
+          throw new AppError({
+            code: "OFFLINE_SYNC_ASSIGN_FAILED",
+            message: "Ride could not be assigned during offline sync.",
+            statusCode: 409,
+          });
+        }
+
+        const [syncedBooking] = await tx
+          .update(offlineBookings)
+          .set({ status: "synced", syncedToRideId: newRide.id })
+          .where(
+            and(
+              eq(offlineBookings.id, data.offlineBookingId),
+              eq(offlineBookings.status, "pending_sync"),
+            ),
+          )
+          .returning();
+
+        if (!syncedBooking) {
+          throw new AppError({
+            code: "OFFLINE_BOOKING_SYNC_RACE",
+            message: "Offline booking is no longer pending sync.",
+            statusCode: 409,
+          });
+        }
+
+        return acceptedRide;
+      });
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(
+        `Failed to sync offline booking with driver assignment: ${String(err)}`,
       );
     }
   }
