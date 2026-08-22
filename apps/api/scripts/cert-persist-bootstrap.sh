@@ -148,15 +148,17 @@ VALUES ('comfort_min_vehicle_year', 'Comfort min year', 2020, true, '2020-01-01'
 
 CREATE TABLE offline_bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id uuid REFERENCES users(id) ON DELETE SET NULL,
   passenger_name text NOT NULL,
   passenger_phone text NOT NULL,
   origin_text text NOT NULL,
   destination_text text NOT NULL,
-  notes text,
+  assigned_driver_id uuid REFERENCES users(id) ON DELETE SET NULL,
   status text NOT NULL DEFAULT 'pending_sync',
-  synced_ride_id uuid,
+  notes text,
+  passenger_email text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  synced_to_ride_id uuid REFERENCES ride_requests(id) ON DELETE SET NULL
 );
 
 CREATE TABLE payment_orders (

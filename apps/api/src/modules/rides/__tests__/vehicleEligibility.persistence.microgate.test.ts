@@ -22,6 +22,11 @@ const DATABASE_URL = `postgresql://${USER}@${HOST}:${PORT}/${DB_NAME}`;
 
 process.env.DATABASE_URL = DATABASE_URL;
 
+const { assertSafeCertificationDatabaseUrl } = await import(
+  "../../../db/testDatabaseGuard.js"
+);
+assertSafeCertificationDatabaseUrl(DATABASE_URL, "vehicleEligibility.persistence.microgate");
+
 const { db, sql } = await import("../../../db/client.js");
 const {
   users,
