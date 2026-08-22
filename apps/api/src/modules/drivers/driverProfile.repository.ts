@@ -93,20 +93,11 @@ export class DriverProfileRepository {
         throw AppError.notFound("Driver profile not found.");
       }
 
-      const { capabilitiesFromLegacyCategory, primaryCategoryFromCapabilities } =
-        await import("@rapa-go/shared");
-      const caps = capabilitiesFromLegacyCategory(
-        vehicleCategory,
-        existing.vehicleYear,
-      );
-
+      // Legacy/display label only — never overwrite independent capability flags.
       const rows = await db
         .update(driverProfiles)
         .set({
-          vehicleCategory: primaryCategoryFromCapabilities(caps),
-          capabilityXl: caps.xl,
-          capabilityExtraLuggage: caps.extraLuggage,
-          capabilityComfort: caps.comfort,
+          vehicleCategory,
           updatedAt: new Date(),
         })
         .where(eq(driverProfiles.userId, userId))
