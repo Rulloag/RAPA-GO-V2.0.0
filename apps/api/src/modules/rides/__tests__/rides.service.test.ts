@@ -78,6 +78,7 @@ vi.mock("../rides.repository.js", () => ({
     findByPassengerIdWithDriver: mockFindByPassengerIdWithDriver,
     findByDriverId: mockFindByDriverId,
     findAvailable: mockFindAvailable,
+    findDriverVehicleEligibilitySnapshot: vi.fn().mockResolvedValue(null),
     accept: mockAccept,
     complete: mockComplete,
     start: mockStart,
@@ -602,7 +603,7 @@ describe("RidesService - contrato actual", () => {
       expect(notes).toContain("RAPAGO_FLOWER_LEI_SURCHARGE_CLP: 12000");
       expect(notes).toContain("RAPAGO_FLOWER_LEI_STATUS: pending");
       expect(notes).toContain("3 collares de flores");
-      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(17000);
+      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(15_500);
     });
 
     it("rechaza collares con menos de 4 horas de anticipación", async () => {
@@ -668,7 +669,7 @@ describe("RidesService - contrato actual", () => {
       const notes =
         mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
       expect(notes).not.toContain("RAPAGO_FLOWER_LEI_QUANTITY");
-      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(5000);
+      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(3500);
     });
 
     it("rechaza un proveedor no permitido para una reserva", async () => {

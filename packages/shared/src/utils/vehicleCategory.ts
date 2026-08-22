@@ -1,15 +1,19 @@
 /**
  * Categorías de vehículo RAPA GO.
  *
- * Regla de negocio: informan y advierten, NUNCA restringen visibilidad
- * ni bloquean accept en backend. Usar `needsVehicleCategoryConfirmation`
- * solo en UI para el modal previo a aceptar.
+ * Política autoritativa (backend):
+ * - STANDARD: cualquier vehículo activo/aprobado puede atender.
+ * - XL / EXTRA_LUGGAGE / COMFORT: requieren capacidades aprobadas
+ *   independientes (no mutuamente excluyentes).
+ * - El cliente NO puede falsificar assigned_vehicle_category.
+ * - assigned se deriva de capacidades reales al accept.
  */
 
 export const VEHICLE_CATEGORIES = [
   "standard",
   "xl",
   "extra_luggage",
+  "comfort",
 ] as const;
 
 export type VehicleCategory = (typeof VEHICLE_CATEGORIES)[number];
@@ -24,6 +28,47 @@ export type VehicleCategoryInput =
   | null
   | undefined;
 
+/**
+ * Capacidades independientes del vehículo (pueden coexistir).
+ * Un SUV 2024 puede ser XL + Extra Maletas + Confort a la vez.
+ */
+export type VehicleCapabilities = {
+  xl: boolean;
+  extraLuggage: boolean;
+  comfort: boolean;
+  vehicleYear: number | null;
+};
+
+export const EMPTY_VEHICLE_CAPABILITIES: VehicleCapabilities = {
+  xl: false,
+  extraLuggage: false,
+  comfort: false,
+  vehicleYear: null,
+};
+
+/**
+ * Comisión de plataforma fija (no depende de la categoría).
+ * Confort usa exactamente la misma regla: 23% plataforma / 77% conductor.
+ */
+export const PLATFORM_COMMISSION_PERCENT = 23;
+export const DRIVER_EARNINGS_PERCENT = 77;
+
+/**
+ * Año mínimo técnico por defecto para habilitar Confort vía administración.
+ * Administración puede sobrescribirlo (fare_settings / config).
+ * No es una política comercial definitiva — es el valor de arranque.
+ */
+export const DEFAULT_COMFORT_MIN_VEHICLE_YEAR = 2020;
+
+/**
+ * Multiplicador técnico de arranque para Confort en el motor de tarifas.
+ * Administración puede cambiarlo. Tests deben fijar el valor vía fixture.
+ */
+export const DEFAULT_COMFORT_FARE_MULTIPLIER = 1.35;
+
+export const VEHICLE_NOT_ELIGIBLE_CODE =
+  "VEHICLE_NOT_ELIGIBLE_FOR_REQUESTED_CATEGORY" as const;
+
 export const VEHICLE_CATEGORY_CONFIG: Record<
   VehicleCategory,
   {
@@ -31,6 +76,7 @@ export const VEHICLE_CATEGORY_CONFIG: Record<
     shortLabel: string;
     emoji: string;
     listHint: string | null;
+    passengerHint: string;
   }
 > = {
   standard: {
@@ -38,29 +84,43 @@ export const VEHICLE_CATEGORY_CONFIG: Record<
     shortLabel: "Estándar",
     emoji: "🚗",
     listHint: null,
+    passengerHint: "Viaje estándar",
   },
   xl: {
     label: "XL",
     shortLabel: "XL",
     emoji: "🚐",
     listHint: "Viaje solicitado como XL",
+    passengerHint: "Mayor capacidad para pasajeros",
   },
   extra_luggage: {
     label: "Extra Maleta",
     shortLabel: "Extra Maleta",
     emoji: "🧳",
     listHint: "Requiere espacio adicional para equipaje",
+    passengerHint: "Vehículo con capacidad adicional para equipaje",
+  },
+  comfort: {
+    label: "Confort",
+    shortLabel: "Confort",
+    emoji: "✨",
+    listHint: "Viaje solicitado como Confort",
+    passengerHint:
+      "Vehículos más nuevos y aprobados para una experiencia superior",
   },
 };
 
 export function isVehicleCategory(value: unknown): value is VehicleCategory {
   return (
-    value === "standard" || value === "xl" || value === "extra_luggage"
+    value === "standard" ||
+    value === "xl" ||
+    value === "extra_luggage" ||
+    value === "comfort"
   );
 }
 
 /**
- * Normaliza cualquier etiqueta/alias (incl. `luggage`, textos en notes)
+ * Normaliza cualquier etiqueta/alias (incl. `luggage`, `confort`, texts en notes)
  * a la categoría canónica. Devuelve null si no reconoce.
  */
 export function normalizeVehicleCategory(
@@ -84,6 +144,15 @@ export function normalizeVehicleCategory(
     raw.includes("equipaje")
   ) {
     return "extra_luggage";
+  }
+
+  if (
+    raw === "comfort" ||
+    raw === "confort" ||
+    raw.includes("comfort") ||
+    raw.includes("confort")
+  ) {
+    return "comfort";
   }
 
   if (
@@ -124,6 +193,103 @@ export function vehicleCategoryDisplay(category: VehicleCategory): string {
   return `${cfg.emoji} ${cfg.label}`;
 }
 
+export function vehicleCategoryPassengerHint(
+  category: VehicleCategory,
+): string {
+  return VEHICLE_CATEGORY_CONFIG[category].passengerHint;
+}
+
+/**
+ * Migra categoría legacy única → capacidades no excluyentes.
+ */
+export function capabilitiesFromLegacyCategory(
+  category: VehicleCategoryInput,
+  vehicleYear: number | null = null,
+): VehicleCapabilities {
+  const normalized = normalizeVehicleCategory(category);
+  return {
+    xl: normalized === "xl",
+    extraLuggage: normalized === "extra_luggage",
+    comfort: normalized === "comfort",
+    vehicleYear,
+  };
+}
+
+/**
+ * Deriva una etiqueta primaria de display desde capacidades
+ * (prioridad: comfort > xl > extra_luggage > standard).
+ * No implica exclusividad — solo compatibilidad con campos legacy.
+ */
+export function primaryCategoryFromCapabilities(
+  capabilities: VehicleCapabilities,
+): VehicleCategory {
+  if (capabilities.comfort) return "comfort";
+  if (capabilities.xl) return "xl";
+  if (capabilities.extraLuggage) return "extra_luggage";
+  return "standard";
+}
+
+/**
+ * Fuente de verdad de elegibilidad: ¿puede este vehículo atender requested?
+ *
+ * STANDARD → siempre (vehículo activo/aprobado asumido por el caller).
+ * XL → capability xl.
+ * EXTRA_LUGGAGE → capability extraLuggage (XL sola NO alcanza).
+ * COMFORT → capability comfort + año >= mínimo configurado (recheck en accept).
+ */
+export function isVehicleEligibleForRequestedCategory(
+  capabilities: VehicleCapabilities,
+  requestedCategory: VehicleCategoryInput,
+  options: { comfortMinVehicleYear?: number } = {},
+): boolean {
+  const requested =
+    normalizeVehicleCategory(requestedCategory) ?? "standard";
+  const minYear =
+    options.comfortMinVehicleYear ?? DEFAULT_COMFORT_MIN_VEHICLE_YEAR;
+
+  if (requested === "standard") return true;
+  if (requested === "xl") return capabilities.xl === true;
+  if (requested === "extra_luggage") return capabilities.extraLuggage === true;
+  if (requested === "comfort") {
+    return (
+      capabilities.comfort === true &&
+      isComfortVehicleYearEligible(capabilities.vehicleYear, minYear)
+    );
+  }
+  return false;
+}
+
+export function vehicleEligibilityFailureMessage(
+  requestedCategory: VehicleCategory,
+): string {
+  if (requestedCategory === "xl") {
+    return "Tu vehículo actual no está aprobado para viajes XL.";
+  }
+  if (requestedCategory === "extra_luggage") {
+    return "Tu vehículo actual no está aprobado para Extra Maletas.";
+  }
+  if (requestedCategory === "comfort") {
+    return "Tu vehículo actual no cumple los requisitos Confort (aprobación y/o año mínimo).";
+  }
+  return "Tu vehículo actual no cumple los requisitos de este tipo de viaje.";
+}
+
+/**
+ * Snapshot assigned al accept: refleja el servicio solicitado cuando es elegible.
+ * Para standard atendido por vehículo superior, registra la capacidad primaria real.
+ */
+export function resolveAssignedCategoryFromCapabilities(
+  capabilities: VehicleCapabilities,
+  requestedCategory: VehicleCategoryInput,
+): VehicleCategory {
+  const requested =
+    normalizeVehicleCategory(requestedCategory) ?? "standard";
+  if (requested === "standard") {
+    return primaryCategoryFromCapabilities(capabilities);
+  }
+  return requested;
+}
+
 export function vehicleCategoriesMatch(
   requested: VehicleCategoryInput,
   driverVehicle: VehicleCategoryInput,
@@ -135,8 +301,8 @@ export function vehicleCategoriesMatch(
 }
 
 /**
- * true → mostrar modal de confirmación antes de accept.
- * Misma categoría o datos incompletos → false (aceptación normal).
+ * @deprecated Prefer isVehicleEligibleForRequestedCategory con capacidades.
+ * Conservado para compatibilidad UI legacy; no autoriza accept backend.
  */
 export function needsVehicleCategoryConfirmation(
   requestedCategory: VehicleCategoryInput,
@@ -156,36 +322,10 @@ export function vehicleCategoryMismatchCopy(
   confirmLabel: string;
   cancelLabel: string;
 } {
-  if (requestedCategory === "xl") {
-    return {
-      title: "Viaje XL",
-      body:
-        "Este pasajero solicitó un vehículo XL.\n\n" +
-        "Tu vehículo está registrado en una categoría diferente.\n\n" +
-        "Asegúrate de poder cumplir correctamente con este servicio antes de aceptarlo.",
-      confirmLabel: "Confirmar y aceptar XL",
-      cancelLabel: "Volver",
-    };
-  }
-
-  if (requestedCategory === "extra_luggage") {
-    return {
-      title: "Viaje Extra Maleta",
-      body:
-        "Este pasajero solicitó Extra Maleta.\n\n" +
-        "Asegúrate de contar con espacio suficiente para el equipaje antes de aceptar.",
-      confirmLabel: "Tengo espacio y acepto",
-      cancelLabel: "Volver",
-    };
-  }
-
   return {
-    title: "Confirma la categoría",
-    body:
-      "Este pasajero seleccionó un viaje Estándar.\n\n" +
-      "Tu vehículo está registrado en otra categoría.\n\n" +
-      "¿Quieres aceptar igualmente este viaje?",
-    confirmLabel: "Confirmar y aceptar",
+    title: `Viaje ${vehicleCategoryLabel(requestedCategory)}`,
+    body: vehicleEligibilityFailureMessage(requestedCategory),
+    confirmLabel: "Entendido",
     cancelLabel: "Volver",
   };
 }
@@ -229,4 +369,42 @@ export function resolveRequestedVehicleCategory(input: {
     extractVehicleCategoryFromNotes(input.notes) ??
     "standard"
   );
+}
+
+/**
+ * Split de comisión autoritativo: 23% plataforma / 77% conductor.
+ * Redondeo de plataforma con Math.round; el conductor recibe el resto
+ * para que la suma siempre coincida con el fare final.
+ */
+export function splitPlatformCommission(finalFareClp: number): {
+  finalFareClp: number;
+  platformFeeClp: number;
+  driverAmountClp: number;
+  platformPercent: number;
+  driverPercent: number;
+} {
+  const safeFare = Math.max(0, Math.round(Number(finalFareClp) || 0));
+  const platformFeeClp = Math.round(
+    safeFare * (PLATFORM_COMMISSION_PERCENT / 100),
+  );
+  return {
+    finalFareClp: safeFare,
+    platformFeeClp,
+    driverAmountClp: safeFare - platformFeeClp,
+    platformPercent: PLATFORM_COMMISSION_PERCENT,
+    driverPercent: DRIVER_EARNINGS_PERCENT,
+  };
+}
+
+/**
+ * Elegibilidad Confort por año: recheck en cada accept con el mínimo vigente.
+ */
+export function isComfortVehicleYearEligible(
+  vehicleYear: number | null | undefined,
+  minYear: number = DEFAULT_COMFORT_MIN_VEHICLE_YEAR,
+): boolean {
+  if (vehicleYear == null || !Number.isFinite(Number(vehicleYear))) {
+    return false;
+  }
+  return Number(vehicleYear) >= minYear;
 }

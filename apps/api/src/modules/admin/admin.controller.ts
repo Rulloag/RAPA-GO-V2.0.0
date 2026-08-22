@@ -126,4 +126,84 @@ export const adminController = {
     if (!result.ok) return sendError(reply, { statusCode: result.statusCode, code: result.code, message: result.message });
     return sendOk(reply, result.ride, 201);
   },
+
+  async setDriverVehicleCategory(
+    req: FastifyRequest<{ Params: { userId: string } }>,
+    reply: FastifyReply,
+  ) {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) {
+      return sendError(reply, {
+        statusCode: 401,
+        code: "UNAUTHORIZED",
+        message: "Missing access token.",
+      });
+    }
+
+    const { adminSetDriverVehicleCategorySchema } = await import(
+      "../drivers/driverProfile.schemas.js"
+    );
+    const parsed = adminSetDriverVehicleCategorySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(reply, {
+        statusCode: 400,
+        code: "VALIDATION_ERROR",
+        message: parsed.error.errors[0]?.message ?? "Invalid body.",
+      });
+    }
+
+    const result = await adminService.setDriverVehicleCategory(
+      token,
+      req.params.userId,
+      parsed.data.vehicleCategory,
+    );
+    if (!result.ok) {
+      return sendError(reply, {
+        statusCode: result.statusCode,
+        code: result.code,
+        message: result.message,
+      });
+    }
+    return sendOk(reply, result.profile);
+  },
+
+  async setDriverVehicleCapabilities(
+    req: FastifyRequest<{ Params: { userId: string } }>,
+    reply: FastifyReply,
+  ) {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) {
+      return sendError(reply, {
+        statusCode: 401,
+        code: "UNAUTHORIZED",
+        message: "Missing access token.",
+      });
+    }
+
+    const { adminSetDriverVehicleCapabilitiesSchema } = await import(
+      "../drivers/driverProfile.schemas.js"
+    );
+    const parsed = adminSetDriverVehicleCapabilitiesSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(reply, {
+        statusCode: 400,
+        code: "VALIDATION_ERROR",
+        message: parsed.error.errors[0]?.message ?? "Invalid body.",
+      });
+    }
+
+    const result = await adminService.setDriverVehicleCapabilities(
+      token,
+      req.params.userId,
+      parsed.data,
+    );
+    if (!result.ok) {
+      return sendError(reply, {
+        statusCode: result.statusCode,
+        code: result.code,
+        message: result.message,
+      });
+    }
+    return sendOk(reply, result.profile);
+  },
 };

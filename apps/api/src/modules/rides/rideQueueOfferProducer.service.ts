@@ -179,6 +179,12 @@ export async function attemptQueuedOffer(
           currentLng: candidate.currentLng,
           locationUpdatedAtMs: candidate.locationUpdatedAt?.getTime() ?? null,
           vehicleCategory: candidate.vehicleCategory,
+          capabilities: {
+            xl: candidate.capabilityXl,
+            extraLuggage: candidate.capabilityExtraLuggage,
+            comfort: candidate.capabilityComfort,
+            vehicleYear: candidate.vehicleYear,
+          },
         },
         currentTripRemainingMin,
         nowMs: now.getTime(),

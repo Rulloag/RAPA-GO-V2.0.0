@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  capabilitiesFromLegacyCategory,
+  type VehicleCategory,
+} from "@rapa-go/shared";
 
 import {
   APPROVED_VEHICLE_CATEGORY_ERROR_MESSAGE,
@@ -20,6 +24,38 @@ vi.mock("./driverProfile.service.js", () => ({
   },
 }));
 
+function readyState(
+  category: VehicleCategory,
+  profile?: Record<string, unknown> | null,
+) {
+  const capabilities = profile
+    ? {
+        xl:
+          profile.capabilityXl === true ||
+          (profile.capabilities as { xl?: boolean } | undefined)?.xl === true,
+        extraLuggage:
+          profile.capabilityExtraLuggage === true ||
+          (profile.capabilities as { extraLuggage?: boolean } | undefined)
+            ?.extraLuggage === true,
+        comfort:
+          profile.capabilityComfort === true ||
+          (profile.capabilities as { comfort?: boolean } | undefined)
+            ?.comfort === true,
+        vehicleYear:
+          profile.vehicleYear != null &&
+          Number.isFinite(Number(profile.vehicleYear))
+            ? Number(profile.vehicleYear)
+            : null,
+      }
+    : capabilitiesFromLegacyCategory(category, null);
+
+  return {
+    status: "ready" as const,
+    category,
+    capabilities,
+  };
+}
+
 describe("Fase 4 — categoría aprobada desde GET /drivers/me/profile", () => {
   const token = "driver-token";
   const user = { id: "driver-1", email: "driver@example.com" };
@@ -34,7 +70,7 @@ describe("Fase 4 — categoría aprobada desde GET /drivers/me/profile", () => {
 
     const state = await ensureApprovedVehicleCategoryLoaded(token, user);
 
-    expect(state).toEqual({ status: "ready", category: "xl" });
+    expect(state).toEqual(readyState("xl"));
     expect(getApprovedVehicleCategoryDisplay(state)).toContain("XL");
   });
 
@@ -43,7 +79,7 @@ describe("Fase 4 — categoría aprobada desde GET /drivers/me/profile", () => {
 
     const state = await ensureApprovedVehicleCategoryLoaded(token, user);
 
-    expect(state).toEqual({ status: "ready", category: "extra_luggage" });
+    expect(state).toEqual(readyState("extra_luggage"));
     expect(getApprovedVehicleCategoryDisplay(state)).toContain("Extra Maleta");
   });
 
@@ -52,7 +88,7 @@ describe("Fase 4 — categoría aprobada desde GET /drivers/me/profile", () => {
 
     const state = await ensureApprovedVehicleCategoryLoaded(token, user);
 
-    expect(state).toEqual({ status: "ready", category: "standard" });
+    expect(state).toEqual(readyState("standard"));
     expect(getApprovedVehicleCategoryDisplay(state)).toContain("Estándar");
   });
 
@@ -127,18 +163,16 @@ describe("Fase 4 — categoría aprobada desde GET /drivers/me/profile", () => {
 
     clearApprovedVehicleCategoryState(token, user);
     getMyProfileMock.mockResolvedValue({ vehicleCategory: "standard" });
-    expect(await ensureApprovedVehicleCategoryLoaded(token, user)).toEqual({
-      status: "ready",
-      category: "standard",
-    });
+    expect(await ensureApprovedVehicleCategoryLoaded(token, user)).toEqual(
+      readyState("standard"),
+    );
   });
 
   it("logout limpia caché y una cuenta nueva no reutiliza XL", () => {
     rememberApprovedVehicleCategoryCache(token, user, "xl");
-    expect(getApprovedVehicleCategoryState(token, user)).toEqual({
-      status: "ready",
-      category: "xl",
-    });
+    expect(getApprovedVehicleCategoryState(token, user)).toEqual(
+      readyState("xl"),
+    );
 
     clearApprovedVehicleCategoryStateForSession({
       accessToken: token,

@@ -48,6 +48,7 @@ import {
   roundFareUpTo500,
 } from "./ridePolicy.js";
 import {
+  AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP,
   buildFlowerLeiNotesLines,
   evaluateAirportFlowerLei,
   type FlowerLeiEvaluation,
@@ -1214,27 +1215,31 @@ export class RidesService {
       input.paymentProvider,
     );
 
-    const fareFromClient = Number(input.estimatedFareClp);
-    const serverEstimatedFare = roundFareUpTo500(
+    const requestedCategory = resolveRequestedVehicleCategory({
+      requestedVehicleCategory: input.requestedVehicleCategory,
+      vehicleCategory: input.vehicleCategory,
+      fareVehicleCategory: input.fareVehicleCategory,
+      notes: notesForStorage,
+    });
+
+    const serverBaseFare = roundFareUpTo500(
       await estimateFare(
         input.originText,
         input.destinationText,
       ),
     );
-    const clientFare =
-      Number.isFinite(fareFromClient) && fareFromClient > 0
-        ? roundFareUpTo500(fareFromClient)
-        : null;
 
-    // El backend nunca permite un monto inferior a su cálculo y aplica el
-    // redondeo oficial. El valor del cliente se conserva temporalmente solo
-    // cuando es mayor, hasta que el motor de distancia viva completamente
-    // en servidor.
-    const baseFare = roundFareUpTo500(
-      clientFare == null
-        ? serverEstimatedFare
-        : Math.max(clientFare, serverEstimatedFare),
+    const { computeAuthoritativeCategoryFareClp } = await import(
+      "../fares/vehicleCategoryFare.service.js"
     );
+    const authoritativeFare = await computeAuthoritativeCategoryFareClp(
+      serverBaseFare,
+      requestedCategory,
+    );
+
+    // Tarifa autoritativa server-side: el cliente no puede reducir el monto
+    // manipulando estimatedFareClp ni multiplicadores de categoría.
+    const baseFare = authoritativeFare;
 
     let finalFare = baseFare;
     let discountInfo:
@@ -1354,6 +1359,9 @@ export class RidesService {
             passengerPhone,
             passengerEmail: user?.email ?? null,
             flowerLeiQuantity: lei.quantity,
+            unitPriceClp: AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP,
+            surchargeClp: lei.surchargeClp,
+            requestedVehicleCategory: requestedCategory,
             scheduledAt: lei.scheduledAt,
             leadMs: lei.leadMs,
             originText: input.originText,
@@ -1532,7 +1540,53 @@ export class RidesService {
       .filter((item) => item.approved)
       .map((item) => item.ride);
 
-    return { ok: true, rides: payableRows.map(toAvailableResponse) };
+    const { capabilitiesFromDriverProfile } = await import(
+      "./vehicleEligibility.js"
+    );
+    const {
+      isVehicleEligibleForRequestedCategory,
+      DEFAULT_COMFORT_MIN_VEHICLE_YEAR,
+    } = await import("@rapa-go/shared");
+
+    let comfortMinVehicleYear = DEFAULT_COMFORT_MIN_VEHICLE_YEAR;
+    try {
+      const { getComfortMinVehicleYear } = await import(
+        "../drivers/comfortEligibility.service.js"
+      );
+      comfortMinVehicleYear = await getComfortMinVehicleYear();
+    } catch {
+      comfortMinVehicleYear = DEFAULT_COMFORT_MIN_VEHICLE_YEAR;
+    }
+
+    let capabilities;
+    try {
+      const snapshot = await ridesRepo.findDriverVehicleEligibilitySnapshot(
+        auth.userId,
+      );
+      capabilities = capabilitiesFromDriverProfile(
+        snapshot
+          ? {
+              vehicleCategory: snapshot.vehicleCategory ?? "standard",
+              vehicleYear: snapshot.vehicleYear,
+              capabilityXl: snapshot.capabilityXl,
+              capabilityExtraLuggage: snapshot.capabilityExtraLuggage,
+              capabilityComfort: snapshot.capabilityComfort,
+            }
+          : null,
+      );
+    } catch {
+      capabilities = capabilitiesFromDriverProfile(null);
+    }
+
+    const eligibleRows = payableRows.filter((ride) =>
+      isVehicleEligibleForRequestedCategory(
+        capabilities,
+        ride.requestedVehicleCategory,
+        { comfortMinVehicleYear },
+      ),
+    );
+
+    return { ok: true, rides: eligibleRows.map(toAvailableResponse) };
   }
 
   async acceptRideRequest(
@@ -1594,7 +1648,21 @@ export class RidesService {
       };
     }
 
-    const accepted = await ridesRepo.accept(rideId, auth.userId);
+    let accepted;
+    try {
+      accepted = await ridesRepo.accept(rideId, auth.userId);
+    } catch (err) {
+      await driverStatusRepo.releaseCurrentRideClaim(auth.userId, rideId);
+      if (err instanceof AppError) {
+        return {
+          ok: false as const,
+          code: err.code,
+          message: err.message,
+          statusCode: err.statusCode,
+        };
+      }
+      throw err;
+    }
 
     if (!accepted) {
       // El slot se reclamó pero el ride ya no estaba disponible (otro

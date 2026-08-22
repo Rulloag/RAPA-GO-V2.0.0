@@ -68,6 +68,25 @@ jobs:
     name: Tests API
     runs-on: ubuntu-latest
     needs: install
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rapago_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -86,7 +105,7 @@ jobs:
         run: npm run build --workspace=packages/shared
       - name: Ejecutar Tests API
         env:
-          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/rapago_test"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/rapago_test"
         run: npm run test --workspace=apps/api
 
   test-mobile:
@@ -216,6 +235,25 @@ jobs:
     name: RegresiÃ³n financiera y de autorizaciÃ³n
     runs-on: ubuntu-latest
     needs: install
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rapago_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v4
         with:
@@ -240,7 +278,7 @@ jobs:
       - name: Ejecutar suite financiera/autorizaciÃ³n (payments, wallet, rides)
         working-directory: apps/api
         env:
-          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/rapago_test"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/rapago_test"
         run: npx vitest run src/modules/payments src/modules/wallet src/modules/rides
       # Evita que un fallo se "resuelva" borrando el test en vez de arreglando el bug: compara el
       # nÃºmero de archivos de test bajo esas rutas contra main y falla si bajÃ³.

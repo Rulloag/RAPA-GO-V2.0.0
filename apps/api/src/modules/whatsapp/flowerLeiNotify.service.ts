@@ -1,4 +1,7 @@
-import { formatLeadTimeLabel } from "../rides/airportFlowerLei.js";
+import {
+  AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP,
+  formatLeadTimeLabel,
+} from "../rides/airportFlowerLei.js";
 import {
   resolveOpsWhatsAppE164,
   sendWhatsAppText,
@@ -26,19 +29,22 @@ function formatChileTime(iso: string): string {
   }).format(date);
 }
 
-export async function notifyFlowerLeiReservation(input: {
+export function buildFlowerLeiOpsWhatsAppBody(input: {
   reservationId: string;
   passengerName: string;
   passengerPhone?: string | null;
   passengerEmail?: string | null;
   passengerCount?: number | null;
   flowerLeiQuantity: number;
+  unitPriceClp?: number;
+  surchargeClp?: number;
+  requestedVehicleCategory?: string | null;
   scheduledAt: string;
   leadMs: number;
   originText: string;
   destinationText: string;
   adminPath?: string | null;
-}): Promise<void> {
+}): string {
   const shortId = input.reservationId.replace(/-/g, "").slice(0, 8).toUpperCase();
   const phone =
     String(input.passengerPhone ?? "").trim() ||
@@ -47,6 +53,12 @@ export async function notifyFlowerLeiReservation(input: {
     input.passengerCount != null && input.passengerCount > 0
       ? String(input.passengerCount)
       : "—";
+  const unit =
+    input.unitPriceClp ?? AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP;
+  const surcharge =
+    input.surchargeClp ?? input.flowerLeiQuantity * unit;
+  const category =
+    String(input.requestedVehicleCategory ?? "").trim() || "standard";
 
   const lines = [
     "🌺 *NUEVA RESERVA CON COLLARES — RAPA GO*",
@@ -57,7 +69,12 @@ export async function notifyFlowerLeiReservation(input: {
     `*Teléfono:* ${phone}`,
     `*Correo:* ${input.passengerEmail ?? "—"}`,
     `*Cantidad de pasajeros:* ${passengers}`,
+    `*Categoría de vehículo:* ${category}`,
+    "",
+    `*¿Incluye collares?:* Sí`,
     `*Cantidad de collares:* ${input.flowerLeiQuantity}`,
+    `*Precio unitario:* $${unit.toLocaleString("es-CL")} CLP`,
+    `*Recargo collares:* $${surcharge.toLocaleString("es-CL")} CLP (${input.flowerLeiQuantity} × $${unit.toLocaleString("es-CL")})`,
     "",
     `📅 *Fecha:* ${formatChileDate(input.scheduledAt)}`,
     `🕐 *Hora del traslado:* ${formatChileTime(input.scheduledAt)}`,
@@ -66,13 +83,34 @@ export async function notifyFlowerLeiReservation(input: {
     `🏨 *Destino:* ${input.destinationText}`,
     "",
     `*Solicitud realizada con:* ${formatLeadTimeLabel(input.leadMs)} de anticipación.`,
+    "",
+    "La reserva queda en el panel del administrador y se ofrece automáticamente a conductores disponibles con esa categoría cuando entra la ventana operativa.",
   ];
 
   if (input.adminPath) {
     lines.push("", `Panel: ${input.adminPath}`);
   }
 
-  const body = lines.join("\n");
+  return lines.join("\n");
+}
+
+export async function notifyFlowerLeiReservation(input: {
+  reservationId: string;
+  passengerName: string;
+  passengerPhone?: string | null;
+  passengerEmail?: string | null;
+  passengerCount?: number | null;
+  flowerLeiQuantity: number;
+  unitPriceClp?: number;
+  surchargeClp?: number;
+  requestedVehicleCategory?: string | null;
+  scheduledAt: string;
+  leadMs: number;
+  originText: string;
+  destinationText: string;
+  adminPath?: string | null;
+}): Promise<void> {
+  const body = buildFlowerLeiOpsWhatsAppBody(input);
 
   await sendWhatsAppText({
     toE164: resolveOpsWhatsAppE164(),
