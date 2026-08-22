@@ -1197,27 +1197,31 @@ export class RidesService {
       scheduleMeta,
     );
 
-    const fareFromClient = Number(input.estimatedFareClp);
-    const serverEstimatedFare = roundFareUpTo500(
+    const requestedCategory = resolveRequestedVehicleCategory({
+      requestedVehicleCategory: input.requestedVehicleCategory,
+      vehicleCategory: input.vehicleCategory,
+      fareVehicleCategory: input.fareVehicleCategory,
+      notes: notesForStorage,
+    });
+
+    const serverBaseFare = roundFareUpTo500(
       await estimateFare(
         input.originText,
         input.destinationText,
       ),
     );
-    const clientFare =
-      Number.isFinite(fareFromClient) && fareFromClient > 0
-        ? roundFareUpTo500(fareFromClient)
-        : null;
 
-    // El backend nunca permite un monto inferior a su cálculo y aplica el
-    // redondeo oficial. El valor del cliente se conserva temporalmente solo
-    // cuando es mayor, hasta que el motor de distancia viva completamente
-    // en servidor.
-    const baseFare = roundFareUpTo500(
-      clientFare == null
-        ? serverEstimatedFare
-        : Math.max(clientFare, serverEstimatedFare),
+    const { computeAuthoritativeCategoryFareClp } = await import(
+      "../fares/vehicleCategoryFare.service.js"
     );
+    const authoritativeFare = await computeAuthoritativeCategoryFareClp(
+      serverBaseFare,
+      requestedCategory,
+    );
+
+    // Tarifa autoritativa server-side: el cliente no puede reducir el monto
+    // manipulando estimatedFareClp ni multiplicadores de categoría.
+    const baseFare = authoritativeFare;
 
     let finalFare = baseFare;
     let discountInfo:
