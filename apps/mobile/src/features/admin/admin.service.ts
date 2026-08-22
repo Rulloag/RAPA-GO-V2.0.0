@@ -80,6 +80,14 @@ export interface ActiveDriverData {
   currentRideId: string | null;
   lastSeenAt:    string | null;
   currentZone:   string | null;
+  vehicleBrand?: string | null;
+  vehicleModel?: string | null;
+  vehicleYear?: number | null;
+  vehiclePlate?: string | null;
+  vehicleCategory?: string | null;
+  capabilityXl?: boolean;
+  capabilityExtraLuggage?: boolean;
+  capabilityComfort?: boolean;
 }
 
 export interface ListRidesParams {
@@ -166,6 +174,27 @@ export const adminService = {
     type Envelope = { ok: true; data: ActiveDriverData[]; statusCode: number };
     const result = await apiClient.get<Envelope>("/admin/drivers/active", { token: accessToken });
     if (result.ok === false) throw new Error(result.message ?? "Failed to load active drivers.");
+    return (result.data as Envelope).data;
+  },
+
+  async setDriverVehicleCapabilities(
+    accessToken: string,
+    driverUserId: string,
+    capabilities: {
+      xl: boolean;
+      extraLuggage: boolean;
+      comfort: boolean;
+    },
+  ): Promise<Record<string, unknown>> {
+    type Envelope = { ok: true; data: Record<string, unknown>; statusCode: number };
+    const result = await apiClient.patch<Envelope>(
+      `/admin/drivers/${driverUserId}/vehicle-capabilities`,
+      capabilities,
+      { token: accessToken },
+    );
+    if (result.ok === false) {
+      throw new Error(result.message ?? "Failed to update vehicle capabilities.");
+    }
     return (result.data as Envelope).data;
   },
 

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, date, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, date, timestamp, boolean } from "drizzle-orm/pg-core";
 import { users } from "./users.schema.js";
 
 export const driverProfiles = pgTable("driver_profiles", {
@@ -10,9 +10,13 @@ export const driverProfiles = pgTable("driver_profiles", {
   vehicleYear:     integer("vehicle_year"),
   vehiclePlate:    text("vehicle_plate"),
   vehicleColor:    text("vehicle_color"),
-  // Categoría registrada del vehículo (standard | xl | extra_luggage).
-  // Informa coincidencias; no restringe qué solicitudes ve el conductor.
+  // Etiqueta primaria legacy (display/compat). Capacidades reales: capability_*.
   vehicleCategory: text("vehicle_category").notNull().default("standard"),
+  capabilityXl: boolean("capability_xl").notNull().default(false),
+  capabilityExtraLuggage: boolean("capability_extra_luggage")
+    .notNull()
+    .default(false),
+  capabilityComfort: boolean("capability_comfort").notNull().default(false),
   licenseNumber:   text("license_number"),
   licenseExpiry:   date("license_expiry"),
   profilePhotoUrl: text("profile_photo_url"),

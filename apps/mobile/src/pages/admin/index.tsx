@@ -6917,6 +6917,10 @@ export function AdminDriversPage(): JSX.Element {
   const [selectedDriver, setSelectedDriver] = useState<ActiveDriverData | null>(
     null,
   );
+  const [capabilitiesSaving, setCapabilitiesSaving] = useState(false);
+  const [capabilitiesError, setCapabilitiesError] = useState<string | null>(
+    null,
+  );
   const [assignmentRide, setAssignmentRide] = useState<AdminRideData | null>(null);
   const [assignmentToast, setAssignmentToast] = useState<string | null>(null);
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
@@ -7774,6 +7778,139 @@ export function AdminDriversPage(): JSX.Element {
                         </IonLabel>
                       </IonItem>
                     </div>
+                  </IonCardContent>
+                </IonCard>
+
+                <IonCard style={{ margin: 0, borderRadius: "18px" }}>
+                  <IonCardContent>
+                    <h2 style={{ margin: "0 0 6px", fontWeight: 950 }}>
+                      Vehículo y capacidades
+                    </h2>
+                    <p
+                      style={{
+                        margin: "0 0 10px",
+                        color: "var(--ion-color-medium)",
+                        fontSize: ".82rem",
+                      }}
+                    >
+                      {[
+                        selectedDriver.vehicleBrand,
+                        selectedDriver.vehicleModel,
+                        selectedDriver.vehicleYear
+                          ? String(selectedDriver.vehicleYear)
+                          : null,
+                        selectedDriver.vehiclePlate
+                          ? `Patente ${selectedDriver.vehiclePlate}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "Sin datos de vehículo en perfil"}
+                    </p>
+                    {capabilitiesError && (
+                      <div
+                        role="alert"
+                        style={{
+                          marginBottom: 10,
+                          padding: "8px 10px",
+                          borderRadius: 10,
+                          background: "rgba(239,68,68,.10)",
+                          color: "#991b1b",
+                          fontSize: ".74rem",
+                          fontWeight: 800,
+                        }}
+                      >
+                        {capabilitiesError}
+                      </div>
+                    )}
+                    {(
+                      [
+                        ["xl", "XL", !!selectedDriver.capabilityXl],
+                        [
+                          "extraLuggage",
+                          "Extra Maletas",
+                          !!selectedDriver.capabilityExtraLuggage,
+                        ],
+                        [
+                          "comfort",
+                          "Confort",
+                          !!selectedDriver.capabilityComfort,
+                        ],
+                      ] as const
+                    ).map(([key, label, enabled]) => (
+                      <IonItem
+                        key={key}
+                        lines="none"
+                        style={
+                          {
+                            "--background": enabled ? "#ecfdf5" : "#f6f2ec",
+                            "--border-radius": "12px",
+                            marginBottom: 8,
+                          } as CSSProperties
+                        }
+                      >
+                        <IonLabel>
+                          <b>{label}</b>
+                          <p>{enabled ? "Aprobado" : "No aprobado"}</p>
+                        </IonLabel>
+                        <IonButton
+                          slot="end"
+                          size="small"
+                          fill={enabled ? "outline" : "solid"}
+                          color={enabled ? "medium" : "success"}
+                          disabled={capabilitiesSaving || !token}
+                          onClick={() => {
+                            if (!token || !selectedDriver) return;
+                            void (async () => {
+                              setCapabilitiesSaving(true);
+                              setCapabilitiesError(null);
+                              try {
+                                const next = {
+                                  xl:
+                                    key === "xl"
+                                      ? !enabled
+                                      : !!selectedDriver.capabilityXl,
+                                  extraLuggage:
+                                    key === "extraLuggage"
+                                      ? !enabled
+                                      : !!selectedDriver.capabilityExtraLuggage,
+                                  comfort:
+                                    key === "comfort"
+                                      ? !enabled
+                                      : !!selectedDriver.capabilityComfort,
+                                };
+                                await adminService.setDriverVehicleCapabilities(
+                                  token,
+                                  selectedDriver.id,
+                                  next,
+                                );
+                                const refreshed = {
+                                  ...selectedDriver,
+                                  capabilityXl: next.xl,
+                                  capabilityExtraLuggage: next.extraLuggage,
+                                  capabilityComfort: next.comfort,
+                                };
+                                setSelectedDriver(refreshed);
+                                setDrivers((prev) =>
+                                  prev.map((d) =>
+                                    d.id === refreshed.id ? refreshed : d,
+                                  ),
+                                );
+                              } catch (err) {
+                                setCapabilitiesError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "No se pudo actualizar capacidades.",
+                                );
+                              } finally {
+                                setCapabilitiesSaving(false);
+                              }
+                            })();
+                          }}
+                        >
+                          {enabled ? "Revocar" : "Aprobar"}
+                        </IonButton>
+                      </IonItem>
+                    ))}
                   </IonCardContent>
                 </IonCard>
 

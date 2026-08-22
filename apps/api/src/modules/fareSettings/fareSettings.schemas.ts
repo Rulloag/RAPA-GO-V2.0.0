@@ -1,6 +1,15 @@
 import { z } from "zod";
 
-const VALID_TYPES = ["mobility_base", "mobility_per_km", "tour_base", "rental_base", "discount_percentage", "minimum_fare"] as const;
+const VALID_TYPES = [
+  "mobility_base",
+  "mobility_per_km",
+  "tour_base",
+  "rental_base",
+  "discount_percentage",
+  "minimum_fare",
+  "comfort_fare_multiplier_bps",
+  "comfort_min_vehicle_year",
+] as const;
 
 export const createFareSettingSchema = z.object({
   type:           z.enum(VALID_TYPES),

@@ -36,6 +36,7 @@ import {
   removeOutline,
   searchOutline,
   sunnyOutline,
+  sparklesOutline,
   timeOutline,
   alertCircleOutline,
   walkOutline,
@@ -3726,6 +3727,7 @@ const DEFAULT_RAPAGO_FARE_RULES: RapaGoFareRules = {
     standard: 1,
     xl: 1.4,
     extra_luggage: 1.25,
+    comfort: 1.35,
   },
   passengerActive: {
     resident: true,
@@ -3998,14 +4000,20 @@ function vehicleCategoryTitle(category: VehicleCategory): string {
 }
 
 function vehicleCategoryDescription(category: VehicleCategory): string {
-  if (category === "xl") return "Más espacio y comodidad";
-  if (category === "extra_luggage") return "Ideal si llevas equipaje";
-  return "Viaje normal urbano";
+  if (category === "xl") return "Mayor capacidad para pasajeros";
+  if (category === "extra_luggage") {
+    return "Vehículo con capacidad adicional para equipaje";
+  }
+  if (category === "comfort") {
+    return "Vehículos más nuevos y aprobados para una experiencia superior";
+  }
+  return "Viaje estándar";
 }
 
 function vehicleCategoryIcon(category: VehicleCategory): string {
   if (category === "xl") return busOutline;
   if (category === "extra_luggage") return briefcaseOutline;
+  if (category === "comfort") return sparklesOutline;
   return carOutline;
 }
 
@@ -4232,6 +4240,11 @@ async function fetchRapaGoFareRules(): Promise<RapaGoFareRules> {
           parsed.vehicleMultipliers,
           "extra_luggage",
           fallback.vehicleMultipliers.extra_luggage,
+        ),
+        comfort: readStoredVehicleCategoryMultiplier(
+          parsed.vehicleMultipliers,
+          "comfort",
+          fallback.vehicleMultipliers.comfort,
         ),
       },
       passengerActive: {
@@ -10073,7 +10086,13 @@ export default function RequestRidePage(): JSX.Element {
       Math.min(9, Math.round(routeMinutes * 0.38)),
     );
     const categoryOffset =
-      category === "xl" ? 2 : category === "extra_luggage" ? 1 : 0;
+      category === "xl"
+        ? 2
+        : category === "extra_luggage"
+          ? 1
+          : category === "comfort"
+            ? 2
+            : 0;
 
     return `Llega en ${baseMinutes + categoryOffset} min`;
   }

@@ -67,6 +67,14 @@ export interface ActiveDriverResponse {
   currentRideId: string | null;
   lastSeenAt:    string | null;
   currentZone:   string | null;
+  vehicleBrand:  string | null;
+  vehicleModel:  string | null;
+  vehicleYear:   number | null;
+  vehiclePlate:  string | null;
+  vehicleCategory: string | null;
+  capabilityXl: boolean;
+  capabilityExtraLuggage: boolean;
+  capabilityComfort: boolean;
 }
 
 type ErrorResult = { ok: false; code: string; message: string; statusCode: number };

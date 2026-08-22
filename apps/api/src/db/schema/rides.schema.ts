@@ -50,13 +50,15 @@ export const rideRequests = pgTable("ride_requests", {
   assignmentMode:       varchar("assignment_mode", { length: 20 }).notNull().default("automatic"),
   // Passenger preference: "female" requests a female driver; null means no preference
   preferredDriverGender: varchar("preferred_driver_gender", { length: 10 }),
-  // Categoría solicitada por el pasajero (standard | xl | extra_luggage).
-  // Informa/advierte; NUNCA filtra visibilidad ni bloquea accept.
+  // Categoría solicitada por el pasajero (standard | xl | extra_luggage | comfort).
+  // El backend filtra ofertas y bloquea accept si el vehículo no es elegible.
   requestedVehicleCategory: varchar("requested_vehicle_category", { length: 30 })
     .notNull()
     .default("standard"),
-  // Snapshot de la categoría del vehículo del conductor al aceptar.
+  // Snapshot de categoría derivada de capacidades reales al aceptar.
   assignedVehicleCategory: varchar("assigned_vehicle_category", { length: 30 }),
+  // Patente del vehículo al aceptar (demostrabilidad histórica).
+  assignedVehiclePlate: varchar("assigned_vehicle_plate", { length: 30 }),
   createdAt:            timestamp("created_at",    { withTimezone: true }).notNull().defaultNow(),
   updatedAt:            timestamp("updated_at",    { withTimezone: true }).notNull().defaultNow(),
 });

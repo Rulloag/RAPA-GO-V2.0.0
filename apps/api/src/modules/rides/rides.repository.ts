@@ -2,6 +2,7 @@ import { and, asc, avg, count, desc, eq, gte, inArray, isNull, lt, lte, ne, sql 
 import { db } from "../../db/client.js";
 import {
   driverProfiles,
+  offlineBookings,
   rideDriverAssignments,
   rideLocationUpdates,
   rideRatings,
@@ -12,7 +13,6 @@ import {
 } from "../../db/schema/index.js";
 import { alias } from "drizzle-orm/pg-core";
 import { AppError } from "../../shared/errors/AppError.js";
-import { resolveAssignedVehicleCategory } from "./resolveAssignedVehicleCategory.js";
 import { formatDatabaseErrorDetails } from "../../shared/errors/databaseErrorDetails.js";
 import type { RideRequest } from "../../db/schema/index.js";
 import {
@@ -372,7 +372,11 @@ export class RidesRepository {
       paymentMethod?: "cash" | "card";
       paymentProvider?: string | null;
       useWalletBenefit?: boolean;
-      requestedVehicleCategory?: "standard" | "xl" | "extra_luggage";
+      requestedVehicleCategory?:
+        | "standard"
+        | "xl"
+        | "extra_luggage"
+        | "comfort";
     } = {},
   ): Promise<RideCreatedWithPolicyCharges> {
     try {
@@ -655,6 +659,48 @@ export class RidesRepository {
     }
   }
 
+  async findDriverVehicleEligibilitySnapshot(driverUserId: string): Promise<{
+    vehicleCategory: string | null;
+    vehicleYear: number | null;
+    vehiclePlate: string | null;
+    capabilityXl: boolean;
+    capabilityExtraLuggage: boolean;
+    capabilityComfort: boolean;
+  } | null> {
+    try {
+      const row = (
+        await db
+          .select({
+            vehicleCategory: driverProfiles.vehicleCategory,
+            vehicleYear: driverProfiles.vehicleYear,
+            vehiclePlate: driverProfiles.vehiclePlate,
+            capabilityXl: driverProfiles.capabilityXl,
+            capabilityExtraLuggage: driverProfiles.capabilityExtraLuggage,
+            capabilityComfort: driverProfiles.capabilityComfort,
+          })
+          .from(driverProfiles)
+          .where(eq(driverProfiles.userId, driverUserId))
+          .limit(1)
+      )[0];
+      if (!row) return null;
+      return {
+        vehicleCategory: row.vehicleCategory ?? null,
+        vehicleYear:
+          row.vehicleYear != null && Number.isFinite(Number(row.vehicleYear))
+            ? Number(row.vehicleYear)
+            : null,
+        vehiclePlate: row.vehiclePlate ?? null,
+        capabilityXl: row.capabilityXl === true,
+        capabilityExtraLuggage: row.capabilityExtraLuggage === true,
+        capabilityComfort: row.capabilityComfort === true,
+      };
+    } catch (err) {
+      throw AppError.internal(
+        `Failed to query driver vehicle capabilities: ${String(err)}`,
+      );
+    }
+  }
+
   /**
    * Atomically accept a ride as a queued offer (driver is still on current ride).
    * Sets assignmentMode='queued_offer' and queuedOfferDriverId.
@@ -664,17 +710,33 @@ export class RidesRepository {
     try {
       return await db.transaction(async (tx) => {
         const now = new Date();
+
+        const ride = (
+          await tx
+            .select()
+            .from(rideRequests)
+            .where(eq(rideRequests.id, id))
+            .limit(1)
+            .for("update")
+        )[0];
+        if (!ride || ride.status !== "requested") return null;
+
         const profile = (
           await tx
-            .select({ vehicleCategory: driverProfiles.vehicleCategory })
+            .select()
             .from(driverProfiles)
             .where(eq(driverProfiles.userId, driverUserId))
             .limit(1)
+            .for("update")
         )[0];
 
-        const assignedVehicleCategory = resolveAssignedVehicleCategory(
-          profile?.vehicleCategory,
+        const { assertVehicleEligibleForRide } = await import(
+          "./vehicleEligibility.js"
         );
+        const eligibility = await assertVehicleEligibleForRide({
+          profile,
+          requestedVehicleCategory: ride.requestedVehicleCategory,
+        });
 
         const rows = await tx
           .update(rideRequests)
@@ -684,7 +746,8 @@ export class RidesRepository {
             acceptedAt: now,
             assignmentMode: "queued_offer",
             queuedOfferDriverId: driverUserId,
-            assignedVehicleCategory,
+            assignedVehicleCategory: eligibility.assignedVehicleCategory,
+            assignedVehiclePlate: profile?.vehiclePlate ?? null,
             updatedAt: now,
           })
           .where(
@@ -732,17 +795,32 @@ export class RidesRepository {
       return await db.transaction(async (tx) => {
         const acceptedAt = new Date();
 
+        const ride = (
+          await tx
+            .select()
+            .from(rideRequests)
+            .where(eq(rideRequests.id, id))
+            .limit(1)
+            .for("update")
+        )[0];
+        if (!ride || ride.status !== "requested") return null;
+
         const profile = (
           await tx
-            .select({ vehicleCategory: driverProfiles.vehicleCategory })
+            .select()
             .from(driverProfiles)
             .where(eq(driverProfiles.userId, driverUserId))
             .limit(1)
+            .for("update")
         )[0];
 
-        const assignedVehicleCategory = resolveAssignedVehicleCategory(
-          profile?.vehicleCategory,
+        const { assertVehicleEligibleForRide } = await import(
+          "./vehicleEligibility.js"
         );
+        const eligibility = await assertVehicleEligibleForRide({
+          profile,
+          requestedVehicleCategory: ride.requestedVehicleCategory,
+        });
 
         const rows = await tx
           .update(rideRequests)
@@ -750,7 +828,8 @@ export class RidesRepository {
             status: "accepted",
             driverUserId,
             acceptedAt,
-            assignedVehicleCategory,
+            assignedVehicleCategory: eligibility.assignedVehicleCategory,
+            assignedVehiclePlate: profile?.vehiclePlate ?? null,
             updatedAt: acceptedAt,
           })
           .where(
@@ -1516,6 +1595,115 @@ export class RidesRepository {
     } catch (err) {
       throw AppError.internal(
         `Failed to mark ride as no show: ${String(err)}`,
+      );
+    }
+  }
+
+  async syncOfflineBookingWithDriverAssignment(data: {
+    offlineBookingId: string;
+    passengerUserId: string;
+    driverUserId: string;
+    originText: string;
+    destinationText: string;
+    notes: string | null;
+    offlinePassengerName: string;
+    offlinePassengerPhone: string;
+    offlinePassengerEmail?: string | null;
+    requestedVehicleCategory?: string | null;
+  }): Promise<RideRequest> {
+    try {
+      return await db.transaction(async (tx) => {
+        const [newRide] = await tx
+          .insert(rideRequests)
+          .values({
+            passengerUserId: data.passengerUserId,
+            originText: data.originText,
+            destinationText: data.destinationText,
+            notes: data.notes,
+            estimatedFareClp: 0,
+            status: "requested",
+            isOfflineBooking: true,
+            offlinePassengerName: data.offlinePassengerName,
+            offlinePassengerPhone: data.offlinePassengerPhone,
+            offlinePassengerEmail: data.offlinePassengerEmail ?? null,
+            requestedVehicleCategory:
+              data.requestedVehicleCategory ?? "standard",
+          })
+          .returning();
+
+        if (!newRide) {
+          throw AppError.internal("Insert returned no rows.");
+        }
+
+        const profile = (
+          await tx
+            .select()
+            .from(driverProfiles)
+            .where(eq(driverProfiles.userId, data.driverUserId))
+            .limit(1)
+            .for("update")
+        )[0];
+
+        const { assertVehicleEligibleForRide } = await import(
+          "./vehicleEligibility.js"
+        );
+        const eligibility = await assertVehicleEligibleForRide({
+          profile,
+          requestedVehicleCategory: newRide.requestedVehicleCategory,
+        });
+
+        const acceptedAt = new Date();
+        const [acceptedRide] = await tx
+          .update(rideRequests)
+          .set({
+            status: "accepted",
+            driverUserId: data.driverUserId,
+            acceptedAt,
+            assignedVehicleCategory: eligibility.assignedVehicleCategory,
+            assignedVehiclePlate: profile?.vehiclePlate ?? null,
+            updatedAt: acceptedAt,
+          })
+          .where(
+            and(
+              eq(rideRequests.id, newRide.id),
+              eq(rideRequests.status, "requested"),
+            ),
+          )
+          .returning();
+
+        if (!acceptedRide) {
+          throw new AppError({
+            code: "OFFLINE_SYNC_ASSIGN_FAILED",
+            message: "Ride could not be assigned during offline sync.",
+            statusCode: 409,
+          });
+        }
+
+        const [syncedBooking] = await tx
+          .update(offlineBookings)
+          .set({ status: "synced", syncedToRideId: newRide.id })
+          .where(
+            and(
+              eq(offlineBookings.id, data.offlineBookingId),
+              eq(offlineBookings.status, "pending_sync"),
+            ),
+          )
+          .returning();
+
+        if (!syncedBooking) {
+          throw new AppError({
+            code: "OFFLINE_BOOKING_SYNC_RACE",
+            message: "Offline booking is no longer pending sync.",
+            statusCode: 409,
+          });
+        }
+
+        return acceptedRide;
+      });
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw AppError.internal(
+        `Failed to sync offline booking with driver assignment: ${String(err)}`,
       );
     }
   }

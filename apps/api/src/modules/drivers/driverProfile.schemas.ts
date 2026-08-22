@@ -1,16 +1,42 @@
 import { z } from "zod";
+import {
+  normalizeVehicleCategory,
+  type VehicleCategory,
+} from "@rapa-go/shared";
 
 export const driverVehicleCategorySchema = z
-  .enum(["standard", "xl", "extra_luggage", "luggage"])
-  .transform((v) => (v === "luggage" ? "extra_luggage" : v));
+  .enum(["standard", "xl", "extra_luggage", "luggage", "comfort", "confort"])
+  .transform((v) => {
+    if (v === "luggage") return "extra_luggage" as const;
+    if (v === "confort") return "comfort" as const;
+    return v as Exclude<typeof v, "luggage" | "confort">;
+  });
 
 export function resolveProvisionDriverVehicleCategory(
   vehicleCategory: string | null | undefined,
-): "standard" | "xl" | "extra_luggage" {
+): VehicleCategory {
   const parsed = driverVehicleCategorySchema.safeParse(vehicleCategory);
   if (parsed.success) return parsed.data;
-  return "standard";
+  return normalizeVehicleCategory(vehicleCategory) ?? "standard";
 }
+
+export const adminSetDriverVehicleCategorySchema = z.object({
+  vehicleCategory: driverVehicleCategorySchema,
+});
+
+export type AdminSetDriverVehicleCategoryInput = z.infer<
+  typeof adminSetDriverVehicleCategorySchema
+>;
+
+export const adminSetDriverVehicleCapabilitiesSchema = z.object({
+  xl: z.boolean(),
+  extraLuggage: z.boolean(),
+  comfort: z.boolean(),
+});
+
+export type AdminSetDriverVehicleCapabilitiesInput = z.infer<
+  typeof adminSetDriverVehicleCapabilitiesSchema
+>;
 
 export const upsertDriverProfileSchema = z
   .object({

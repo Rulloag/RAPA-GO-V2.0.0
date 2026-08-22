@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  needsVehicleCategoryConfirmation,
+  isVehicleEligibleForRequestedCategory,
   normalizeVehicleCategory,
   vehicleCategoryDisplay,
   vehicleCategoryMismatchCopy,
+  capabilitiesFromLegacyCategory,
   type VehicleCategory,
 } from "@rapa-go/shared";
 
@@ -27,7 +28,7 @@ async function evaluateDriverCategoryGate(
   action: () => Promise<void>,
 ): Promise<
   | { status: "proceed" }
-  | { status: "confirm"; ride: Record<string, unknown> }
+  | { status: "blocked"; ride: Record<string, unknown> }
   | { status: "verify_error"; ride: Record<string, unknown> }
 > {
   if (approvedState.status === "error") {
@@ -35,20 +36,29 @@ async function evaluateDriverCategoryGate(
   }
 
   const requested = getRideVehicleCategory(ride);
-  const driverCat =
-    approvedState.status === "ready" ? approvedState.category : null;
 
-  if (driverCat && !needsVehicleCategoryConfirmation(requested, driverCat)) {
-    await action();
-    return { status: "proceed" };
-  }
-
-  if (driverCat) {
-    return { status: "confirm", ride };
+  if (approvedState.status === "ready") {
+    const eligible = isVehicleEligibleForRequestedCategory(
+      approvedState.capabilities,
+      requested,
+    );
+    if (!eligible) {
+      return { status: "blocked", ride };
+    }
   }
 
   await action();
   return { status: "proceed" };
+}
+
+function ready(
+  category: VehicleCategory,
+): ApprovedVehicleCategoryState {
+  return {
+    status: "ready",
+    category,
+    capabilities: capabilitiesFromLegacyCategory(category, 2024),
+  };
 }
 
 function getDriverCategoryGateKey(ride: Record<string, unknown>): string {
@@ -62,12 +72,12 @@ function getDriverCategoryGateKey(ride: Record<string, unknown>): string {
   })}`;
 }
 
-describe("Fase 2A — caminos de aceptación con compuerta", () => {
-  it("categorías iguales → acción inmediata sin modal mismatch", async () => {
+describe("Fase 2A — caminos de aceptación con compuerta autoritativa", () => {
+  it("categorías elegibles → acción inmediata", async () => {
     const action = vi.fn(async () => undefined);
     const result = await evaluateDriverCategoryGate(
       { id: "ride-1", requestedVehicleCategory: "xl" },
-      { status: "ready", category: "xl" },
+      ready("xl"),
       action,
     );
 
@@ -75,24 +85,35 @@ describe("Fase 2A — caminos de aceptación con compuerta", () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 
-  it("categorías diferentes → modal informativo", async () => {
+  it("categorías no elegibles → blocked sin continuar", async () => {
     const action = vi.fn(async () => undefined);
     const ride = { id: "ride-2", requestedVehicleCategory: "xl" };
     const result = await evaluateDriverCategoryGate(
       ride,
-      { status: "ready", category: "standard" },
+      ready("standard"),
       action,
     );
 
-    expect(result).toEqual({ status: "confirm", ride });
+    expect(result).toEqual({ status: "blocked", ride });
     expect(action).not.toHaveBeenCalled();
+  });
+
+  it("standard request accepts superior XL vehicle", async () => {
+    const action = vi.fn(async () => undefined);
+    const result = await evaluateDriverCategoryGate(
+      { id: "ride-std", requestedVehicleCategory: "standard" },
+      ready("xl"),
+      action,
+    );
+    expect(result.status).toBe("proceed");
+    expect(action).toHaveBeenCalledTimes(1);
   });
 
   it("luggage → extra_luggage en la comparación de compuerta", async () => {
     const action = vi.fn(async () => undefined);
     const result = await evaluateDriverCategoryGate(
       { id: "ride-3", requestedVehicleCategory: "luggage" },
-      { status: "ready", category: "extra_luggage" },
+      ready("extra_luggage"),
       action,
     );
 
@@ -100,29 +121,20 @@ describe("Fase 2A — caminos de aceptación con compuerta", () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 
-  it("cancelar mismatch no ejecuta la acción", async () => {
+  it("blocked no permite Continuar de todas formas", async () => {
     const action = vi.fn(async () => undefined);
     const result = await evaluateDriverCategoryGate(
       { id: "ride-4", requestedVehicleCategory: "xl" },
-      { status: "ready", category: "standard" },
+      ready("standard"),
       action,
     );
 
-    expect(result.status).toBe("confirm");
+    expect(result.status).toBe("blocked");
     expect(action).not.toHaveBeenCalled();
-  });
-
-  it("confirmar mismatch ejecuta la acción exactamente una vez", async () => {
-    const action = vi.fn(async () => undefined);
-    const result = await evaluateDriverCategoryGate(
-      { id: "ride-5", requestedVehicleCategory: "xl" },
-      { status: "ready", category: "standard" },
-      action,
+    expect(driverSource).toContain(
+      "Tu vehículo actual no cumple los requisitos de este tipo de viaje.",
     );
-
-    expect(result.status).toBe("confirm");
-    await action();
-    expect(action).toHaveBeenCalledTimes(1);
+    expect(driverSource).not.toContain("Confirmar y aceptar XL");
   });
 
   it("handleAcceptRide usa la compuerta", () => {
@@ -163,16 +175,13 @@ describe("Fase 2A — caminos de aceptación con compuerta", () => {
     expect(body).toContain("guardCategoryConfirmation(rideData,");
   });
 
-  it("no existe otro camino vivo de aceptación que omita la compuerta", () => {
+  it("no existe otro camino vivo de aceptación API que omita la compuerta", () => {
     const apiAcceptCalls = [
       ...driverSource.matchAll(/ridesService\.acceptRideRequest\(/g),
       ...driverSource.matchAll(/ridesService\.acceptDriverOffer\(/g),
     ];
-    const localAcceptCalls = [
-      ...driverSource.matchAll(/= acceptDriverScheduledReservationLocally\(/g),
-    ];
 
-    for (const match of [...apiAcceptCalls, ...localAcceptCalls]) {
+    for (const match of apiAcceptCalls) {
       const context = driverSource.slice(
         Math.max(0, match.index! - 1200),
         match.index!,
@@ -180,7 +189,6 @@ describe("Fase 2A — caminos de aceptación con compuerta", () => {
       const isGuarded =
         context.includes("function performAcceptRide(") ||
         context.includes("function performAcceptRideFromAlert(") ||
-        context.includes("function performAcceptScheduledReservation(") ||
         context.includes("guardCategoryConfirmation(");
       expect(isGuarded).toBe(true);
     }
@@ -188,12 +196,11 @@ describe("Fase 2A — caminos de aceptación con compuerta", () => {
 
   it("usa copy y etiquetas compartidas de @rapa-go/shared", () => {
     expect(driverSource).toContain("vehicleCategoryDisplay(requested)");
-    expect(driverSource).toContain("vehicleCategoryMismatchCopy(requested)");
     expect(vehicleCategoryMismatchCopy("xl").title).toBeTruthy();
     expect(vehicleCategoryDisplay("extra_luggage")).toContain("Extra Maleta");
   });
 
-  it("matching sigue siendo no restrictivo (missing/error proceden sin bloquear)", async () => {
+  it("error de verificación bloquea; missing procede (backend revalida)", async () => {
     const missingAction = vi.fn(async () => undefined);
     const missingResult = await evaluateDriverCategoryGate(
       { id: "ride-6", requestedVehicleCategory: "xl" },
@@ -229,5 +236,9 @@ describe("Fase 2A — caminos de aceptación con compuerta", () => {
     expect(driverSource).toContain("if (gateLocksRef.current.has(gateKey)) return;");
     expect(driverSource).toContain("gateLocksRef.current.add(gateKey);");
     expect(driverSource).toContain("releaseDriverCategoryGateLock(");
+  });
+
+  it("SCHEDULED_SERVER_VALIDATION=PENDING — reserva programada sigue siendo local", () => {
+    expect(driverSource).toContain("acceptDriverScheduledReservationLocally");
   });
 });
