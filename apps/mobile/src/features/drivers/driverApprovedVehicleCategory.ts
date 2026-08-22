@@ -146,10 +146,24 @@ export function rememberApprovedVehicleCategoryCache(
   ) {
     const profile = categoryOrProfile as Record<string, unknown>;
     const capabilities = capabilitiesFromProfilePayload(profile);
+    const normalized = normalizeVehicleCategory(profile.vehicleCategory);
+    const hasCapabilityFlags =
+      capabilities.xl ||
+      capabilities.extraLuggage ||
+      capabilities.comfort ||
+      typeof profile.capabilityXl === "boolean" ||
+      typeof profile.capabilityExtraLuggage === "boolean" ||
+      typeof profile.capabilityComfort === "boolean";
     const category =
-      normalizeVehicleCategory(profile.vehicleCategory) ??
-      primaryCategoryFromCapabilities(capabilities);
-    state = { status: "ready", category, capabilities };
+      normalized ??
+      (hasCapabilityFlags
+        ? primaryCategoryFromCapabilities(capabilities)
+        : null);
+    if (!category) {
+      state = { status: "missing" };
+    } else {
+      state = { status: "ready", category, capabilities };
+    }
   } else {
     const normalized = normalizeVehicleCategory(categoryOrProfile);
     if (!normalized) {
