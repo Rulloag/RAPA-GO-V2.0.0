@@ -8,6 +8,8 @@ export interface CreatePaymentParams {
   passengerName:  string;
   returnUrl:      string;
   webhookUrl:     string;
+  /** Solo RapaGo más veloz ($800) usa venta inmediata. El viaje sigue en authorization. */
+  transactionType?: "authorization" | "sale";
 }
 
 export interface CreatePaymentResult {

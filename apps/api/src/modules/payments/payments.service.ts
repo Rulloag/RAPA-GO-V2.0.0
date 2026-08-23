@@ -82,12 +82,20 @@ function getPaymentPurpose(value: unknown): PaymentPurpose {
     : "ride";
 }
 
-function inferRidePaymentMethod(notes: string | null | undefined): "cash" | "card" | null {
+function inferRidePaymentMethod(
+  notes: string | null | undefined,
+  paymentMethod?: string | null,
+): "cash" | "card" | null {
+  const direct = normalizePaymentText(paymentMethod);
+  if (direct === "card") return "card";
+  if (direct === "cash") return "cash";
+
   const text = normalizePaymentText(notes);
 
   if (
     text.includes("mercadopago") ||
     text.includes("mercado pago") ||
+    text.includes("klap") ||
     text.includes("tarjeta") ||
     text.includes("paymentmethod: card")
   ) {
@@ -1517,13 +1525,13 @@ export class PaymentsService {
       };
     }
 
-    // Captura diferida: la orden se crea siempre como authorization.
-    // Un confirm que declare SALE/capture nunca marca el pago como cobrado.
-    // Si Klap omite transaction_type (observado en producción), se acepta
-    // como autorización porque RAPA GO nunca pidió una venta.
+    // Captura diferida: viaje y RapaGo más veloz se autorizan (retención).
+    // Si Klap omite transaction_type, se acepta como authorization.
+    const expectedTransactionType = KLAP_TRANSACTION_TYPE_AUTHORIZATION;
+
     if (
       body.transaction_type != null &&
-      body.transaction_type.trim().toLowerCase() !== KLAP_TRANSACTION_TYPE_AUTHORIZATION
+      body.transaction_type.trim().toLowerCase() !== expectedTransactionType
     ) {
       auditService.recordSafe({
         actorUserId: payment.passengerUserId,
@@ -1600,25 +1608,48 @@ export class PaymentsService {
         quotas_type: body.quotas_type ?? null,
       };
 
-      await paymentsRepo.markAuthorizedAndActivateRide({
-        id: payment.id,
-        rideRequestId: payment.rideRequestId,
-        authorizedAmountClp: paidAmountClp,
-        transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
-        providerPayload,
-      });
-
-      auditService.recordSafe({
-        actorUserId: payment.passengerUserId,
-        eventType: "payment.klap_authorized",
-        entityType: "payment",
-        entityId: payment.id,
-        metadata: {
-          rideId: payment.rideRequestId,
+      if (getPaymentPurpose(payment.paymentPurpose) === "fast_search") {
+        await paymentsRepo.markAuthorizedAndActivateRide({
+          id: payment.id,
+          rideRequestId: payment.rideRequestId,
           authorizedAmountClp: paidAmountClp,
-          provider: "klap",
-        },
-      });
+          transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+          providerPayload,
+        });
+        await activateFastSearchAfterPayment(payment.rideRequestId, "card");
+        auditService.recordSafe({
+          actorUserId: payment.passengerUserId,
+          eventType: "payment.klap_fast_search_authorized",
+          entityType: "payment",
+          entityId: payment.id,
+          metadata: {
+            rideId: payment.rideRequestId,
+            authorizedAmountClp: paidAmountClp,
+            provider: "klap",
+            paymentPurpose: "fast_search",
+          },
+        });
+      } else {
+        await paymentsRepo.markAuthorizedAndActivateRide({
+          id: payment.id,
+          rideRequestId: payment.rideRequestId,
+          authorizedAmountClp: paidAmountClp,
+          transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+          providerPayload,
+        });
+
+        auditService.recordSafe({
+          actorUserId: payment.passengerUserId,
+          eventType: "payment.klap_authorized",
+          entityType: "payment",
+          entityId: payment.id,
+          metadata: {
+            rideId: payment.rideRequestId,
+            authorizedAmountClp: paidAmountClp,
+            provider: "klap",
+          },
+        });
+      }
 
       await paymentsRepo.completeWebhookEvent({
         id: eventId,
@@ -1934,14 +1965,17 @@ export class PaymentsService {
       };
     }
 
-    const ridePaymentMethod = inferRidePaymentMethod(ride.notes);
+    const ridePaymentMethod = inferRidePaymentMethod(
+      ride.notes,
+      ride.paymentMethod,
+    );
 
     if (paymentPurpose === "fast_search" && !ridePaymentMethod) {
       return {
         ok: false,
         code: "FAST_SEARCH_PAYMENT_METHOD_UNKNOWN",
         message:
-          "No pudimos identificar si el viaje fue solicitado en efectivo o con Mercado Pago.",
+          "No pudimos identificar si el viaje fue solicitado en efectivo o con tarjeta.",
         statusCode: 422,
       };
     }
@@ -1972,10 +2006,16 @@ export class PaymentsService {
         return {
           ok: false,
           code: "FAST_SEARCH_ACTIVATION_ERROR",
-          message: "No se pudo activar RapaGo mÃ¡s veloz. Intenta nuevamente.",
+          message: "No se pudo activar RapaGo más veloz. Intenta nuevamente.",
           statusCode: 500,
         };
       }
+
+      await paymentsRepo.markSuccess(
+        cashPayment.id,
+        String(cashPayment.providerPaymentId ?? cashPayment.id),
+        cashPayment.rawProviderPayload,
+      );
 
       auditService.recordSafe({
         actorUserId: auth.userId,
@@ -2000,17 +2040,18 @@ export class PaymentsService {
     }
 
     if (paymentPurpose === "fast_search" && ridePaymentMethod === "card") {
-      const approvedRidePayment = await paymentsRepo.findSuccessfulByRideId(ride.id);
-
-      if (!approvedRidePayment) {
-        return {
-          ok: false,
-          code: "RIDE_PAYMENT_NOT_APPROVED",
-          message:
-            "El pago principal del viaje todavía no está aprobado.",
-          statusCode: 409,
-        };
-      }
+      const klapOrder = await this.createKlapEmbeddedOrder(accessToken, {
+        rideRequestId: input.rideRequestId,
+        paymentPurpose: "fast_search",
+      });
+      if (!klapOrder.ok) return klapOrder;
+      return {
+        ok: true,
+        urlPay: klapOrder.publicCheckoutData.redirectUrl,
+        paymentId: klapOrder.paymentId,
+        paymentPurpose: "fast_search",
+        activated: false,
+      };
     }
 
     const amountClp =
@@ -2182,6 +2223,8 @@ export class PaymentsService {
       };
     }
 
+    const paymentPurpose = getPaymentPurpose(input.paymentPurpose);
+
     if (!PAYMENT_ALLOWED_RIDE_STATUSES.has(String(ride.status ?? ""))) {
       return {
         ok: false,
@@ -2192,16 +2235,66 @@ export class PaymentsService {
       };
     }
 
+    if (paymentPurpose === "fast_search" && String(ride.status) !== "requested") {
+      return {
+        ok: false,
+        code: "FAST_SEARCH_STATUS_NOT_ALLOWED",
+        message:
+          "RapaGo más veloz solo se puede activar mientras el viaje está buscando conductor.",
+        statusCode: 409,
+      };
+    }
+
+    if (paymentPurpose === "fast_search" && rideHasFastSearchActive(ride.notes)) {
+      return {
+        ok: false,
+        code: "FAST_SEARCH_ALREADY_ACTIVE",
+        message: "RapaGo más veloz ya está activo para este viaje.",
+        statusCode: 409,
+      };
+    }
+
+    if (paymentPurpose === "fast_search") {
+      const approvedRidePayment = await paymentsRepo.findApprovedByRideId(ride.id);
+      if (!approvedRidePayment) {
+        return {
+          ok: false,
+          code: "RIDE_PAYMENT_NOT_APPROVED",
+          message: "El pago principal del viaje todavía no está aprobado.",
+          statusCode: 409,
+        };
+      }
+      const ridePaymentMethod = inferRidePaymentMethod(
+        ride.notes,
+        ride.paymentMethod,
+      );
+      if (ridePaymentMethod === "cash") {
+        return {
+          ok: false,
+          code: "FAST_SEARCH_CASH_NOT_KLAP",
+          message:
+            "RapaGo más veloz en efectivo se activa sin Klap. Usa el pago en efectivo.",
+          statusCode: 422,
+        };
+      }
+    }
+
     const successful = await paymentsRepo.findSuccessfulByRideIdAndPurpose(
       input.rideRequestId,
-      "ride",
+      paymentPurpose,
     );
 
     if (successful) {
       return {
         ok: false,
-        code: "PAYMENT_ALREADY_PAID",
-        message: "Este viaje ya tiene un pago aprobado.",
+        code:
+          paymentPurpose === "fast_search"
+            ? "FAST_SEARCH_ALREADY_PAID"
+            : "PAYMENT_ALREADY_PAID",
+        message:
+          paymentPurpose === "fast_search"
+            ? "El recargo de RapaGo más veloz ya fue pagado."
+            : "Este viaje ya tiene un pago aprobado.",
         statusCode: 409,
       };
     }
@@ -2209,10 +2302,25 @@ export class PaymentsService {
     const provider = getKlapProvider();
     const active = await paymentsRepo.findActiveByRideIdAndPurpose(
       input.rideRequestId,
-      "ride",
+      paymentPurpose,
     );
 
     if (active) {
+      const heldFastSearch =
+        paymentPurpose === "fast_search" &&
+        ["authorized", "capture_pending", "capture_unknown", "success"].includes(
+          normalizePaymentText(active.status),
+        );
+      if (heldFastSearch) {
+        await activateFastSearchAfterPayment(active.rideRequestId, "card");
+        return {
+          ok: false,
+          code: "FAST_SEARCH_ALREADY_PAID",
+          message: "Klap ya retuvo los $800 de RapaGo más veloz.",
+          statusCode: 409,
+        };
+      }
+
       const activeProvider = normalizePaymentText(active.provider);
       const activeOrderId = String(active.providerOrderId ?? "").trim();
       const activeRedirectUrl = String(active.urlPay ?? "").trim();
@@ -2280,6 +2388,23 @@ export class PaymentsService {
               remoteOrder.amount?.total != null
                 ? Math.round(remoteOrder.amount.total)
                 : active.amountClp;
+
+            if (paymentPurpose === "fast_search") {
+              await paymentsRepo.markAuthorizedAndActivateRide({
+                id: active.id,
+                rideRequestId: active.rideRequestId,
+                authorizedAmountClp: remoteAmountClp,
+                transactionType: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+                providerPayload: safePayload,
+              });
+              await activateFastSearchAfterPayment(active.rideRequestId, "card");
+              return {
+                ok: false,
+                code: "FAST_SEARCH_ALREADY_PAID",
+                message: "Klap ya retuvo los $800 de RapaGo más veloz.",
+                statusCode: 409,
+              };
+            }
 
             await paymentsRepo.markAuthorizedAndActivateRide({
               id: active.id,
@@ -2371,10 +2496,10 @@ export class PaymentsService {
       };
     }
 
-    const amountClp = Math.max(
-      0,
-      Math.round(Number(ride.estimatedFareClp ?? 0)),
-    );
+    const amountClp =
+      paymentPurpose === "fast_search"
+        ? RAPAGO_FAST_SEARCH_FEE_CLP
+        : Math.max(0, Math.round(Number(ride.estimatedFareClp ?? 0)));
 
     if (!Number.isInteger(amountClp) || amountClp <= 0) {
       return {
@@ -2391,7 +2516,7 @@ export class PaymentsService {
       rideRequestId: ride.id,
       passengerUserId: auth.userId,
       amountClp,
-      paymentPurpose: "ride",
+      paymentPurpose,
       status: "pending",
       provider: "klap",
     });
@@ -2402,7 +2527,10 @@ export class PaymentsService {
       hostedResult = await provider.createHostedOrder({
         orderId: payment.id,
         amountClp,
-        description: `Viaje Rapa Go â€” ${ride.originText} â†’ ${ride.destinationText}`,
+        description:
+          paymentPurpose === "fast_search"
+            ? `RapaGo más veloz — ${ride.originText} → ${ride.destinationText}`
+            : `Viaje Rapa Go — ${ride.originText} → ${ride.destinationText}`,
         passengerEmail: user?.email ?? "",
         passengerName: user?.name ?? "Pasajero",
         returnUrl: buildPaymentReturnUrl("klap"),
@@ -2454,6 +2582,7 @@ export class PaymentsService {
         amountClp,
         provider: "klap",
         actorRole: auth.role,
+        paymentPurpose,
       },
     });
 
@@ -3861,6 +3990,26 @@ export class PaymentsService {
     const payment = await paymentsRepo.findRefundableByRideId(
       input.rideRequestId,
     );
+
+    try {
+      const fastSearchHold = await paymentsRepo.findActiveByRideIdAndPurpose(
+        input.rideRequestId,
+        "fast_search",
+      );
+      if (
+        fastSearchHold &&
+        normalizePaymentText(fastSearchHold.provider) === "klap" &&
+        normalizePaymentText(fastSearchHold.status) === "authorized"
+      ) {
+        await this.releaseAuthorizedKlapPayment(fastSearchHold.id, {
+          actorUserId: input.cancelledByUserId,
+          cancelledByRole: input.cancelledByRole,
+          resolutionKey: "fast_search_cancelled_release",
+        });
+      }
+    } catch {
+      // La retención de $800 se concilia aparte; no bloquea la cancelación del viaje.
+    }
 
     if (!payment) {
       // Autorización Klap viva: void total o captura parcial de multa.

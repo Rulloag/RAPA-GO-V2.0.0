@@ -94,10 +94,11 @@ export function validateKlapRedirectUrl(value: string): string {
 export async function createKlapHostedOrder(
   accessToken: string,
   rideRequestId: string,
+  paymentPurpose: "ride" | "fast_search" = "ride",
 ): Promise<KlapHostedOrder> {
   const result = await apiClient.post<Envelope<KlapHostedOrder>>(
     "/payments/klap/orders",
-    { rideRequestId },
+    { rideRequestId, paymentPurpose },
     { token: accessToken },
   );
 

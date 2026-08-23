@@ -146,7 +146,7 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
     expect(raw).not.toMatch(/pan|cvv|card_number|security_code|cards\/receipt/i);
   });
 
-  it("la orden siempre declara transaction_type=authorization (captura diferida, nunca controlada por el cliente)", async () => {
+  it("la orden de viaje declara transaction_type=authorization (captura diferida)", async () => {
     delete process.env["KLAP_DEFERRED_CAPTURE_ENABLED"];
     mockJson(201, {
       order_id: "test-order-123",
@@ -162,6 +162,27 @@ describe("KlapProvider V108 — checkout alojado oficial", () => {
     expect(customs.find((c) => c.key === "transaction_type")).toEqual({
       key: "transaction_type",
       value: "authorization",
+    });
+  });
+
+  it("RapaGo más veloz declara transaction_type=sale para cobrar $800", async () => {
+    delete process.env["KLAP_DEFERRED_CAPTURE_ENABLED"];
+    mockJson(201, {
+      order_id: "test-order-123",
+      redirect_url: CHECKOUT_URL,
+    });
+
+    await new KlapProvider().createHostedOrder(
+      params({ amountClp: 800, transactionType: "sale" }),
+    );
+
+    const [, init] = request();
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const customs = body["customs"] as Array<{ key: string; value: string }>;
+
+    expect(customs.find((c) => c.key === "transaction_type")).toEqual({
+      key: "transaction_type",
+      value: "sale",
     });
   });
 

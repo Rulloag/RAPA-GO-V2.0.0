@@ -11,12 +11,13 @@ export type CreatePaymentInput = z.input<typeof createPaymentSchema>;
 
 // ── Create Klap embedded order (Sandbox only, Fase D) ────────────────────────
 //
-// Deliberately minimal: only the ride the passenger owns. No amount, no
-// provider, no paymentPurpose — the server always computes the authoritative
+// Deliberately minimal: ride + purpose. No amount and no provider — the
+// server always computes the authoritative fare ($800 for fast_search).
 // fare from the ride record itself (see PaymentsService.createKlapEmbeddedOrder).
 
 export const createKlapEmbeddedOrderSchema = z.object({
   rideRequestId: z.string().uuid("rideRequestId must be a valid UUID."),
+  paymentPurpose: z.enum(["ride", "fast_search"]).optional().default("ride"),
 });
 
 export type CreateKlapEmbeddedOrderInput = z.input<typeof createKlapEmbeddedOrderSchema>;

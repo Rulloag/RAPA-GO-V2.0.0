@@ -77,6 +77,7 @@ export interface KlapCustom {
  * autoritativa en el backend (ver PaymentsService.captureAuthorizedKlapPayment).
  */
 export const KLAP_TRANSACTION_TYPE_AUTHORIZATION = "authorization" as const;
+export const KLAP_TRANSACTION_TYPE_SALE = "sale" as const;
 
 export interface KlapUrls {
   return_url: string;

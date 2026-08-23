@@ -45,6 +45,10 @@ describe("Klap V109 frontend — checkout alojado directo", () => {
       "await walletService.reconcileKlapPayment(accessToken, paymentId)",
     );
     expect(tripsSource).toContain("openKlapHostedCheckout(redirectUrl)");
+    expect(tripsSource).toContain('createKlapHostedOrder(');
+    expect(tripsSource).toContain('"fast_search"');
+    expect(tripsSource).toContain("Pagar {formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)} con Klap");
+    expect(tripsSource).not.toContain("No disponible para Klap");
     expect(requestRideSource).not.toContain("YA VOLVÍ DE KLAP · VERIFICAR PAGO");
   });
 

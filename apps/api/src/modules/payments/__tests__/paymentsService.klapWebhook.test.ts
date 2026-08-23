@@ -8,6 +8,7 @@ const {
   mockFailWebhookEvent,
   mockFindByProviderOrderId,
   mockMarkAuthorizedAndActivateRide,
+  mockMarkSuccess,
   mockMarkRejected,
   mockRecordSafe,
   mockCancelPendingPayment,
@@ -17,6 +18,7 @@ const {
   mockFailWebhookEvent: vi.fn(),
   mockFindByProviderOrderId: vi.fn(),
   mockMarkAuthorizedAndActivateRide: vi.fn(),
+  mockMarkSuccess: vi.fn(),
   mockMarkRejected: vi.fn(),
   mockRecordSafe: vi.fn(),
   mockCancelPendingPayment: vi.fn(),
@@ -29,6 +31,7 @@ vi.mock("../payments.repository.js", () => ({
     failWebhookEvent: mockFailWebhookEvent,
     findByProviderOrderId: mockFindByProviderOrderId,
     markAuthorizedAndActivateRide: mockMarkAuthorizedAndActivateRide,
+    markSuccess: mockMarkSuccess,
     markRejected: mockMarkRejected,
   })),
 }));
@@ -57,6 +60,7 @@ vi.mock("../../../modules/users/users.repository.js", () => ({
 vi.mock("../../../modules/rides/rides.repository.js", () => ({
   RidesRepository: vi.fn().mockImplementation(() => ({
     cancelPendingPayment: mockCancelPendingPayment,
+    activateFastSearch: vi.fn().mockResolvedValue(null),
   })),
 }));
 
@@ -79,6 +83,7 @@ function paymentFixture(overrides: Record<string, unknown> = {}): Record<string,
     status: "processing",
     amountClp: 5000,
     paymentPurpose: "ride",
+    paymentPurpose: "ride",
     rideRequestId: "ride-uuid",
     passengerUserId: "passenger-uuid",
     ...overrides,
@@ -94,6 +99,7 @@ beforeEach(() => {
   mockCompleteWebhookEvent.mockResolvedValue(undefined);
   mockFailWebhookEvent.mockResolvedValue(undefined);
   mockMarkAuthorizedAndActivateRide.mockResolvedValue({ payment: paymentFixture({ status: "authorized" }), rideActivated: true });
+  mockMarkSuccess.mockResolvedValue(paymentFixture({ status: "success" }));
   mockMarkRejected.mockResolvedValue(paymentFixture({ status: "rejected" }));
 });
 
@@ -343,10 +349,24 @@ describe("PaymentsService.handleKlapConfirmWebhook", () => {
       expect(result.code).toBe("TRANSACTION_TYPE_MISMATCH");
     }
     expect(mockMarkAuthorizedAndActivateRide).not.toHaveBeenCalled();
+    expect(mockMarkSuccess).not.toHaveBeenCalled();
     expect(mockClaimWebhookEvent).not.toHaveBeenCalled();
     expect(mockRecordSafe).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "payment.klap_unexpected_transaction_type" }),
     );
+  });
+
+  it("16b-fast. RapaGo más veloz retiene $800 con authorization y activa la prioridad", async () => {
+    mockFindByProviderOrderId.mockResolvedValue(
+      paymentFixture({ paymentPurpose: "fast_search", amountClp: 800 }),
+    );
+    const result = await service.handleKlapConfirmWebhook(
+      confirmBody({ transaction_type: "authorization", amount: "800" }),
+      { apikey: validApikeyHeader() },
+    );
+    expect(result.ok).toBe(true);
+    expect(mockMarkAuthorizedAndActivateRide).toHaveBeenCalledOnce();
+    expect(mockMarkSuccess).not.toHaveBeenCalled();
   });
 
   it("16c. con KLAP_DEFERRED_CAPTURE_ENABLED=false el confirm sigue siendo autorización, nunca cobro", async () => {

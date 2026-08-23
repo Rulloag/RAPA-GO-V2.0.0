@@ -192,6 +192,7 @@ export interface AvailableRideResponse {
   createdAt:        string;
   /** Categoría pedida — visible para todos los conductores; no filtra. */
   requestedVehicleCategory?: string | null;
+  priorityFeeClp?:  number | null;
 }
 
 export type AvailableRidesResult =

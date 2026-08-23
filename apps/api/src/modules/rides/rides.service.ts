@@ -959,6 +959,7 @@ function toAvailableResponse(r: RideRequest): AvailableRideResponse {
     requestedAt: r.requestedAt.toISOString(),
     createdAt: r.createdAt.toISOString(),
     requestedVehicleCategory: r.requestedVehicleCategory ?? "standard",
+    priorityFeeClp: r.priorityFeeClp ?? null,
   };
 }
 
@@ -1854,7 +1855,12 @@ export class RidesService {
         const { PaymentsRepository } = await import(
           "../payments/payments.repository.js"
         );
-        const payment = await new PaymentsRepository().findByRideId(completed.id);
+        const paymentsRepository = new PaymentsRepository();
+        const payment = await paymentsRepository.findByRideId(completed.id);
+        const fastSearchPayment = await paymentsRepository.findByRideId(
+          completed.id,
+          "fast_search",
+        );
 
         if (
           payment &&
@@ -1902,6 +1908,27 @@ export class RidesService {
               },
             });
           }
+        }
+
+        if (
+          fastSearchPayment &&
+          fastSearchPayment.provider === "klap" &&
+          fastSearchPayment.status === "authorized"
+        ) {
+          const { PaymentsService } = await import(
+            "../payments/payments.service.js"
+          );
+          await new PaymentsService().captureAuthorizedKlapPayment(
+            fastSearchPayment.id,
+            {
+              outcome: "completed",
+              finalRideAmountClp: Math.max(
+                0,
+                Math.round(Number(fastSearchPayment.amountClp ?? 800)),
+              ),
+              authorizationExpired: false,
+            },
+          );
         }
       }
     } catch (error) {

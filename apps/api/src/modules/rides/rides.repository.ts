@@ -1174,6 +1174,7 @@ export class RidesRepository {
         .update(rideRequests)
         .set({
           estimatedFareClp: sql<number>`(ceil((coalesce(${rideRequests.estimatedFareClp}, 0) + ${safeFeeClp})::numeric / 500) * 500)::integer`,
+          priorityFeeClp: safeFeeClp,
           notes: sql<string>`concat_ws(E'\\n', nullif(${rideRequests.notes}, ''), ${noteBlock})`,
           updatedAt: activatedAt,
         })
