@@ -3998,6 +3998,7 @@ export class PaymentsService {
       );
       if (
         fastSearchHold &&
+        getPaymentPurpose(fastSearchHold.paymentPurpose) === "fast_search" &&
         normalizePaymentText(fastSearchHold.provider) === "klap" &&
         normalizePaymentText(fastSearchHold.status) === "authorized"
       ) {

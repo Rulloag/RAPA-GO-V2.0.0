@@ -15906,10 +15906,10 @@ function AssignedRidesPage({
     ? []
     : [...availableRides].sort((a, b) => {
         const aFast = getDriverFastSearchInfo(
-          a as RideWithFarePayload & Record<string, unknown>,
+          a as unknown as RideWithFarePayload & Record<string, unknown>,
         );
         const bFast = getDriverFastSearchInfo(
-          b as RideWithFarePayload & Record<string, unknown>,
+          b as unknown as RideWithFarePayload & Record<string, unknown>,
         );
         const aPriority =
           (aFast.active && aFast.paymentStatus === "approved") ||
