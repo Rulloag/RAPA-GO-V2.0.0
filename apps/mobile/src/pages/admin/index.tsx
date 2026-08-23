@@ -93,7 +93,13 @@ import {
   offlineService,
   type OfflineBooking,
 } from "../../features/offline/offline.service";
-import { WA_MESSAGES } from "@rapa-go/shared";
+import {
+  isVehicleEligibleForRequestedCategory,
+  normalizeVehicleCategory,
+  vehicleCategoryDisplay,
+  WA_MESSAGES,
+  type VehicleCategory,
+} from "@rapa-go/shared";
 import { WhatsAppButton } from "../../components/WhatsAppButton";
 import { loadRapaGoGoogleMaps } from "../../components/MapFallback";
 import { rideLocationService } from "../../features/location/rideLocation.service.js";
@@ -9158,8 +9164,24 @@ function getRideNumberField(ride: AdminRideData, keys: string[]): number | null 
   return null;
 }
 
+function extractAdminRideFlowerLeiQuantityFromNotes(
+  notes: string | null | undefined,
+): number | null {
+  if (!notes) return null;
+  const match = notes.match(/RAPAGO_FLOWER_LEI_QUANTITY:\s*(\d+)/i);
+  if (!match?.[1]) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
 function extractAdminRideFlowerLeiAmountFromNotes(notes: string | null | undefined): number | null {
   if (!notes) return null;
+
+  const surcharge = notes.match(/RAPAGO_FLOWER_LEI_SURCHARGE_CLP:\s*(\d+)/i);
+  if (surcharge?.[1]) {
+    const parsed = Number(surcharge[1]);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+  }
 
   const match = notes.match(/(?:recargo recibimiento|collar[^.]*\+|collar[^.]*:)[^0-9]*(\$?\s*[0-9]{1,3}(?:\.[0-9]{3})*|[0-9]+)/i);
   if (!match?.[1]) return null;
@@ -9168,7 +9190,12 @@ function extractAdminRideFlowerLeiAmountFromNotes(notes: string | null | undefin
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
 }
 
-function getAdminRideAirportWelcomeInfo(ride: AdminRideData): { label: string; amountClp: number } | null {
+function getAdminRideAirportWelcomeInfo(ride: AdminRideData): {
+  label: string;
+  amountClp: number;
+  quantity: number;
+  status: string;
+} | null {
   const rawNotes = typeof ride.notes === "string" ? ride.notes : "";
   const normalizedNotes = normalizeAdminText(rawNotes);
   const option = normalizeAdminText(getRideStringField(ride, ["airportWelcomeOption", "airport_welcome_option"]));
@@ -9181,9 +9208,15 @@ function getAdminRideAirportWelcomeInfo(ride: AdminRideData): { label: string; a
     option === "flower_lei" ||
     normalizedNotes.includes("collar de flores") ||
     normalizedNotes.includes("recibimiento aeropuerto: collar") ||
-    normalizedNotes.includes("recargo recibimiento collar");
+    normalizedNotes.includes("recargo recibimiento collar") ||
+    /RAPAGO_FLOWER_LEI_QUANTITY:\s*\d+/i.test(rawNotes);
 
   if (!requested) return null;
+
+  const quantity =
+    getRideNumberField(ride, ["flowerLeiQuantity", "flower_lei_quantity"]) ??
+    extractAdminRideFlowerLeiQuantityFromNotes(rawNotes) ??
+    1;
 
   const amountClp =
     getRideNumberField(ride, [
@@ -9193,11 +9226,16 @@ function getAdminRideAirportWelcomeInfo(ride: AdminRideData): { label: string; a
       "airport_welcome_surcharge_clp",
     ]) ??
     extractAdminRideFlowerLeiAmountFromNotes(rawNotes) ??
-    4000;
+    quantity * 4000;
+
+  const statusMatch = rawNotes.match(/RAPAGO_FLOWER_LEI_STATUS:\s*([a-z_]+)/i);
+  const status = statusMatch?.[1]?.trim().toLowerCase() || "pending";
 
   return {
     label,
     amountClp,
+    quantity,
+    status,
   };
 }
 
@@ -9932,7 +9970,7 @@ function buildAssignedScheduledRide(ride: AdminRideData, driver: ActiveDriverDat
   const airportWelcomeInfo = getAdminRideAirportWelcomeInfo(ride);
   const driverNotification = isReturnOnlyPromotion
     ? `Tenemos agendado el regreso de este pasajero. Recógelo en ${ride.originText} y llévalo a ${ride.destinationText}.`
-    : `Tenemos agendado tu viaje. El admin lo asignó 30 minutos antes. Ve a buscar al usuario en ${ride.originText} y confirma esta reserva.${airportWelcomeInfo ? " Incluye collar de flores solicitado; admin gestiona el recibimiento en Mataveri." : ""}`;
+    : `Tenemos agendado tu viaje (${getAdminRideRequestedCategoryLabel(ride)}). Confirma si puedes realizarlo. Recoge en ${ride.originText}.${airportWelcomeInfo ? ` Incluye ${airportWelcomeInfo.quantity} collar(es) de flores (+$${airportWelcomeInfo.amountClp.toLocaleString("es-CL")} CLP); admin gestiona el recibimiento en Mataveri.` : ""}`;
   const passengerNotification = isReturnOnlyPromotion
     ? "Tu regreso quedó agendado. Estamos esperando que el conductor asignado confirme la vuelta."
     : `Tu reserva sigue agendada. El admin gestionará/asignará conductor ${SCHEDULE_ACTIVATION_MINUTES_ADMIN} minutos antes. Todas las reservas son con tarjeta; si cancelas dentro de los últimos ${SCHEDULED_CANCELLATION_CHARGE_MINUTES_ADMIN} minutos se cobra 30% con tope de $3.000 y el saldo restante se devuelve al medio de pago original; no se convierte en Beneficios.`;
@@ -10140,6 +10178,60 @@ function adminRideNeedsNextAvailableDriver(ride: AdminRideData): boolean {
   );
 }
 
+function getAdminRideRequestedCategory(ride: AdminRideData): VehicleCategory {
+  const record = ride as AdminRideData & Record<string, unknown>;
+  return (
+    normalizeVehicleCategory(ride.requestedVehicleCategory) ??
+    normalizeVehicleCategory(record.fareVehicleCategory) ??
+    normalizeVehicleCategory(record.vehicleCategory) ??
+    "standard"
+  );
+}
+
+function getAdminRideRequestedCategoryLabel(ride: AdminRideData): string {
+  const category = getAdminRideRequestedCategory(ride);
+  return vehicleCategoryDisplay(category);
+}
+
+function getAdminDriverCapabilities(driver: ActiveDriverData): {
+  xl: boolean;
+  extraLuggage: boolean;
+  comfort: boolean;
+  vehicleYear: number | null;
+} {
+  const data = driver as unknown as Record<string, unknown>;
+  const yearRaw = data.vehicleYear ?? data.approvedVehicleYear ?? data.carYear;
+  const vehicleYear =
+    typeof yearRaw === "number" && Number.isFinite(yearRaw)
+      ? Math.round(yearRaw)
+      : typeof yearRaw === "string" && Number.isFinite(Number(yearRaw))
+        ? Math.round(Number(yearRaw))
+        : null;
+  const category = normalizeVehicleCategory(
+    data.approvedVehicleCategory ?? data.vehicleCategory ?? data.primaryVehicleCategory,
+  );
+  const truthy = (value: unknown): boolean =>
+    value === true || value === "true" || value === 1 || value === "1";
+
+  return {
+    xl: truthy(data.capabilityXl) || category === "xl",
+    extraLuggage:
+      truthy(data.capabilityExtraLuggage) || category === "extra_luggage",
+    comfort: truthy(data.capabilityComfort) || category === "comfort",
+    vehicleYear,
+  };
+}
+
+function adminDriverMatchesRequestedCategory(
+  ride: AdminRideData,
+  driver: ActiveDriverData,
+): boolean {
+  return isVehicleEligibleForRequestedCategory(
+    getAdminDriverCapabilities(driver),
+    getAdminRideRequestedCategory(ride),
+  );
+}
+
 function findNextAvailableAdminDriverForRide(
   ride: AdminRideData,
   drivers: ActiveDriverData[],
@@ -10147,6 +10239,7 @@ function findNextAvailableAdminDriverForRide(
   return (
     drivers.find((driver) => {
       if (getNormalizedDriverAvailability(driver) !== "available") return false;
+      if (!adminDriverMatchesRequestedCategory(ride, driver)) return false;
       if (adminDriverMatchesRejectedRide(ride, driver)) return false;
 
       const driverKeys = getDriverScheduledQueueKeys(driver)
@@ -10272,7 +10365,7 @@ function autoAssignReservationToAvailableDriverFromAdmin(
       driverId: null,
       driverName: null,
       driverEmail: null,
-      message: "Reserva recibida. El sistema sigue buscando un conductor disponible automáticamente.",
+      message: `Reserva recibida (${getAdminRideRequestedCategoryLabel(ride)}${getAdminRideAirportWelcomeInfo(ride) ? `, ${getAdminRideAirportWelcomeInfo(ride)?.quantity} collares` : ""}). Buscando conductor disponible con esa categoría.`,
     });
     return null;
   }
@@ -11749,6 +11842,11 @@ const ADMIN_RIDE_EXCEL_HEADERS = [
   "Vehículo",
   "Patente",
   "Experiencia reservada",
+  "Categoría vehículo",
+  "Collares",
+  "Cantidad collares",
+  "Precio unitario collares CLP",
+  "Recargo collares CLP",
   "Tarifa CLP",
   "Método de pago",
   "Fecha aceptación",
@@ -11761,7 +11859,7 @@ const ADMIN_RIDE_EXCEL_HEADERS = [
 ] as const;
 
 const ADMIN_RIDE_EXCEL_WIDTHS = [
-  22, 14, 19, 19, 30, 30, 22, 28, 38, 24, 28, 24, 14, 24, 14, 18, 19, 19, 19, 19, 23, 38, 22,
+  22, 14, 19, 19, 30, 30, 22, 28, 38, 24, 28, 24, 14, 24, 18, 12, 16, 22, 20, 14, 18, 19, 19, 19, 19, 23, 38, 22,
 ];
 
 type AdminXlsxEntry = {
@@ -11974,6 +12072,7 @@ function getAdminRideExcelRows(
           record.passengerFareClp ??
           0,
       );
+      const flowerLei = getAdminRideAirportWelcomeInfo(ride);
 
       return {
         "ID viaje": sanitizeAdminExcelText(ride.id ?? record.rideId ?? record.originalRideId, 140),
@@ -11990,6 +12089,13 @@ function getAdminRideExcelRows(
         Vehículo: getAdminRideVehicleSummary(ride),
         Patente: vehiclePlate,
         "Experiencia reservada": sanitizeAdminExcelText(getAdminRidePromotionLabel(ride), 180),
+        "Categoría vehículo": sanitizeAdminExcelText(getAdminRideRequestedCategoryLabel(ride), 40),
+        Collares: flowerLei ? "Sí" : "No",
+        "Cantidad collares": flowerLei ? String(flowerLei.quantity) : "0",
+        "Precio unitario collares CLP": flowerLei
+          ? String(Math.round(flowerLei.amountClp / Math.max(1, flowerLei.quantity)))
+          : "0",
+        "Recargo collares CLP": flowerLei ? String(flowerLei.amountClp) : "0",
         "Tarifa CLP": Number.isFinite(fare) && fare > 0 ? String(Math.round(fare)) : "",
         "Método de pago": getAdminRideExcelPaymentLabel(ride),
         "Fecha aceptación": formatAdminExcelDate(ride.acceptedAt ?? record.driverAcceptedAt),
@@ -12359,7 +12465,14 @@ export function AdminTripsPage(): JSX.Element {
 
       try {
         const params: { status?: string } = {};
-        if (filterStatus && filterStatus !== "scheduled" && filterStatus !== "no_show") params.status = filterStatus;
+        if (
+          filterStatus &&
+          filterStatus !== "scheduled" &&
+          filterStatus !== "no_show" &&
+          filterStatus !== "flower_lei"
+        ) {
+          params.status = filterStatus;
+        }
 
         const ridesData = await adminService.listRides(
           session.accessToken,
@@ -12376,9 +12489,11 @@ export function AdminTripsPage(): JSX.Element {
         const byViewMode = viewMode === "scheduled"
           ? merged.filter((ride) => getAdminRideScheduleInfo(ride).isScheduled)
           : merged;
-        const visible = filterStatus
-          ? byViewMode.filter((ride) => getEffectiveAdminRideStatus(ride) === filterStatus)
-          : byViewMode;
+        const visible = filterStatus === "flower_lei"
+          ? byViewMode.filter((ride) => Boolean(getAdminRideAirportWelcomeInfo(ride)))
+          : filterStatus
+            ? byViewMode.filter((ride) => getEffectiveAdminRideStatus(ride) === filterStatus)
+            : byViewMode;
 
         setRides(sortAdminRidesForOperations(visible));
       } catch (err) {
@@ -12732,6 +12847,7 @@ export function AdminTripsPage(): JSX.Element {
               >
                 <IonSelectOption value="">Todos</IonSelectOption>
                 <IonSelectOption value="scheduled">Agendados</IonSelectOption>
+                <IonSelectOption value="flower_lei">Collares (Mataveri)</IonSelectOption>
                 <IonSelectOption value="requested">Solicitado</IonSelectOption>
                 <IonSelectOption value="accepted">
                   Conductor asignado
@@ -13061,6 +13177,17 @@ export function AdminTripsPage(): JSX.Element {
                         }}
                       >
                         <strong>🌺 {airportWelcomeInfo.label} solicitado</strong>
+                        <div>
+                          Vehículo solicitado: <strong>{getAdminRideRequestedCategoryLabel(ride)}</strong>
+                        </div>
+                        <div>
+                          Cantidad: <strong>{airportWelcomeInfo.quantity}</strong>
+                          {" · "}
+                          {airportWelcomeInfo.quantity} × {formatAdminCashClp(Math.round(airportWelcomeInfo.amountClp / Math.max(1, airportWelcomeInfo.quantity)))}
+                          {" = "}
+                          <strong>{formatAdminCashClp(airportWelcomeInfo.amountClp)}</strong>
+                        </div>
+                        <div>Estado: <strong>{airportWelcomeInfo.status}</strong></div>
                         <div>Admin debe gestionar el recibimiento del pasajero en Mataveri.</div>
                         <div>Recargo incluido en tarifa: <strong>{formatAdminCashClp(airportWelcomeInfo.amountClp)}</strong>.</div>
                       </div>
@@ -15033,6 +15160,7 @@ type AdminDriverApplicationVehicle = {
   year?: string | null;
   plate?: string | null;
   color?: string | null;
+  category?: string | null;
   label?: string | null;
   imageDataUrl?: string | null;
   imageName?: string | null;
@@ -15080,6 +15208,7 @@ type AdminDriverApplicationRecord = {
     year?: string | null;
     plate?: string | null;
     color?: string | null;
+    category?: string | null;
     photoDataUrl?: string | null;
     totalVehicles?: number | null;
     vehicles?: AdminDriverApplicationVehicle[] | null;
@@ -15149,6 +15278,7 @@ function getDriverApplicationVehicles(item: AdminDriverApplicationRecord): Admin
       year: item.vehicle.year ?? "",
       plate: item.vehicle.plate ?? "",
       color: item.vehicle.color ?? "",
+      category: item.vehicle.category ?? null,
       label: item.vehicle.description ?? "",
       imageDataUrl: item.vehicle.photoDataUrl ?? item.documents?.vehiclePhoto?.dataUrl ?? null,
       imageName: item.documents?.vehiclePhoto?.fileName ?? null,
@@ -16460,6 +16590,17 @@ export function AdminDocumentsPage(): JSX.Element {
                               </div>
                               <div style={{ color: "#555", fontSize: ".8rem", fontWeight: 800, marginTop: 3 }}>
                                 Patente: {vehicle.plate || "No informada"} · Año: {vehicle.year || "No informado"}
+                              </div>
+                              <div style={{ color: "#555", fontSize: ".8rem", fontWeight: 800, marginTop: 3 }}>
+                                Categoría:{" "}
+                                {vehicle.category === "xl"
+                                  ? "🚐 XL"
+                                  : vehicle.category === "extra_luggage" ||
+                                      vehicle.category === "luggage"
+                                    ? "🧳 Extra Maleta"
+                                    : vehicle.category === "standard"
+                                      ? "🚗 Estándar"
+                                      : "No informada"}
                               </div>
                               <div style={{ color: "#555", fontSize: ".8rem", fontWeight: 800, marginTop: 3 }}>
                                 Tipo: {vehicle.ownership === "optional" ? "Opcional / temporal" : "Propio principal"}

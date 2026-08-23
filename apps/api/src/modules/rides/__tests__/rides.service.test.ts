@@ -580,7 +580,7 @@ describe("RidesService - contrato actual", () => {
     });
 
     it("valida en backend la cantidad de collares de una reserva Mataveri", async () => {
-      const pickup = new Date(Date.now() + 90 * 60 * 1000).toISOString();
+      const pickup = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
 
       const result = await service.createRideRequest("token", {
         originText: "Aeropuerto Internacional Mataveri",
@@ -596,16 +596,40 @@ describe("RidesService - contrato actual", () => {
       });
 
       expect(result.ok).toBe(true);
-      const notes = mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
+      const notes =
+        mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
       expect(notes).toContain("RAPAGO_FLOWER_LEI_QUANTITY: 3");
       expect(notes).toContain("RAPAGO_FLOWER_LEI_UNIT_PRICE_CLP: 4000");
       expect(notes).toContain("RAPAGO_FLOWER_LEI_SURCHARGE_CLP: 12000");
+      expect(notes).toContain("RAPAGO_FLOWER_LEI_STATUS: pending");
       expect(notes).toContain("3 collares de flores");
       expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(15_500);
     });
 
-    it("no aplica el recargo de collares fuera de una reserva Mataveri", async () => {
+    it("rechaza collares con menos de 4 horas de anticipación", async () => {
       const pickup = new Date(Date.now() + 90 * 60 * 1000).toISOString();
+
+      const result = await service.createRideRequest("token", {
+        originText: "Aeropuerto Internacional Mataveri",
+        destinationText: "Hotel Taha Tai",
+        rideMode: "scheduled",
+        tripFareMode: "one_way",
+        scheduledPickupAt: pickup,
+        paymentMethod: "card",
+        paymentProvider: "klap",
+        estimatedFareClp: 5000,
+        airportWelcomeOption: "flower_lei",
+        flowerLeiQuantity: 2,
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("FLOWER_LEI_LESS_THAN_4_HOURS");
+      expect(mockCreateWithApprovedPolicyCharges).not.toHaveBeenCalled();
+    });
+
+    it("rechaza collares fuera de una reserva Mataveri", async () => {
+      const pickup = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
 
       const result = await service.createRideRequest("token", {
         originText: "Ahu Tahai",
@@ -620,8 +644,30 @@ describe("RidesService - contrato actual", () => {
         flowerLeiQuantity: 3,
       });
 
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe("FLOWER_LEI_NOT_AIRPORT");
+      expect(mockCreateWithApprovedPolicyCharges).not.toHaveBeenCalled();
+    });
+
+    it("no aplica el recargo de collares si no se solicitan", async () => {
+      const pickup = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
+
+      const result = await service.createRideRequest("token", {
+        originText: "Aeropuerto Internacional Mataveri",
+        destinationText: "Hotel Hanga Roa",
+        rideMode: "scheduled",
+        tripFareMode: "one_way",
+        scheduledPickupAt: pickup,
+        paymentMethod: "card",
+        paymentProvider: "klap",
+        estimatedFareClp: 5000,
+        airportWelcomeOption: "none",
+      });
+
       expect(result.ok).toBe(true);
-      const notes = mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
+      const notes =
+        mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
       expect(notes).not.toContain("RAPAGO_FLOWER_LEI_QUANTITY");
       expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(3500);
     });

@@ -53,23 +53,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #202124;
+  /* Mismo negro que Apple; el botón GIS visible se estira encima. */
+  background: #000000;
   border: 0;
-  /* El borde va como sombra interior en vez de como border: así no consume
-     caja y el control sigue midiendo exactamente --rp-control-h, igual que
-     "Crear cuenta" e "Iniciar sesión". */
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
   isolation: isolate;
   overflow: hidden;
   transition: background 160ms ease;
 }
 
-/* Google pinta su hover sobre el nodo que abajo dejamos transparente, así que
-   la respuesta al puntero se recupera aquí. La capa de ondas del SDK
-   (.nsm7Bb-HzV7m-LgbsSe-MJoBVe, absoluta e inset 0) no se toca y sigue
-   funcionando encima. */
 .rapago-google-button__shell:not([aria-disabled="true"]):hover {
-  background: #2e2f33;
+  background: #1a1a1a;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -79,9 +73,9 @@
 }
 
 /*
- * Contenedor del botón oficial de Google.
- * Usamos flexbox directo en lugar de position: absolute con translate,
- * permitiendo que el iframe tome su espacio natural sin cortarse.
+ * Contenedor del botón oficial de Google (VISIBLE).
+ * No usar opacity:0: Google Identity Services no dispara el login si el
+ * botón oficial queda invisible (FedCM / gesto de usuario).
  */
 .rapago-google-button__official {
   position: relative;
@@ -106,27 +100,7 @@
 }
 
 /* ==========================================================================
-   EL BOTÓN OFICIAL DE GOOGLE SÍ SE PUEDE MEDIR Y ALINEAR
-
-   Aclaración importante, porque el comentario que había aquí abajo decía lo
-   contrario y llevó a dejar el botón descuadrado: lo que Google inyecta NO es
-   un iframe visible. El iframe existe pero mide 0x0 y solo transporta el flujo
-   de credencial; el botón que se ve es un <div role="button"> normal, dentro de
-   NUESTRO documento, al que Google le aplica su propia hoja de estilos.
-   Comprobado en producción: document.contains(boton) === true.
-
-   Consecuencia: el tamaño y la posición sí son nuestros. Lo que no tocamos es
-   lo que pertenece a la marca —logo, colores, tipografía y el texto—, que
-   sigue tal cual lo dibuja Google.
-
-   Sin estas reglas el botón se quedaba en sus 400x40 nativos dentro de una
-   caja de 421x52, es decir 12px más bajo y 21px más angosto que "Crear cuenta"
-   e "Iniciar sesión", flotando en un hueco transparente. Eso era lo que se leía
-   como "el botón de Google no toma los estilos".
-
-   Se selecciona por [role="button"], no por las clases de Google
-   (.nsm7Bb-HzV7m-LgbsSe), porque esas están ofuscadas y cambian sin aviso;
-   el rol es parte del contrato de accesibilidad y se mantiene.
+   El botón GIS se estira al alto/ancho del shell para alinearlo con Apple.
    ========================================================================== */
 .rapago-google-button__official > div,
 .rapago-google-button__official > div > div {
@@ -134,40 +108,24 @@
 }
 
 .rapago-google-button__official div[role="button"] {
-  /* Google topa el ancho en 400px con estilo en línea; hay que soltar también
-     el max-width o el width:100% no llega a aplicarse. */
   width: 100% !important;
   max-width: none !important;
   min-width: 0 !important;
-  /* Los mismos tokens que "Crear cuenta", "Iniciar sesión" y el botón de
-     Apple. Al ser clamp() fluidos, el botón de Google acompaña a sus vecinos
-     en cualquier ancho sin media queries propias.
-
-     La altura se fija en píxeles reales, nunca con transform: scale(): escalar
-     deja el texto y el logo borrosos, mientras que con height los hijos se
-     reacomodan solos y la etiqueta queda centrada al pixel (medido en
-     producción: 0.0px de desvío respecto del centro). */
   height: var(--rp-control-h) !important;
   max-height: var(--rp-control-h) !important;
   border-radius: var(--rp-radius-sm) !important;
 }
 
-/* Neutraliza el pintado propio de Google para que se vea el fondo del shell,
-   sea cual sea el estado de sus clases de tema.
+/* Neutraliza el pintado propio de Google para que se vea el fondo del shell.
  *
  * La especificidad importa: la hoja de Google se inyecta como último hijo de
- * <head>, después de nuestro bundle, así que en un empate de !important
- * ganaría ella por orden. Encadenar las dos clases del bloque sube esto a
- * (0,3,1) y queda por encima de sus (0,1,0) y (0,2,0).
- *
- * Los estados van explícitos por el mismo motivo: si Google define
- * :hover/:focus/:active con su propio fondo, hay que ganarles uno a uno. */
+ * <head>, después de nuestro bundle. */
 .rapago-google-button .rapago-google-button__official div[role="button"],
 .rapago-google-button .rapago-google-button__official div[role="button"]:hover,
 .rapago-google-button .rapago-google-button__official div[role="button"]:focus,
 .rapago-google-button .rapago-google-button__official div[role="button"]:active {
-  background: transparent !important;
-  background-image: none !important;
+  /* No forzar transparent: el botón debe verse y ser clicable para GIS.
+     Solo unificamos radio y altura; el tema filled_black pinta el fondo. */
   border: 0 !important;
   box-shadow: none !important;
   color: #e8eaed !important;
@@ -217,10 +175,9 @@
   padding: 0 18px;
   overflow: hidden;
   cursor: pointer;
-  /* Mismo negro de Google que en web, para que la app nativa y el navegador
-     muestren el mismo botón en lugar de uno blanco y otro negro. */
-  background: #202124;
-  color: #e8eaed;
+  /* Mismo negro que Apple (#000). */
+  background: #000000;
+  color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.10);
   box-shadow: 0 8px 20px rgba(20, 15, 5, 0.16);
   font: inherit;
@@ -391,8 +348,8 @@
    había aquí, para que la app nativa y la web muestren el mismo botón, y el
    borde dorado de la casa, que es lo que le da silueta sobre fondo oscuro. */
 [data-rapago-theme="dark"] .rapago-google-button__custom {
-  background: #202124;
-  color: #e8eaed;
+  background: #000000;
+  color: #ffffff;
   border-color: rgba(214, 166, 64, 0.48);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.35),
@@ -411,9 +368,7 @@
 
 /* Estado activo / press modo noche */
 [data-rapago-theme="dark"] .rapago-google-button__custom:active:not(:disabled) {
-  /* Aclarar el negro al pulsar, en vez del degradado marrón anterior: sobre
-     #202124 el marrón cambiaba el tono del botón, no solo su brillo. */
-  background: #2e2f33;
+  background: #1a1a1a;
   transform: scale(0.990);
 }
 

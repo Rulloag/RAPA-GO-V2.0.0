@@ -55,6 +55,10 @@ export const applicationVehicleSchema = z.object({
   ]).optional(),
   plate: z.string().trim().max(20).optional(),
   color: z.string().trim().max(40).optional(),
+  category: z
+    .enum(["standard", "xl", "extra_luggage", "luggage"])
+    .transform((v) => (v === "luggage" ? "extra_luggage" : v))
+    .optional(),
   label: z.string().trim().max(180).optional(),
   expiresAt: z.string().trim().nullable().optional(),
   photoFileName: z.string().trim().max(180).nullable().optional(),
@@ -72,6 +76,10 @@ export const createDriverApplicationSchema = z.object({
   vehicleYear: z.number().int().optional(),
   vehiclePlate: z.string().trim().optional(),
   vehicleColor: z.string().trim().optional(),
+  vehicleCategory: z
+    .enum(["standard", "xl", "extra_luggage", "luggage"])
+    .transform((v) => (v === "luggage" ? "extra_luggage" : v))
+    .optional(),
   licenseNumber: z.string().trim().optional(),
   licenseExpiry: z.string().trim().optional(),
   hasOwnVehicle: z.boolean().optional(),

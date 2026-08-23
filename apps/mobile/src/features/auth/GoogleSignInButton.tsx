@@ -9,6 +9,7 @@ import {
   getGoogleIdentityServices,
   loadGoogleIdentityServices,
 } from "./googleIdentityServices.js";
+import { getRapaGoLanguage } from "../../i18n/rapagoI18n.js";
 import "./GoogleSignInButton.css";
 
 type MaybePromise = void | Promise<void>;
@@ -23,17 +24,9 @@ export interface GoogleSignInButtonProps {
   isAvailable?: boolean;
   label?: string;
   className?: string;
-
-  /**
-   * Propiedades reales usadas por LoginPage.
-   */
   onWebCredential?: CredentialHandler;
   onNativePress?: PressHandler;
   onError?: ErrorHandler;
-
-  /**
-   * Alias mantenidos por compatibilidad.
-   */
   onCredential?: CredentialHandler;
   onSuccess?: CredentialHandler;
   onToken?: CredentialHandler;
@@ -41,6 +34,10 @@ export interface GoogleSignInButtonProps {
   onPress?: PressHandler;
   onSignIn?: PressHandler;
 }
+
+/** Una sola initialize() por pestaña: GSI avisa y se rompe si se repite. */
+let gisInitializedClientId: string | null = null;
+let gisCredentialHandler: CredentialHandler | null = null;
 
 function GoogleLogo(): JSX.Element {
   return (
@@ -69,6 +66,36 @@ function GoogleLogo(): JSX.Element {
   );
 }
 
+function ensureGisInitialized(
+  clientId: string,
+  onCredential: CredentialHandler,
+  onInvalid: () => void,
+): boolean {
+  const googleApi = getGoogleIdentityServices()?.accounts?.id;
+  if (!googleApi) return false;
+
+  gisCredentialHandler = onCredential;
+
+  if (gisInitializedClientId === clientId) return true;
+
+  googleApi.initialize({
+    client_id: clientId,
+    auto_select: false,
+    cancel_on_tap_outside: true,
+    callback: (response) => {
+      const credential = String(response.credential ?? "").trim();
+      if (!credential) {
+        onInvalid();
+        return;
+      }
+      void gisCredentialHandler?.(credential);
+    },
+  });
+
+  gisInitializedClientId = clientId;
+  return true;
+}
+
 export function GoogleSignInButton({
   clientId: clientIdProp,
   disabled: disabledProp = false,
@@ -89,6 +116,7 @@ export function GoogleSignInButton({
   const shellRef = useRef<HTMLDivElement | null>(null);
   const officialButtonRef = useRef<HTMLDivElement | null>(null);
   const lastRenderedWidthRef = useRef(0);
+  const lastLocaleRef = useRef("");
 
   const [scriptReady, setScriptReady] = useState(false);
   const [renderError, setRenderError] = useState("");
@@ -96,22 +124,14 @@ export function GoogleSignInButton({
   const isNative = Capacitor.isNativePlatform();
 
   const clientId = String(
-    clientIdProp ??
-      import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID ??
-      "",
+    clientIdProp ?? import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID ?? "",
   ).trim();
 
   const webCredentialHandler =
-    onWebCredential ??
-    onCredential ??
-    onSuccess ??
-    onToken;
+    onWebCredential ?? onCredential ?? onSuccess ?? onToken;
 
   const nativePressHandler =
-    onNativePress ??
-    onClick ??
-    onPress ??
-    onSignIn;
+    onNativePress ?? onClick ?? onPress ?? onSignIn;
 
   const availableForPlatform =
     isAvailable &&
@@ -119,21 +139,13 @@ export function GoogleSignInButton({
       ? Boolean(nativePressHandler)
       : Boolean(clientId && webCredentialHandler));
 
-  const disabled =
-    disabledProp ||
-    loading ||
-    !availableForPlatform;
+  const disabled = disabledProp || loading || !availableForPlatform;
 
   const visibleLabel =
     label ??
-    (loading
-      ? "Conectando con Google..."
-      : "Continuar con Google");
+    (loading ? "Conectando con Google..." : "Continuar con Google");
 
-  const rootClassName = [
-    "rapago-google-button",
-    className,
-  ]
+  const rootClassName = ["rapago-google-button", className]
     .filter(Boolean)
     .join(" ");
 
@@ -145,15 +157,9 @@ export function GoogleSignInButton({
     [onError],
   );
 
-  /**
-   * WEB:
-   * Carga Google Identity Services y renderiza el boton oficial.
-   *
-   * IMPORTANTE:
-   * LoginPage tambien entrega onNativePress, pero en web NO debemos
-   * tratarlo como boton nativo. Ese era el error que dejaba el boton
-   * visual sin ninguna accion.
-   */
+  const webCredentialHandlerRef = useRef(webCredentialHandler);
+  webCredentialHandlerRef.current = webCredentialHandler;
+
   useEffect(() => {
     if (isNative || !clientId || !webCredentialHandler) {
       setScriptReady(false);
@@ -172,13 +178,10 @@ export function GoogleSignInButton({
           return;
         }
 
-        reportError(
-          "Google Identity Services no quedo disponible.",
-        );
+        reportError("Google Identity Services no quedo disponible.");
       })
       .catch(() => {
         if (cancelled) return;
-
         reportError(
           "No se pudo cargar Google. Revisa los bloqueadores del navegador.",
         );
@@ -187,121 +190,58 @@ export function GoogleSignInButton({
     return () => {
       cancelled = true;
     };
-  }, [
-    clientId,
-    isNative,
-    reportError,
-    webCredentialHandler,
-  ]);
+  }, [clientId, isNative, reportError, webCredentialHandler]);
 
-  /**
-   * Renderiza (o vuelve a renderizar) el boton oficial de Google
-   * al ancho disponible del shell.
-   *
-   * IMPORTANTE — por que se saco el hack anterior de
-   * left/top/transform: translateX(-50%) scale(...):
-   *
-   * 1. .rapago-google-button__official tiene `position: relative`
-   *    en el CSS y vive dentro de un shell con `display: flex;
-   *    justify-content: center; align-items: center`. Eso ya lo
-   *    centra en los dos ejes SOLO. Aplicarle ademas
-   *    `translateX(-50%)` lo corria un ancho extra hacia la
-   *    izquierda (por eso se veia "Continuar con Google" cortado
-   *    y corrido a la izquierda en el screenshot).
-   *
-   * 2. Escalar el iframe de Google con `transform: scale()` para
-   *    que la altura coincida con la del shell (48/52/54/56px)
-   *    lo deja borroso, ya que Google solo soporta una altura fija
-   *    real (~40px con size="large"). Ahora dejamos que el boton
-   *    de Google se vea a su tamano nativo, centrado verticalmente
-   *    por el flex del shell — sin escalar.
-   *
-   * El JS sigue siendo quien decide el ANCHO (Google no acepta
-   * "%", solo px fijos), pero ya no toca left/top/transform.
-   */
   const renderOfficialButton = useCallback((): void => {
-    if (
-      isNative ||
-      !scriptReady ||
-      !clientId ||
-      !webCredentialHandler
-    ) {
+    if (isNative || !scriptReady || !clientId || !webCredentialHandlerRef.current) {
       return;
     }
 
     const shell = shellRef.current;
     const target = officialButtonRef.current;
     const googleApi = getGoogleIdentityServices()?.accounts?.id;
-
     if (!shell || !target || !googleApi) return;
 
-    const measuredWidth = Math.floor(
-      shell.getBoundingClientRect().width,
-    );
-
-    // Google acepta un ancho fijo entre ~160 y 400px.
-    const renderWidth = Math.max(
-      180,
-      Math.min(400, measuredWidth),
-    );
+    const locale = getRapaGoLanguage() === "en" ? "en" : "es";
+    const measuredWidth = Math.floor(shell.getBoundingClientRect().width);
+    const renderWidth = Math.max(180, Math.min(400, measuredWidth || 400));
 
     if (
       renderWidth === lastRenderedWidthRef.current &&
+      locale === lastLocaleRef.current &&
       target.childElementCount > 0
     ) {
       return;
     }
 
-    lastRenderedWidthRef.current = renderWidth;
-    target.innerHTML = "";
-
-    googleApi.initialize({
-      client_id: clientId,
-      auto_select: false,
-      cancel_on_tap_outside: true,
-      callback: (response) => {
-        const credential = String(
-          response.credential ?? "",
-        ).trim();
-
-        if (!credential) {
-          reportError(
-            "Google no entrego una credencial valida.",
-          );
-          return;
-        }
-
+    const ready = ensureGisInitialized(
+      clientId,
+      (credential) => {
         setRenderError("");
-        void webCredentialHandler(credential);
+        void webCredentialHandlerRef.current?.(credential);
       },
-    });
+      () => {
+        reportError("Google no entrego una credencial valida.");
+      },
+    );
+
+    if (!ready) return;
+
+    lastRenderedWidthRef.current = renderWidth;
+    lastLocaleRef.current = locale;
+    target.innerHTML = "";
 
     googleApi.renderButton(target, {
       type: "standard",
-      /* "filled_black" (#202124) queda a un tono del negro del botón de Apple
-         (#222428), en vez del blanco de "outline", que era el único elemento
-         claro de toda la tarjeta. Los tres temas de Google son igual de
-         válidos, así que se elige el que encaja en las dos paletas: de día
-         empareja con Apple sobre la crema, y de noche el borde dorado lo pone
-         nuestro CSS, que sí alcanza a este nodo (ver GoogleSignInButton.css). */
       theme: "filled_black",
       size: "large",
       text: "continue_with",
-      /* Rectangular, no "pill": el radio real lo fija el CSS en 16px para que
-         coincida con "Crear cuenta" e "Iniciar sesión". Con "pill" Google
-         escribe 20px, que sobre 52px de alto ya no es un óvalo. */
       shape: "rectangular",
       logo_alignment: "left",
       width: renderWidth,
-      locale: "es",
+      locale,
     });
-  }, [
-    clientId,
-    isNative,
-    reportError,
-    scriptReady,
-    webCredentialHandler,
-  ]);
+  }, [clientId, isNative, reportError, scriptReady]);
 
   useEffect(() => {
     if (isNative || !scriptReady) return;
@@ -309,44 +249,35 @@ export function GoogleSignInButton({
     renderOfficialButton();
 
     const shell = shellRef.current;
+    const rerender = (): void => {
+      lastRenderedWidthRef.current = 0;
+      renderOfficialButton();
+    };
+
+    window.addEventListener("rapago:language-changed", rerender);
 
     if (!shell || typeof ResizeObserver === "undefined") {
-      const handleResize = (): void => {
-        lastRenderedWidthRef.current = 0;
-        renderOfficialButton();
-      };
-
-      window.addEventListener("resize", handleResize);
-
+      window.addEventListener("resize", rerender);
       return () => {
-        window.removeEventListener("resize", handleResize);
+        window.removeEventListener("resize", rerender);
+        window.removeEventListener("rapago:language-changed", rerender);
       };
     }
 
     const observer = new ResizeObserver(() => {
-      lastRenderedWidthRef.current = 0;
-
-      window.requestAnimationFrame(() => {
-        renderOfficialButton();
-      });
+      window.requestAnimationFrame(rerender);
     });
-
     observer.observe(shell);
 
     return () => {
       observer.disconnect();
+      window.removeEventListener("rapago:language-changed", rerender);
     };
-  }, [
-    isNative,
-    renderOfficialButton,
-    scriptReady,
-  ]);
+  }, [isNative, renderOfficialButton, scriptReady]);
 
   async function handleNativePress(): Promise<void> {
     if (disabled || !nativePressHandler) return;
-
     setRenderError("");
-
     try {
       await nativePressHandler();
     } catch (error) {
@@ -371,27 +302,17 @@ export function GoogleSignInButton({
           type="button"
         >
           {loading ? (
-            <span
-              aria-hidden="true"
-              className="rapago-google-button__spinner"
-            />
+            <span aria-hidden="true" className="rapago-google-button__spinner" />
           ) : (
             <GoogleLogo />
           )}
-
-          <span className="rapago-google-button__label">
-            {visibleLabel}
-          </span>
+          <span className="rapago-google-button__label">{visibleLabel}</span>
         </button>
-
-        {renderError && (
-          <small
-            className="rapago-google-button__error"
-            role="alert"
-          >
+        {renderError ? (
+          <small className="rapago-google-button__error" role="alert">
             {renderError}
           </small>
-        )}
+        ) : null}
       </div>
     );
   }
@@ -404,7 +325,7 @@ export function GoogleSignInButton({
         className="rapago-google-button__shell"
         ref={shellRef}
       >
-        {!scriptReady && (
+        {!scriptReady ? (
           <div className="rapago-google-button__placeholder">
             {loading ? (
               <span
@@ -414,36 +335,27 @@ export function GoogleSignInButton({
             ) : (
               <GoogleLogo />
             )}
-
             <span className="rapago-google-button__label">
-              {renderError
-                ? "Google no pudo cargar"
-                : visibleLabel}
+              {renderError ? "Google no pudo cargar" : visibleLabel}
             </span>
           </div>
-        )}
+        ) : null}
 
         <div
           className="rapago-google-button__official"
           ref={officialButtonRef}
         />
 
-        {disabled && (
-          <div
-            aria-hidden="true"
-            className="rapago-google-button__blocker"
-          />
-        )}
+        {disabled ? (
+          <div aria-hidden="true" className="rapago-google-button__blocker" />
+        ) : null}
       </div>
 
-      {renderError && (
-        <small
-          className="rapago-google-button__error"
-          role="alert"
-        >
+      {renderError ? (
+        <small className="rapago-google-button__error" role="alert">
           {renderError}
         </small>
-      )}
+      ) : null}
     </div>
   );
 }

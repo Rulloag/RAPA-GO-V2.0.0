@@ -2007,7 +2007,7 @@ export class PaymentsService {
           ok: false,
           code: "RIDE_PAYMENT_NOT_APPROVED",
           message:
-            "El pago principal del viaje todavÃ­a no estÃ¡ aprobado por Mercado Pago.",
+            "El pago principal del viaje todavía no está aprobado.",
           statusCode: 409,
         };
       }

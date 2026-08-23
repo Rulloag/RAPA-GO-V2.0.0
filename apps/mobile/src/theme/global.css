@@ -4505,10 +4505,10 @@ ion-modal.facebook-step-modal::part(content) {
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-/* Brand header: back arrow + centered logo on the same row */
+/* Brand header: back + logo + acciones (idioma / tema) */
 .rapago-auth-brand-header {
   display: grid;
-  grid-template-columns: 42px 1fr 42px;
+  grid-template-columns: 42px 1fr auto;
   align-items: center;
   column-gap: 8px;
   width: 100%;

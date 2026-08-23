@@ -60,6 +60,17 @@ describe("mergeRapaNuiAutocompletePredictions", () => {
     ]);
   });
 
+  it("con búsqueda de hotel prioriza el place_id de Google sobre el catálogo", () => {
+    const merged = mergeRapaNuiAutocompletePredictions(
+      [local("Hotel Taha Tai", 1200)],
+      [google("Hotel Taha Tai", "ChIJgoogle-taha-tai")],
+      "Hotel Taha Tai",
+    );
+
+    expect(merged[0].mainText).toBe("Hotel Taha Tai");
+    expect(merged[0].placeId).toBe("ChIJgoogle-taha-tai");
+  });
+
   it("no descarta la corazonada, solo la baja", () => {
     /* Sigue estando: si Google no acertó, es la única salida que le queda al
        pasajero antes de tener que tocar el mapa. */
@@ -105,13 +116,33 @@ describe("mergeRapaNuiAutocompletePredictions", () => {
     expect(merged[0].placeId).not.toBe("google-anakena");
   });
 
-  it("no devuelve más de ocho para no enterrar el resto de la pantalla", () => {
+  it("en hoteles gana el place_id de Google aunque el catálogo también tenga el nombre", () => {
     const merged = mergeRapaNuiAutocompletePredictions(
-      [local("Uno", 1200), local("Dos", 1200)],
-      Array.from({ length: 12 }, (_, i) => google(`Google ${i}`)),
+      [
+        {
+          score: 1200,
+          suggestion: {
+            placeId: "rapago-local:hotel-taha-tai",
+            description: "Hotel Taha Tai, Rapa Nui",
+            mainText: "Hotel Taha Tai",
+            secondaryText: "Hotel · Apina",
+          },
+        },
+      ],
+      [google("Hotel Taha Tai", "ChIJ-google-taha-tai")],
+      "hotel taha tai",
     );
 
-    expect(merged).toHaveLength(8);
+    expect(merged[0].placeId).toBe("ChIJ-google-taha-tai");
+  });
+
+  it("no devuelve más de dieciséis para no enterrar el resto de la pantalla", () => {
+    const merged = mergeRapaNuiAutocompletePredictions(
+      [local("Uno", 1200), local("Dos", 1200)],
+      Array.from({ length: 20 }, (_, i) => google(`Google ${i}`)),
+    );
+
+    expect(merged).toHaveLength(16);
   });
 
   it("aguanta que una de las dos fuentes venga vacía", () => {
@@ -246,6 +277,71 @@ describe("DGAC encuentra el aeropuerto sin depender de la red", () => {
     expect(
       getRapaNuiLocalAutocompletePredictions("aeronautica")[0]?.mainText,
     ).toBe("Aeropuerto Internacional Mataveri");
+  });
+});
+
+describe("filtro desde una letra del abecedario", () => {
+  /* El pasajero escribe "h" y debe ver de inmediato los lugares de la isla
+     cuyo nombre empieza por H (Hospital, Hanga, Hare…), sin teclear el
+     nombre completo. */
+  it('"h" lista lugares cuyo nombre empieza por H', () => {
+    const names = getRapaNuiLocalAutocompletePredictions("h").map(
+      (item) => item.mainText,
+    );
+
+    expect(names.length).toBeGreaterThan(0);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "Hospital de Hanga Roa",
+        "Caleta Hanga Roa",
+        "Feria Artesanal Hare Umanga",
+      ]),
+    );
+    /* No debe colarse algo que solo tenga "h" en medio (p. ej. Tahai vía includes). */
+    expect(names).not.toContain("Ahu Tahai");
+  });
+
+  it("con el campo vacío no filtra (lista vacía del matcher)", () => {
+    expect(getRapaNuiLocalAutocompletePredictions("")).toEqual([]);
+    expect(getRapaNuiLocalAutocompletePredictions("   ")).toEqual([]);
+  });
+});
+
+describe("hoteles de Rapa Nui no se confunden entre sí", () => {
+  it('busca "Hotel Taha Tai" y no devuelve la feria ni Ahu Tahai primero', () => {
+    const names = getRapaNuiLocalAutocompletePredictions("Hotel Taha Tai").map(
+      (item) => item.mainText,
+    );
+    expect(names[0]).toBe("Hotel Taha Tai");
+    expect(names[0]).not.toContain("Feria");
+    expect(names[0]).not.toBe("Ahu Tahai");
+  });
+
+  it('busca "Hotel Hare Nua" sin confundirlo con Taha Tai ni la feria', () => {
+    const names = getRapaNuiLocalAutocompletePredictions("Hotel Hare Nua").map(
+      (item) => item.mainText,
+    );
+    expect(names[0]).toBe("Hotel Hare Nua");
+    expect(names).not.toContain("Hotel Taha Tai");
+  });
+
+  it('busca "Hare Rapa Nui" sin caer en Hare Nua', () => {
+    const names = getRapaNuiLocalAutocompletePredictions(
+      "Hare Rapa Nui Hotel",
+    ).map((item) => item.mainText);
+    expect(names[0]).toContain("Hare Rapa Nui");
+    expect(names[0]).not.toBe("Hotel Hare Nua");
+  });
+
+  it('con "hotel hare" prioriza alojamiento sobre la feria', () => {
+    const names = getRapaNuiLocalAutocompletePredictions("hotel hare").map(
+      (item) => item.mainText,
+    );
+    expect(names.length).toBeGreaterThan(0);
+    expect(names[0]).not.toBe("Feria Artesanal Hare Umanga");
+    expect(
+      names.some((name) => /hotel|hare nua|hare uta|maea|rapa nui hotel/i.test(name)),
+    ).toBe(true);
   });
 });
 

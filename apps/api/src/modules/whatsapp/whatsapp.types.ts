@@ -21,7 +21,7 @@ export interface WaTemplateComponent {
 
 export interface WaSendResult {
   ok:                 boolean;
-  providerMessageId?: string;
+  providerMessageId?: string | undefined;
   error?:             string;
   errorCode?:         string;
 }
@@ -73,12 +73,12 @@ export interface WaWebhookPayload {
 // ── Repository input ──────────────────────────────────────────────────────────
 
 export interface CreateWaMessageInput {
-  userId?:            string;
-  rideId?:            string;
+  userId?:            string | undefined;
+  rideId?:            string | undefined;
   phoneE164:          string;
   direction:          WaDirection;
   messageType:        WaMessageType;
-  providerMessageId?: string;
+  providerMessageId?: string | undefined;
   templateName?:      string;
   bodyPreview?:       string;
   status:             WaStatus;

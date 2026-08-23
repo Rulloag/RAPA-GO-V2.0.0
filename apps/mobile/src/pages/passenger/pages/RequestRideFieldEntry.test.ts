@@ -12,14 +12,12 @@ describe("entrada de origen y destino tipo Uber", () => {
     expect(requestRideSource).toContain('aria-label="Destino del viaje"');
     expect(requestRideSource).toContain('className="rq-field__input"');
 
-    expect(requestRideSource).toContain('setActiveSearchField("origin");');
-    expect(requestRideSource).toContain('setActiveSearchField("destination");');
+    expect(requestRideSource).toContain('openRouteFieldPicker("origin")');
+    expect(requestRideSource).toContain('openRouteFieldPicker("destination")');
     expect(requestRideSource).toContain('className="rq-results"');
 
-    /* Los cuadros no llevan instrucciones dentro: solo la pregunta. Ese era el
-       punto original de esta prueba y sigue vigente. */
-    expect(requestRideSource).toContain('"¿Dónde te recogemos?"');
-    expect(requestRideSource).toContain('"¿A dónde vas?"');
+    expect(requestRideSource).toContain('"Toca para elegir recogida en el mapa"');
+    expect(requestRideSource).toContain('"Toca para elegir destino en el mapa"');
 
     expect(requestRideSource).not.toContain(
       "Escribe 2 letras: hosp, aero, tah...",
@@ -37,7 +35,7 @@ describe("entrada de origen y destino tipo Uber", () => {
        trabajar en modo destino —lo que faltaba era la puerta de entrada—, así
        que se añadió el atajo "Elegir en el mapa" junto al de ubicación. */
     expect(requestRideSource).toContain('setPickerTarget("origin");');
-    expect(requestRideSource).toContain('setPickerTarget("destination");');
+    expect(requestRideSource).toContain('openRouteFieldPicker("destination")');
     expect(requestRideSource).toContain(
       "autoFocusSearch={pickerAutoFocusSearch}",
     );

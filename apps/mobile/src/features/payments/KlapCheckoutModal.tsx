@@ -329,9 +329,8 @@ export function KlapCheckoutModal({
               Checkout oficial alojado por Klap
             </div>
             <div style={{ marginTop: 7, fontSize: ".86rem" }}>
-              RAPA GO abrirá el <strong>redirect_url</strong> entregado por la
-              API oficial. El número de tarjeta, vencimiento y CVV se ingresan
-              únicamente en el dominio de Klap.
+              Apple Pay, Google Pay y tarjeta se pinchan en la página segura
+              de Klap. RAPA GO abre el <strong>redirect_url</strong> oficial.
             </div>
           </div>
 

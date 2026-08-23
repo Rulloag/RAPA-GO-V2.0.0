@@ -47,6 +47,13 @@ import {
   isPassengerCancellationChargeable,
   roundFareUpTo500,
 } from "./ridePolicy.js";
+import {
+  AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP,
+  buildFlowerLeiNotesLines,
+  evaluateAirportFlowerLei,
+  type FlowerLeiEvaluation,
+} from "./airportFlowerLei.js";
+import { notifyFlowerLeiReservation } from "../whatsapp/flowerLeiNotify.service.js";
 
 const tokenService = new TokenService();
 const sessionService = new SessionService();
@@ -57,8 +64,6 @@ const driverStatusRepo = new DriverStatusRepository();
 const offersRepo = new RideAssignmentOffersRepository();
 
 const SCHEDULE_ACTIVATION_MINUTES = 30;
-const AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP = 4000;
-const AIRPORT_FLOWER_LEI_MAX_QUANTITY = 20;
 
 function queueReceiptWithoutBlocking(
   task: Promise<unknown>,
@@ -377,33 +382,35 @@ function appendScheduleMetaToNotes(
 type AirportFlowerLeiPricing = {
   quantity: number;
   surchargeClp: number;
+  evaluation: FlowerLeiEvaluation;
 };
 
 function getAirportFlowerLeiPricing(
   input: CreateRideRequestInput,
   scheduleMeta: ScheduleMeta | null,
 ): AirportFlowerLeiPricing {
-  const isMataveriAirportOrigin = /mataveri|aeropuerto\s+rapa\s+nui/i.test(
-    String(input.originText ?? ""),
-  );
+  const evaluation = evaluateAirportFlowerLei({
+    ...(input.airportWelcomeOption !== undefined ? { airportWelcomeOption: input.airportWelcomeOption } : {}),
+    ...(input.flowerLeiQuantity !== undefined ? { flowerLeiQuantity: input.flowerLeiQuantity } : {}),
+    ...(input.originText !== undefined ? { originText: input.originText } : {}),
+    isScheduled: Boolean(scheduleMeta?.isScheduled),
+    tripFareMode: scheduleMeta?.tripFareMode ?? input.tripFareMode ?? "one_way",
+    scheduledAt:
+      scheduleMeta?.scheduledPickupAt ??
+      scheduleMeta?.scheduledAt ??
+      input.scheduledPickupAt ??
+      input.scheduledAt ??
+      null,
+  });
 
-  if (
-    !scheduleMeta?.isScheduled ||
-    scheduleMeta.tripFareMode !== "one_way" ||
-    !isMataveriAirportOrigin ||
-    input.airportWelcomeOption !== "flower_lei"
-  ) {
-    return { quantity: 0, surchargeClp: 0 };
+  if (!evaluation.requested || !evaluation.ok) {
+    return { quantity: 0, surchargeClp: 0, evaluation };
   }
 
-  const quantity = Math.min(
-    AIRPORT_FLOWER_LEI_MAX_QUANTITY,
-    Math.max(1, Math.round(Number(input.flowerLeiQuantity) || 1)),
-  );
-
   return {
-    quantity,
-    surchargeClp: quantity * AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP,
+    quantity: evaluation.quantity,
+    surchargeClp: evaluation.surchargeClp,
+    evaluation,
   };
 }
 
@@ -414,18 +421,17 @@ function appendAirportWelcomeMetaToNotes(
 ): string | null {
   const base = notes?.trim() || null;
   const pricing = getAirportFlowerLeiPricing(input, scheduleMeta);
-  if (pricing.quantity <= 0) return base;
+  if (
+    !pricing.evaluation.requested ||
+    !pricing.evaluation.ok ||
+    pricing.quantity <= 0
+  ) {
+    return base;
+  }
 
-  const lines = [
-    `RAPAGO_FLOWER_LEI_QUANTITY: ${pricing.quantity}`,
-    `RAPAGO_FLOWER_LEI_UNIT_PRICE_CLP: ${AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP}`,
-    `RAPAGO_FLOWER_LEI_SURCHARGE_CLP: ${pricing.surchargeClp}`,
-    `Recibimiento aeropuerto confirmado por backend: ${pricing.quantity} ${
-      pricing.quantity === 1 ? "collar" : "collares"
-    } de flores.`,
-  ];
-
-  return [base, lines.join("\n")].filter(Boolean).join("\n\n");
+  return [base, buildFlowerLeiNotesLines(pricing.evaluation).join("\n")]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function getScheduleMetaFromRide(
@@ -1179,6 +1185,23 @@ export class RidesService {
       };
     }
 
+    const airportFlowerLeiPricing = getAirportFlowerLeiPricing(
+      input,
+      scheduleMeta,
+    );
+
+    if (
+      airportFlowerLeiPricing.evaluation.requested &&
+      !airportFlowerLeiPricing.evaluation.ok
+    ) {
+      return {
+        ok: false,
+        code: airportFlowerLeiPricing.evaluation.code,
+        message: airportFlowerLeiPricing.evaluation.message,
+        statusCode: 400,
+      };
+    }
+
     const notesForStorage = appendPaymentMetaToNotes(
       appendAirportWelcomeMetaToNotes(
         appendScheduleMetaToNotes(
@@ -1190,11 +1213,6 @@ export class RidesService {
       ),
       input.paymentMethod,
       input.paymentProvider,
-    );
-
-    const airportFlowerLeiPricing = getAirportFlowerLeiPricing(
-      input,
-      scheduleMeta,
     );
 
     const requestedCategory = resolveRequestedVehicleCategory({
@@ -1303,6 +1321,54 @@ export class RidesService {
       queueReceiptWithoutBlocking(
         attemptQueuedOffer(created.ride.id),
         `No se pudo generar oferta de preasignación encadenada para ${created.ride.id}`,
+      );
+    }
+
+    if (
+      airportFlowerLeiPricing.evaluation.requested &&
+      airportFlowerLeiPricing.evaluation.ok
+    ) {
+      const lei = airportFlowerLeiPricing.evaluation;
+      console.info(
+        `[RESERVATION] created reservationId=${created.ride.id}`,
+      );
+      console.info(
+        `[FLOWER_NECKLACE] requested reservationId=${created.ride.id} quantity=${lei.quantity}`,
+      );
+
+      queueReceiptWithoutBlocking(
+        (async () => {
+          const user = await usersRepo.findById(auth.userId);
+          let passengerPhone: string | null = null;
+          try {
+            const { PassengerProfileRepository } = await import(
+              "../passengers/passengerProfile.repository.js"
+            );
+            const profile = await new PassengerProfileRepository().findByUserId(
+              auth.userId,
+            );
+            passengerPhone =
+              profile?.phoneE164 ?? profile?.phone ?? null;
+          } catch {
+            passengerPhone = null;
+          }
+
+          await notifyFlowerLeiReservation({
+            reservationId: created.ride.id,
+            passengerName: user?.name ?? "Pasajero",
+            passengerPhone,
+            passengerEmail: user?.email ?? null,
+            flowerLeiQuantity: lei.quantity,
+            unitPriceClp: AIRPORT_FLOWER_LEI_UNIT_PRICE_CLP,
+            surchargeClp: lei.surchargeClp,
+            requestedVehicleCategory: requestedCategory,
+            scheduledAt: lei.scheduledAt,
+            leadMs: lei.leadMs,
+            originText: input.originText ?? "",
+            destinationText: input.destinationText,
+          });
+        })(),
+        `No se pudo notificar collares para ${created.ride.id}`,
       );
     }
 

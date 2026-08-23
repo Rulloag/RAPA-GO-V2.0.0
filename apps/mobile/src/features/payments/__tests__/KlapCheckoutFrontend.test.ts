@@ -12,7 +12,7 @@ describe("Klap V109 frontend — checkout alojado directo", () => {
     );
     expect(requestRideSource).toContain("markPendingKlapPaymentStarted");
     expect(requestRideSource).toContain("openKlapHostedCheckout");
-    expect(requestRideSource).not.toContain("<KlapCheckoutModal");
+    expect(requestRideSource).not.toContain("isKlapElementsEnabled");
   });
 
   it("abre únicamente el host oficial de Klap por HTTPS y en la misma ventana", () => {

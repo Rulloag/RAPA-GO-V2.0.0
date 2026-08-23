@@ -110,6 +110,7 @@ const RAPAGO_PENDING_FAST_SEARCH_PAYMENT_KEY = "rapago_pending_fast_search_payme
 type PendingFastSearchPaymentRecord = {
   rideRequestId: string;
   paymentId: string;
+  provider?: "klap" | "mercadopago";
   amountClp: number;
   createdAt: string;
   rideMirror: Record<string, unknown>;
@@ -1686,7 +1687,7 @@ async function applyPassengerFastSearchChoice(
   }
 
   const paymentLabel = getRidePaymentMethodLabel(ride);
-  const isCard = paymentLabel.includes("Mercado Pago");
+  const isCard = paymentLabel.includes("Klap") || paymentLabel.includes("Mercado Pago");
   const result = await requestPassengerFastSearch(ride, accessToken);
 
   if (result.activated) {
@@ -1701,6 +1702,7 @@ async function applyPassengerFastSearchChoice(
   savePendingFastSearchPayment({
     rideRequestId: ride.id,
     paymentId: result.paymentId,
+    provider: "klap",
     amountClp: RAPAGO_FAST_SEARCH_FEE_CLP,
     createdAt: new Date().toISOString(),
     rideMirror: ride as RideRequestData & Record<string, unknown>,
@@ -10216,17 +10218,14 @@ export default function TripsPage(): JSX.Element {
         setPaymentReturnMessage({
           tone: "checking",
           title: "Verificando RapaGo más veloz",
-          body: "La prioridad no se activa por volver desde Mercado Pago. Estamos esperando la aprobación real de los $800.",
+          body: "La prioridad no se activa solo por volver desde Klap. Estamos esperando la aprobación real de los $800.",
         });
 
         for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
           try {
-            await reconcileMercadoPagoReturnWithBackend(
+            await walletService.reconcileKlapPayment(
               accessToken,
               pendingFastSearch.paymentId,
-              attempt === 0
-                ? returnProviderPaymentId || undefined
-                : undefined,
             );
 
             const status = await fetchPassengerFastSearchPaymentStatus(
@@ -10249,7 +10248,7 @@ export default function TripsPage(): JSX.Element {
               setPaymentReturnMessage({
                 tone: "approved",
                 title: "RapaGo más veloz activado",
-                body: "Mercado Pago confirmó los $800. Tu solicitud tiene prioridad y el conductor verá el recargo como pagado.",
+                body: "Klap confirmó los $800. Tu solicitud tiene prioridad y el conductor verá el recargo como pagado.",
               });
               await loadRides();
               return;
@@ -10270,7 +10269,7 @@ export default function TripsPage(): JSX.Element {
             setPaymentReturnMessage({
               tone: attempt < 5 ? "checking" : "pending",
               title: attempt < 5 ? "Confirmando los $800" : "Pago de prioridad pendiente",
-              body: "El viaje continúa normal, pero la prioridad seguirá apagada hasta que Mercado Pago confirme el recargo.",
+              body: "El viaje continúa normal, pero la prioridad seguirá apagada hasta que Klap confirme el recargo.",
             });
           } catch {
             setPaymentReturnMessage({
@@ -10288,7 +10287,7 @@ export default function TripsPage(): JSX.Element {
           setPaymentReturnMessage({
             tone: "pending",
             title: "Pago de prioridad aún pendiente",
-            body: "RapaGo más veloz se activará únicamente cuando el backend reciba la aprobación real de Mercado Pago.",
+            body: "RapaGo más veloz se activará únicamente cuando el backend reciba la aprobación real de Klap.",
           });
           void loadRides();
         }

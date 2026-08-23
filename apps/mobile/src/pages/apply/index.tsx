@@ -33,6 +33,12 @@
   import { legalService, type LegalDocumentData } from "../../features/legal/legal.service.js";
   import { profileService } from "../../features/profile/profile.service.js";
   import { ROUTES } from "../../navigation/routes.js";
+  import {
+    VEHICLE_CATEGORIES,
+    type VehicleCategory,
+    vehicleCategoryDisplay,
+    vehicleCategoryLabel,
+  } from "@rapa-go/shared";
 
   // Qué falta en cada etapa de la inscripción de conductor. El botón de avance
   // ya no va deshabilitado, así que al tocarlo incompleto explica el motivo.
@@ -40,7 +46,7 @@
     "Los datos de identidad se cargan desde tu cuenta. Completa la fecha de nacimiento, el número de licencia y su fecha de vencimiento.",
     "Indica si perteneces o no a la etnia Rapa Nui.",
     "Adjunta los cinco documentos: carnet (ambos lados), licencia (ambos lados) y foto de perfil.",
-    "Confirma que cuentas con vehículo propio y completa marca, modelo, año, patente, color y foto de cada vehículo.",
+    "Confirma vehículo propio y completa marca, modelo, año, patente, color, categoría (Estándar / XL / Extra Maleta) y foto.",
     "Lee el contrato y acepta las seis declaraciones obligatorias.",
   ];
 
@@ -358,6 +364,7 @@ function makeApplicationStyles() {
     year: string;
     plate: string;
     color: string;
+    category: VehicleCategory | "";
     photoFile: File | null;
     expiresAt: string;
   };
@@ -372,6 +379,7 @@ function makeApplicationStyles() {
     year: string;
     plate: string;
     color: string;
+    category: VehicleCategory;
     label: string;
     imageDataUrl: string | null;
     photoDataUrl: string | null;
@@ -408,6 +416,7 @@ function makeApplicationStyles() {
       year: "",
       plate: "",
       color: "",
+      category: "",
       photoFile: null,
       expiresAt: "",
     };
@@ -435,6 +444,9 @@ function makeApplicationStyles() {
       cleanVehicleYear(vehicle.year).length === 4 &&
       cleanVehiclePlate(vehicle.plate).length >= 5 &&
       cleanVehicleText(vehicle.color).length > 0 &&
+      (vehicle.category === "standard" ||
+        vehicle.category === "xl" ||
+        vehicle.category === "extra_luggage") &&
       vehicle.photoFile != null;
 
     if (!requiredFieldsReady) return false;
@@ -1162,6 +1174,13 @@ function makeApplicationStyles() {
         year: readString(entry.year) ?? readInteger(entry.year) ?? "",
         plate: readString(entry.plate) ?? "",
         color: readString(entry.color) ?? "",
+        category:
+          readString(entry.category) === "xl"
+            ? "xl"
+            : readString(entry.category) === "extra_luggage" ||
+                readString(entry.category) === "luggage"
+              ? "extra_luggage"
+              : "standard",
         label: readString(entry.label) ?? "",
         expiresAt: readString(entry.expiresAt) ?? null,
         photoFileName: readString(
@@ -1209,6 +1228,11 @@ function makeApplicationStyles() {
         source.vehicleColor,
         primaryVehicle.color,
         vehicle.color,
+      ),
+      vehicleCategory: readString(
+        source.vehicleCategory,
+        primaryVehicle.category,
+        vehicle.category,
       ),
       licenseNumber: readString(source.licenseNumber),
       licenseExpiry: readString(source.licenseExpiry),
@@ -1320,6 +1344,10 @@ function makeApplicationStyles() {
           year: cleanVehicleYear(vehicle.year),
           plate: cleanVehiclePlate(vehicle.plate),
           color: cleanVehicleText(vehicle.color),
+          category:
+            vehicle.category === "xl" || vehicle.category === "extra_luggage"
+              ? vehicle.category
+              : "standard",
           label: vehicleLabel(vehicle),
           imageDataUrl,
           photoDataUrl: imageDataUrl,
@@ -1380,6 +1408,7 @@ function makeApplicationStyles() {
       vehicleYear: primaryVehicle?.year ?? "",
       vehiclePlate: primaryVehicle?.plate ?? "",
       vehicleColor: primaryVehicle?.color ?? "",
+      vehicleCategory: primaryVehicle?.category ?? "standard",
       vehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? "",
       vehicleImageName: primaryVehicle?.imageName ?? "",
       driverApplicationStatus: "pending_admin_review",
@@ -1415,6 +1444,7 @@ function makeApplicationStyles() {
       vehicleYear: primaryVehicle?.year ?? null,
       vehicleColor: primaryVehicle?.color ?? null,
       vehiclePlate: primaryVehicle?.plate ?? null,
+      vehicleCategory: primaryVehicle?.category ?? "standard",
       vehicleImageDataUrl: primaryVehicle?.imageDataUrl ?? null,
       vehiclePhotoDataUrl: primaryVehicle?.imageDataUrl ?? null,
       applicationStatus: "pending_admin_review",
@@ -1518,6 +1548,7 @@ function makeApplicationStyles() {
         year: "",
         plate: "",
         color: "",
+        category: "",
         photoFile: null,
         expiresAt: "",
       },
@@ -1991,6 +2022,7 @@ function makeApplicationStyles() {
             year: vehiclePayloads[0]?.year ?? "",
             plate: vehiclePayloads[0]?.plate ?? "",
             color: vehiclePayloads[0]?.color ?? "",
+            category: vehiclePayloads[0]?.category ?? "standard",
             photoProvided: vehiclePayloads[0]?.photoProvided ?? false,
             photoFileName: vehiclePayloads[0]?.photoFileName,
             photoFileType: vehiclePayloads[0]?.photoFileType,
@@ -2652,6 +2684,50 @@ function makeApplicationStyles() {
                         placeholder="Blanco, rojo, gris..."
                       />
                     </IonItem>
+
+                    <div style={{ margin: "10px 0 6px" }}>
+                      <IonLabel style={{ ...styles.labelStyle, display: "block", marginBottom: 8 }}>
+                        Categoría del vehículo *
+                      </IonLabel>
+                      <IonNote style={{ ...styles.noteStyle, marginBottom: 10, display: "block" }}>
+                        El administrador validará que tu vehículo corresponda a esta categoría para operar en Rapa Go.
+                      </IonNote>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {VEHICLE_CATEGORIES.map((category) => {
+                          const active = vehicle.category === category;
+                          return (
+                            <IonChip
+                              key={category}
+                              color={active ? "warning" : "medium"}
+                              outline={!active}
+                              onClick={() =>
+                                updateVehicle(vehicle.id, { category })
+                              }
+                              style={{
+                                fontWeight: 950,
+                                margin: 0,
+                                borderWidth: 2,
+                              }}
+                            >
+                              {vehicleCategoryDisplay(category)}
+                            </IonChip>
+                          );
+                        })}
+                      </div>
+                      {vehicle.category ? (
+                        <IonNote
+                          style={{
+                            ...styles.noteStyle,
+                            marginTop: 8,
+                            color: "#167A35",
+                            fontWeight: 850,
+                            display: "block",
+                          }}
+                        >
+                          Seleccionada: {vehicleCategoryLabel(vehicle.category)}
+                        </IonNote>
+                      ) : null}
+                    </div>
 
                     {!isPrimary && (
                       <IonItem lines="full" style={styles.itemStyle}>

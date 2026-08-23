@@ -77,16 +77,22 @@ describe("matchRapaNuiPlaceHint", () => {
     expect(matchRapaNuiPlaceHint("po")).toBeNull();
   });
 
+  it("reconoce lugares públicos de Rapa Nui desde pocas letras", () => {
+    expect(matchRapaNuiPlaceHint("comisaria")).toBe("Comisaría Rapa Nui");
+    expect(matchRapaNuiPlaceHint("hospital")).toBe("Hospital de Hanga Roa");
+    expect(matchRapaNuiPlaceHint("aeropuerto")).toBe(
+      "Aeropuerto Internacional Mataveri",
+    );
+    expect(matchRapaNuiPlaceHint("anakena")).toBe("Anakena");
+    expect(matchRapaNuiPlaceHint("tahai")).toBe("Ahu Tahai");
+  });
+
   it("no secuestra búsquedas que iban a otro sitio", () => {
     /* El riesgo real de reescribir la consulta: que alguien busque el hospital
        y le salga un hotel. Estos tienen que pasar intactos a Google. */
-    expect(matchRapaNuiPlaceHint("hospital")).toBeNull();
-    expect(matchRapaNuiPlaceHint("aeropuerto")).toBeNull();
-    expect(matchRapaNuiPlaceHint("anakena")).toBeNull();
     expect(matchRapaNuiPlaceHint("caleta")).toBeNull();
     expect(matchRapaNuiPlaceHint("mercado")).toBeNull();
     expect(matchRapaNuiPlaceHint("terevaka")).toBeNull();
-    expect(matchRapaNuiPlaceHint("comisaria")).toBeNull();
     /* "tah" es el alias de Ahu Tahai. No puede reescribirse a Tahonga. */
     expect(matchRapaNuiPlaceHint("tah")).toBeNull();
   });

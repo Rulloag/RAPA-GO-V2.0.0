@@ -211,13 +211,17 @@
   color: var(--rp-err-fg) !important;
 }
 
-/* ── Toggle de tema ─────────────────────────────────────────────────────── */
-/* Va en la cabecera de la tarjeta, en la tercera columna de la grilla
-   42px / 1fr / 42px que global.css:4448 ya reserva y que hasta ahora
-   quedaba vacía. */
-.rapago-auth-theme-btn {
+/* ── Toggle de tema e idioma ─────────────────────────────────────────────── */
+.rapago-auth-header-actions {
   grid-column: 3;
   justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rapago-auth-theme-btn,
+.rapago-auth-lang-btn {
   width: 42px;
   height: 42px;
   border-radius: 12px;
@@ -234,16 +238,67 @@
     transform 0.2s ease;
 }
 
-.rapago-auth-theme-btn:hover {
+.rapago-auth-lang-btn {
+  width: auto;
+  min-width: 52px;
+  padding: 0 8px;
+  grid-auto-flow: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.rapago-auth-lang-btn ion-icon {
+  font-size: 1rem;
+}
+
+.rapago-auth-theme-btn:hover,
+.rapago-auth-lang-btn:hover {
   background: var(--rp-icon-bg);
 }
 
-.rapago-auth-theme-btn:active {
+.rapago-auth-theme-btn:active,
+.rapago-auth-lang-btn:active {
   transform: scale(0.92);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rapago-auth-theme-btn {
+  .rapago-auth-theme-btn,
+  .rapago-auth-lang-btn {
     transition: none;
   }
+}
+
+.rapago-auth-legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 10px;
+  padding: 4px 2px 2px;
+}
+
+.rapago-auth-legal-links button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--rp-muted, #6b7280);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 750;
+  cursor: pointer;
+  padding: 2px 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rapago-auth-legal-links span {
+  color: var(--rp-muted, #9ca3af);
+  font-size: 0.7rem;
+}
+
+.rapago-auth-dark .rapago-auth-legal-links button {
+  color: var(--rp-icon-fg, #f8d879);
 }

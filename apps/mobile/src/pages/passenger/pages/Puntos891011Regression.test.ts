@@ -13,10 +13,13 @@ describe("puntos 8, 10 y 11 solicitados para pasajero", () => {
   it("ordena Apple primero, Google segundo y crear cuenta por correo tercero", () => {
     expect(loginSource).toContain('data-auth-order="apple-google-email"');
 
-    const appleIndex = loginSource.indexOf("<AppleSignInButton");
-    const googleIndex = loginSource.indexOf("<GoogleSignInButton");
-    const emailCreateIndex = loginSource.indexOf("Crear cuenta con correo + contraseña");
-    const emailLoginIndex = loginSource.indexOf("¿Ya tienes cuenta con correo?");
+    const authBlock = loginSource.slice(
+      loginSource.indexOf('data-auth-order="apple-google-email"'),
+    );
+    const appleIndex = authBlock.indexOf("<AppleSignInButton");
+    const googleIndex = authBlock.indexOf("<GoogleSignInButton");
+    const emailCreateIndex = authBlock.indexOf("rapago-auth-create-email");
+    const emailLoginIndex = authBlock.indexOf("rapago-auth-divider");
 
     expect(appleIndex).toBeGreaterThan(-1);
     expect(googleIndex).toBeGreaterThan(appleIndex);

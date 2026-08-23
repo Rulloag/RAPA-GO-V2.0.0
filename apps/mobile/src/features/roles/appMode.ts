@@ -157,3 +157,45 @@ export function activateDriverMode(): void {
        del llamador sigue funcionando. */
   }
 }
+
+/**
+ * Camino inverso de `activateDriverMode`: el conductor pide un viaje como
+ * pasajero sin perder el rol de cuenta. Escribe las mismas llaves que lee
+ * `resolveActiveAppMode` / RouteGuard.
+ */
+export function activatePassengerMode(): void {
+  try {
+    for (const key of ACTIVE_MODE_KEYS) {
+      localStorage.setItem(key, "passenger");
+      sessionStorage.setItem(key, "passenger");
+    }
+
+    const currentRaw = localStorage.getItem("rapago_registration_profile");
+    const current = currentRaw
+      ? (JSON.parse(currentRaw) as Record<string, unknown>)
+      : {};
+    const currentRoles = Array.isArray(current.roles)
+      ? current.roles.map((item) => String(item))
+      : [];
+
+    localStorage.setItem(
+      "rapago_registration_profile",
+      JSON.stringify({
+        ...current,
+        activeRole: "passenger",
+        currentRole: "passenger",
+        roles: Array.from(new Set(["passenger", "driver", ...currentRoles])),
+      }),
+    );
+
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "rapago_active_mode",
+        newValue: "passenger",
+      }),
+    );
+  } catch {
+    /* Sin almacenamiento el cambio de modo no se recuerda, pero la navegación
+       del llamador sigue funcionando. */
+  }
+}

@@ -41,6 +41,7 @@ import {
   alertCircleOutline,
   walkOutline,
   walletOutline,
+  navigateOutline,
 } from "ionicons/icons";
 import {
   useCallback,
@@ -78,9 +79,23 @@ import {
   cancelPendingKlapRide,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
+import { KlapCheckoutModal } from "../../../features/payments/KlapCheckoutModal.js";
 import { RIDE_STATUS_LABEL } from "../shared.js";
 import { getApiOrigin as getConfiguredApiOrigin } from "../../../services/api/apiBaseUrl.js";
 import { preSearchLocationService } from "../../../features/location/preSearchLocation.service.js";
+import { recentLocationHistoryService } from "../../../features/location/recentLocationHistory.service.js";
+import {
+  findLocalRapaNuiPlaceByName,
+  findLocalRapaNuiPlaceByPlaceId,
+  isLodgingPlace,
+  mustResolvePlaceViaGoogle,
+  RAPA_NUI_LOCAL_PLACES,
+  RAPA_NUI_LOCAL_PLACE_PREFIX,
+  RAPA_NUI_MAP_CENTER,
+  RAPA_NUI_MAIN_STREET_SUGGESTIONS,
+  isRapaNuiMainStreet,
+  type RapaNuiLocalPlace,
+} from "../../../features/location/rapaNuiPlaces.config.js";
 import { RapagoSectionHeader } from "../../../components/RapagoSectionHeader.js";
 import "../../../theme/request-ride.css";
 import { useRapagoSectionTheme } from "../../../theme/rapagoTheme.js";
@@ -1586,6 +1601,9 @@ type AirportWelcomeOption = "none" | "flower_lei";
 const AIRPORT_FLOWER_LEI_SURCHARGE_CLP = 4000;
 const AIRPORT_FLOWER_LEI_MAX_QUANTITY = 20;
 const AIRPORT_FLOWER_LEI_LABEL = "Collar de flores Rapa Nui";
+/** Anticipación mínima real (ms) para mostrar/aceptar collares. */
+const FLOWER_LEI_MIN_LEAD_MS = 4 * 60 * 60 * 1000;
+const SHOW_ROUND_TRIP_EXPERIENCES = false;
 
 declare global {
   interface Window {
@@ -1597,10 +1615,7 @@ declare global {
   }
 }
 
-const RAPA_NUI_CENTER = {
-  lat: -27.1505,
-  lng: -109.4325,
-};
+const RAPA_NUI_CENTER = RAPA_NUI_MAP_CENTER;
 
 /**
  * Área operativa exclusiva de RAPA GO.
@@ -1873,18 +1888,9 @@ const TOURIST_DESTINATION_SUGGESTIONS = [
   },
 ];
 
-type RapaNuiLocalAutocompletePlace = {
-  id: string;
-  name: string;
-  subtitle: string;
-  address: string;
-  lat: number;
-  lng: number;
-  aliases: readonly string[];
-  placeTypes: readonly string[];
-};
+type RapaNuiLocalAutocompletePlace = RapaNuiLocalPlace;
 
-const RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX = "rapago-local:";
+const RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX = RAPA_NUI_LOCAL_PLACE_PREFIX;
 
 /* ── Nombres conocidos que había que escribir enteros ───────────────────────
 
@@ -1962,6 +1968,58 @@ const RAPA_NUI_PLACE_HINTS: readonly RapaNuiPlaceHint[] = [
     query: "Casa Silvio",
     keywords: ["silvio", "casa silvio"],
   },
+  {
+    query: "Comisaría Rapa Nui",
+    keywords: ["comisaria", "comisaría", "carabineros", "policia", "policía"],
+  },
+  {
+    query: "Hospital de Hanga Roa",
+    keywords: ["hospital", "hosp", "urgencia", "urgencias", "salud"],
+  },
+  {
+    query: "Aeropuerto Internacional Mataveri",
+    keywords: ["aeropuerto", "aero", "mataveri", "airport", "terminal"],
+  },
+  {
+    query: "Anakena",
+    keywords: ["anakena", "playa anakena"],
+  },
+  {
+    query: "Ahu Tahai",
+    keywords: ["tahai", "ahu tahai"],
+  },
+  {
+    query: "Hotel Taha Tai",
+    keywords: ["taha tai", "hotel taha tai", "taha tai hotel", "tahatai"],
+  },
+  {
+    query: "Hotel Hare Nua",
+    keywords: ["hare nua", "hotel hare nua"],
+  },
+  {
+    query: "Hare Rapa Nui Hotel by Chez Joseph",
+    keywords: ["hare rapa nui", "chez joseph", "hare rapa nui hotel"],
+  },
+  {
+    query: "Hotel Hare Uta",
+    keywords: ["hare uta", "hotel hare uta"],
+  },
+  {
+    query: "Hotel Maea Hare Repa",
+    keywords: ["maea hare", "maea hare repa", "hotel maea"],
+  },
+  {
+    query: "Feria Artesanal Hare Umanga",
+    keywords: ["feria hare", "hare umanga", "feria umanga", "feria artesanal"],
+  },
+  {
+    query: "Cárcel Rapa Nui (Artesanías)",
+    keywords: ["carcel", "cárcel", "artesanias carcel", "artesanías"],
+  },
+  {
+    query: "Ahu Huri A Urenga",
+    keywords: ["huri", "huri a urenga", "ahu huri", "4 manos"],
+  },
 ];
 
 /** Nombre completo que pedirle a Google, o null si nada encaja con confianza.
@@ -2032,212 +2090,7 @@ export function matchRapaNuiPlaceHint(input: string): string | null {
 }
 
 const RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES: readonly RapaNuiLocalAutocompletePlace[] =
-  [
-    {
-      id: "hospital-hanga-roa",
-      name: "Hospital de Hanga Roa",
-      subtitle: "Salud y urgencias",
-      address: "Hospital Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1502,
-      lng: -109.4216,
-      aliases: [
-        "hospital",
-        "hosp",
-        "urgencia",
-        "urgencias",
-        "salud",
-        "hanga roa hospital",
-      ],
-      placeTypes: ["hospital", "health", "point_of_interest", "establishment"],
-    },
-    {
-      id: "aeropuerto-mataveri",
-      name: "Aeropuerto Internacional Mataveri",
-      subtitle: "Terminal de pasajeros",
-      address:
-        "Zona de llegada / terminal Mataveri, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.16395,
-      lng: -109.42465,
-      /* La DGAC (Dirección General de Aeronáutica Civil) no tiene oficina
-         propia en otra dirección: administra el aeropuerto y opera desde ahí
-         mismo, en Calle Hotu Matúa s/n. Antes "dgac" solo reescribía la
-         búsqueda hacia Google con el nombre oficial completo, y Google no lo
-         reconoce como establecimiento, así que la lista quedaba vacía. Con el
-         alias aquí, responde al instante y con las coordenadas ya
-         verificadas del aeropuerto, sin depender de la red. */
-      aliases: [
-        "aero",
-        "aeropuerto",
-        "airport",
-        "mataveri",
-        "terminal",
-        "dgac",
-        "aeronautica",
-        "aeronautica civil",
-      ],
-      placeTypes: ["airport", "point_of_interest", "establishment"],
-    },
-    {
-      id: "ahu-tahai",
-      name: "Ahu Tahai",
-      subtitle: "Cultura y atardecer",
-      address: "Ahu Tahai, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1398,
-      lng: -109.4298,
-      aliases: ["tah", "tahai", "ahu tahai", "atardecer"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "playa-pea",
-      name: "Playa Pea",
-      subtitle: "Playa y zona céntrica",
-      address: "Playa Pea, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1482,
-      lng: -109.4336,
-      aliases: ["pea", "playa pea", "playa", "centro"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "playa-poko-poko",
-      name: "Playa Poko Poko",
-      subtitle: "Costa y paseo familiar",
-      address: "Playa Poko Poko, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.149,
-      lng: -109.4319,
-      aliases: ["poko", "poko poko", "playa poko", "playa poko poko"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "mercado-artesanal",
-      name: "Mercado Artesanal Rapa Nui",
-      subtitle: "Artesanía local",
-      address: "Mercado Artesanal, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1508,
-      lng: -109.4289,
-      aliases: [
-        "mercado",
-        "artesania",
-        "artesanía",
-        "mercado artesanal",
-        "souvenir",
-      ],
-      placeTypes: ["market", "store", "point_of_interest", "establishment"],
-    },
-    {
-      id: "feria-hare-umanga",
-      name: "Feria Artesanal Hare Umanga",
-      subtitle: "Feria y recuerdos",
-      address: "Feria Artesanal Hare Umanga, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1503,
-      lng: -109.4277,
-      aliases: ["feria", "hare", "hare umanga", "feria artesanal"],
-      placeTypes: ["market", "store", "point_of_interest", "establishment"],
-    },
-    {
-      id: "caleta-hanga-roa",
-      name: "Caleta Hanga Roa",
-      subtitle: "Puerto y restaurantes",
-      address: "Caleta Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1478,
-      lng: -109.4356,
-      aliases: ["caleta", "puerto", "caleta hanga roa", "restaurantes"],
-      placeTypes: ["point_of_interest", "establishment"],
-    },
-    {
-      id: "comisaria-rapa-nui",
-      name: "Comisaría Rapa Nui",
-      subtitle: "Carabineros y seguridad",
-      address: "Comisaría Rapa Nui, Hanga Roa, Chile",
-      lat: -27.1497,
-      lng: -109.4268,
-      aliases: [
-        "comisaria",
-        "comisaría",
-        "carabineros",
-        "policia",
-        "policía",
-        "seguridad",
-      ],
-      placeTypes: ["police", "point_of_interest", "establishment"],
-    },
-    {
-      id: "iglesia-santa-cruz",
-      name: "Iglesia de la Santa Cruz Rapa Nui",
-      subtitle: "Iglesia principal",
-      address: "Iglesia de la Santa Cruz, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1506,
-      lng: -109.4271,
-      aliases: ["iglesia", "santa cruz", "iglesia santa cruz", "misa"],
-      placeTypes: [
-        "church",
-        "place_of_worship",
-        "point_of_interest",
-        "establishment",
-      ],
-    },
-    {
-      id: "jardin-taukiani",
-      name: "Jardín Botánico TauKiani",
-      subtitle: "Naturaleza y visita",
-      address: "Jardín Botánico TauKiani, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1482,
-      lng: -109.4069,
-      aliases: [
-        "jardin",
-        "jardín",
-        "botanico",
-        "botánico",
-        "taukiani",
-        "jardin botanico",
-      ],
-      placeTypes: [
-        "park",
-        "tourist_attraction",
-        "point_of_interest",
-        "establishment",
-      ],
-    },
-    {
-      id: "anakena",
-      name: "Anakena",
-      subtitle: "Playa y experiencia",
-      address: "Playa Anakena, Rapa Nui, Chile",
-      lat: -27.0732,
-      lng: -109.3233,
-      aliases: ["anakena", "playa anakena"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "terevaka",
-      name: "Terevaka",
-      subtitle: "Cerro y excursión",
-      address: "Maunga Terevaka, Rapa Nui, Chile",
-      lat: -27.0917,
-      lng: -109.382,
-      aliases: ["terevaka", "tere vaka", "cerro", "maunga terevaka"],
-      placeTypes: ["tourist_attraction", "point_of_interest", "establishment"],
-    },
-    {
-      id: "cabanas-tahonga",
-      name: "Cabañas Tahonga",
-      subtitle: "Alojamiento",
-      address: "Cabañas Tahonga, Rapa Nui, Chile",
-      lat: -27.1647,
-      lng: -109.4218,
-      aliases: ["tahonga", "cabanas tahonga", "cabana tahonga"],
-      placeTypes: ["lodging", "point_of_interest", "establishment"],
-    },
-    {
-      id: "casa-silvio",
-      name: "Casa Silvio",
-      subtitle: "Punto de recogida",
-      address: "Casa Silvio, Hanga Roa, Rapa Nui, Chile",
-      lat: -27.1478,
-      lng: -109.4296,
-      aliases: ["silvio", "casa silvio"],
-      placeTypes: ["point_of_interest", "establishment"],
-    },
-  ] as const;
+  RAPA_NUI_LOCAL_PLACES;
 
 /* Fuente ÚNICA de lugares tocables del mapa: los mismos POIs locales que
    alimentan los buscadores de origen y destino. Identidad estable a nivel de
@@ -2421,12 +2274,7 @@ export function fuzzyAutocompleteScore(value: string, query: string): number {
 function getRapaNuiLocalAutocompletePlace(
   placeId: string,
 ): RapaNuiLocalAutocompletePlace | null {
-  if (!placeId.startsWith(RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX)) return null;
-
-  const id = placeId.slice(RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX.length);
-  return (
-    RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.find((place) => place.id === id) ?? null
-  );
+  return findLocalRapaNuiPlaceByPlaceId(placeId);
 }
 
 /* Cuánto baja una coincidencia que ocurre fuera del nombre del lugar. Está
@@ -2461,9 +2309,12 @@ export function getRapaNuiLocalAutocompleteMatches(
   input: string,
 ): LocalAutocompleteMatch[] {
   const query = normalizeRapaNuiAutocompleteText(input);
-  if (query.length < 2) return [];
+  /* Una sola letra ya filtra: "h" → Hospital, Hanga Roa, Hare Umanga…
+     Antes exigía 2 y el pasajero tenía que escribir de más para ver la lista. */
+  if (query.length < 1) return [];
 
   const queryWords = query.split(" ").filter(Boolean);
+  const singleLetter = query.length === 1;
 
   return RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.map((place) => {
     const values = [
@@ -2498,6 +2349,21 @@ export function getRapaNuiLocalAutocompleteMatches(
          LOCAL_STRONG_AUTOCOMPLETE_SCORE). Lo que sí sobrevive es escribir la
          dirección entera o su principio: ahí la intención está clara. */
       const isLocationField = index === 1 || index === 2;
+
+      /* Con una letra, "includes" encaja con casi todo (cualquier palabra con
+         esa letra dentro). Solo vale el prefijo del nombre o de sus palabras /
+         alias —nunca subtítulo ni dirección—. */
+      if (singleLetter) {
+        if (isLocationField) continue;
+
+        const words = value.split(" ").filter(Boolean);
+        if (value.startsWith(query)) {
+          score = Math.max(score, 1000);
+        } else if (words.some((word) => word.startsWith(query))) {
+          score = Math.max(score, 900);
+        }
+        continue;
+      }
 
       let literal = -1;
       if (value === query) literal = Math.max(literal, 1200);
@@ -2556,19 +2422,40 @@ export function getRapaNuiLocalAutocompleteMatches(
 
     return { place, score };
   })
+    .map((item) => {
+      const lodgingIntent =
+        /\b(hotel|hostal|lodge|caba|cabana|cabanas|hare)\b/.test(query);
+      if (!lodgingIntent || item.score < 0) return item;
+
+      if (isLodgingPlace(item.place)) {
+        return { ...item, score: item.score + 180 };
+      }
+
+      /* Mercados/ferias/atracciones no deben ganar a un hotel cuando el
+         pasajero escribió "hotel" / "hare" / "lodge". */
+      return { ...item, score: Math.max(0, item.score - 220) };
+    })
     .filter((item) => item.score >= 0)
     .sort(
       (a, b) =>
         b.score - a.score || a.place.name.localeCompare(b.place.name, "es"),
     )
-    .slice(0, 8)
+    /* Una letra suele devolver más candidatos (todos los que empiezan igual);
+       se muestra una lista más larga para que el pasajero elija sin escribir
+       el nombre entero. */
+    .slice(0, singleLetter ? 24 : 8)
     .map(({ place, score }) => ({
       score,
       suggestion: {
         placeId: `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${place.id}`,
         description: `${place.name}, ${place.address}`,
         mainText: place.name,
-        secondaryText: `${place.subtitle} · Sugerencia RAPA GO`,
+        secondaryText: isRapaNuiMainStreet(place)
+          ? `${place.subtitle} · Hanga Roa, Rapa Nui`
+          : place.placeTypes.includes("lodging") ||
+              place.placeTypes.includes("hotel")
+            ? `${place.subtitle}`
+            : `${place.subtitle} · Sugerencia RAPA GO`,
       },
     }));
 }
@@ -2584,11 +2471,21 @@ export function getRapaNuiLocalAutocompletePredictions(
 export function mergeRapaNuiAutocompletePredictions(
   localMatches: LocalAutocompleteMatch[],
   googleSuggestions: GoogleSuggestion[],
+  query = "",
 ): GoogleSuggestion[] {
   /* Lo fuerte del catálogo primero: son lugares con coordenadas curadas, así
      que al tocarlos el viaje queda listo sin pedirle a Google los detalles.
      Después Google. Y al final las corazonadas del catálogo, que están para
-     rescatar erratas, no para encabezar la lista. */
+     rescatar erratas, no para encabezar la lista.
+
+     EXCEPCIÓN hoteles/lodging: el catálogo local tuvo coords inventadas que
+     movían el pin (Taha Tai → Gobernación Marítima). Con intención de hotel
+     Google va primero y el place_id oficial manda. */
+  const lodgingIntent =
+    /\b(hotel|hostal|lodge|caba|cabana|cabanas|hare|apart|bungalow|casa|silvio|feria|mercado|iglesia|comisaria|carcel|restaurante|local)\b/.test(
+      normalizeRapaNuiAutocompleteText(query),
+    );
+
   const strong = localMatches
     .filter((match) => match.score >= LOCAL_STRONG_AUTOCOMPLETE_SCORE)
     .map((match) => match.suggestion);
@@ -2596,25 +2493,66 @@ export function mergeRapaNuiAutocompletePredictions(
     .filter((match) => match.score < LOCAL_STRONG_AUTOCOMPLETE_SCORE)
     .map((match) => match.suggestion);
 
+  /* Google ya va con locationRestriction, pero a veces devuelve nombres genéricos
+     cuya dirección apunta al continente (Santiago, RM…). Esos no pueden
+     adelantar al catálogo local ni confundir al pasajero en Rapa Nui. */
+  const googleFiltered = googleSuggestions.filter(
+    (suggestion) => !isGoogleSuggestionMainlandChile(suggestion),
+  );
+
   const seen = new Set<string>();
   const merged: GoogleSuggestion[] = [];
+  const ordered = lodgingIntent
+    ? [...googleFiltered, ...strong, ...weak]
+    : [...strong, ...googleFiltered, ...weak];
 
-  for (const suggestion of [...strong, ...googleSuggestions, ...weak]) {
+  for (const suggestion of ordered) {
     /* La clave es solo el nombre. Antes incluía el subtítulo, y como el del
        catálogo termina en "· Sugerencia RAPA GO" y el de Google es la
        dirección, el MISMO lugar aparecía dos veces seguidas: una versión
        nuestra y otra de Google. Con el nombre a secas se colapsan, y gana el
-       del catálogo por llegar antes en el recorrido. */
+       del catálogo por llegar antes en el recorrido (salvo lodgingIntent). */
     const key = normalizeRapaNuiAutocompleteText(suggestion.mainText);
 
     if (!key || seen.has(key)) continue;
     seen.add(key);
     merged.push(suggestion);
 
-    if (merged.length >= 8) break;
+    if (merged.length >= 16) break;
   }
 
   return merged;
+}
+
+/** Resultados cuya dirección apunta al continente chileno, no a la isla. */
+export function isGoogleSuggestionMainlandChile(
+  suggestion: GoogleSuggestion,
+): boolean {
+  const text = normalizeRapaNuiAutocompleteText(
+    `${suggestion.secondaryText ?? ""} ${suggestion.description ?? ""}`,
+  );
+  if (!text) return false;
+
+  const onIsland =
+    text.includes("rapa nui") ||
+    text.includes("isla de pascua") ||
+    text.includes("hanga roa") ||
+    text.includes("easter island") ||
+    text.includes("mataveri");
+
+  if (onIsland) return false;
+
+  return (
+    text.includes("santiago") ||
+    text.includes("region metropolitana") ||
+    text.includes("metropolitana de santiago") ||
+    text.includes("concepcion") ||
+    text.includes("valparaiso chile") ||
+    text.includes("vina del mar") ||
+    text.includes("antofagasta") ||
+    text.includes("la serena") ||
+    text.includes("temuco")
+  );
 }
 
 function localRapaNuiPlaceToPickerResult(
@@ -3516,15 +3454,15 @@ const ROUND_TRIP_DESTINATION_FIXED_POINTS: Record<
   anakena: {
     text: "Anakena",
     address: "Playa Anakena, Rapa Nui, Chile",
-    lat: -27.0732,
-    lng: -109.3233,
+    lat: -27.07381,
+    lng: -109.323,
     placeId: "rapago-fixed-anakena",
   },
   terevaka: {
     text: "Terevaka",
     address: "Maunga Terevaka, Rapa Nui, Chile",
-    lat: -27.0917,
-    lng: -109.382,
+    lat: -27.086,
+    lng: -109.38039,
     placeId: "rapago-fixed-terevaka",
   },
 };
@@ -3536,8 +3474,8 @@ const RAPA_NUI_AIRPORT_DESTINATION: PickerResult = {
   // Referencia fija del Aeropuerto Internacional Mataveri (IPC/SCIP).
   // Se usa una sola coordenada canónica para Reserva para evitar que el origen
   // quede desplazado por un punto antiguo guardado localmente.
-  lat: -27.16472,
-  lng: -109.42167,
+  lat: -27.16467,
+  lng: -109.42133,
   placeId: "rapago-fixed-mataveri-airport-terminal",
   originalLat: null,
   originalLng: null,
@@ -4590,6 +4528,54 @@ async function reverseGeocodeExact(point: Coords): Promise<PickerResult> {
   });
 }
 
+async function resolveOriginPickerBootstrapPoint(
+  initialPoint?: Coords | null,
+): Promise<{
+  point: Coords;
+  source: "initial" | "cache" | "gps" | "fallback";
+}> {
+  if (initialPoint && isPointInsideRapaNuiServiceArea(initialPoint)) {
+    return { point: initialPoint, source: "initial" };
+  }
+
+  const cached = preSearchLocationService.read();
+  if (cached && isPointInsideRapaNuiServiceArea(cached)) {
+    return {
+      point: { lat: cached.lat, lng: cached.lng, placeId: null },
+      source: "cache",
+    };
+  }
+
+  if (typeof navigator !== "undefined" && navigator.geolocation) {
+    try {
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 4500,
+            maximumAge: 60_000,
+          });
+        },
+      );
+
+      const gpsPoint = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        placeId: null,
+      };
+
+      if (isPointInsideRapaNuiServiceArea(gpsPoint)) {
+        preSearchLocationService.remember(position);
+        return { point: gpsPoint, source: "gps" };
+      }
+    } catch {
+      /* respaldo al centro de la isla */
+    }
+  }
+
+  return { point: RAPA_NUI_CENTER, source: "fallback" };
+}
+
 async function resolveMovedOriginPoint(point: {
   lat: number;
   lng: number;
@@ -5036,7 +5022,7 @@ export async function getGooglePredictions(
   const cleanInput = input.trim();
   const cacheKey = normalizeRapaNuiAutocompleteText(cleanInput);
 
-  if (cacheKey.length < 2) {
+  if (cacheKey.length < 1) {
     return [];
   }
 
@@ -5135,6 +5121,7 @@ async function resolveGooglePredictions(
     const merged = mergeRapaNuiAutocompletePredictions(
       localMatches,
       answer.suggestions,
+      cleanInput,
     );
 
     if (answer.usable) rememberAutocompleteResult(cacheKey, merged);
@@ -5143,8 +5130,155 @@ async function resolveGooglePredictions(
     /* Sin SDK —sin red, sin clave— queda el catálogo local, que es lo que
        sostiene la pantalla. Tampoco se guarda: en cuanto vuelva la red, la
        misma búsqueda tiene que poder llegar a Google. */
-    return mergeRapaNuiAutocompletePredictions(localMatches, []);
+    return mergeRapaNuiAutocompletePredictions(localMatches, [], cleanInput);
   }
+}
+
+/**
+ * Resuelve un establecimiento por nombre usando Google Places.
+ * El catálogo local NO puede pintar el pin: coords inventadas pusieron
+ * Cabañas Tahonga en la pista del aeropuerto y Taha Tai en la Gobernación.
+ */
+async function findGooglePlaceInRapaNuiByQuery(
+  query: string,
+): Promise<PickerResult | null> {
+  const clean = String(query ?? "").trim();
+  if (!clean) return null;
+
+  await loadRapaGoGoogleMaps();
+  if (!window.google?.maps?.places?.PlacesService) return null;
+
+  const container = document.createElement("div");
+  const service = new google.maps.places.PlacesService(container);
+  const requestQuery = /rapa nui|isla de pascua|hanga roa/i.test(clean)
+    ? clean
+    : `${clean} Hanga Roa Rapa Nui`;
+  const queryKey = normalizeRapaNuiAutocompleteText(clean);
+
+  function scoreCandidate(name: string): number {
+    const nameKey = normalizeRapaNuiAutocompleteText(name);
+    if (!nameKey || !queryKey) return -1;
+    if (nameKey === queryKey) return 1000;
+    if (nameKey.startsWith(queryKey) || queryKey.startsWith(nameKey)) return 900;
+    const queryWords = queryKey.split(" ").filter((word) => word.length >= 3);
+    if (
+      queryWords.length > 0 &&
+      queryWords.every((word) => nameKey.includes(word))
+    ) {
+      return 800 + queryWords.length * 20;
+    }
+    if (nameKey.includes(queryKey) || queryKey.includes(nameKey)) return 600;
+    return -1;
+  }
+
+  function toPicker(
+    place: google.maps.places.PlaceResult,
+  ): PickerResult | null {
+    const location = place.geometry?.location;
+    const placeId = place.place_id;
+    if (!location || !placeId) return null;
+    const point = { lat: location.lat(), lng: location.lng() };
+    if (!isPointInsideRapaNuiServiceArea(point)) return null;
+    if (
+      String(place.business_status ?? "").toUpperCase() ===
+      "CLOSED_PERMANENTLY"
+    ) {
+      return null;
+    }
+    return {
+      text: place.name ?? clean,
+      address: place.formatted_address ?? "Rapa Nui, Chile",
+      lat: point.lat,
+      lng: point.lng,
+      placeId,
+      placeTypes: Array.isArray(place.types) ? [...place.types] : [],
+      originalLat: null,
+      originalLng: null,
+      walkMeters: 0,
+      isAccessiblePickup: false,
+    };
+  }
+
+  function pickBest(
+    results: google.maps.places.PlaceResult[] | null | undefined,
+  ): PickerResult | null {
+    if (!results?.length) return null;
+
+    const ranked = results
+      .map((place) => ({
+        place,
+        score: scoreCandidate(place.name ?? ""),
+        picker: toPicker(place),
+      }))
+      .filter(
+        (item): item is {
+          place: google.maps.places.PlaceResult;
+          score: number;
+          picker: PickerResult;
+        } => item.picker != null && item.score >= 600,
+      )
+      .sort((a, b) => b.score - a.score);
+
+    return ranked[0]?.picker ?? null;
+  }
+
+  const fromFind = await new Promise<PickerResult | null>((resolve) => {
+    service.findPlaceFromQuery(
+      {
+        query: requestQuery,
+        fields: [
+          "name",
+          "formatted_address",
+          "geometry",
+          "place_id",
+          "types",
+          "business_status",
+        ],
+        locationBias: {
+          center: RAPA_NUI_CENTER,
+          radius: 18_000,
+        },
+      },
+      (results, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK) {
+          resolve(null);
+          return;
+        }
+        resolve(pickBest(results));
+      },
+    );
+  });
+
+  if (fromFind) {
+    console.info(
+      `[PLACES] destination_selected placeId=${fromFind.placeId} via=findPlace`,
+    );
+    return fromFind;
+  }
+
+  const fromText = await new Promise<PickerResult | null>((resolve) => {
+    service.textSearch(
+      {
+        query: requestQuery,
+        bounds: getRapaNuiMapBounds(),
+      },
+      (results, status) => {
+        if (status !== google.maps.places.PlacesServiceStatus.OK) {
+          resolve(null);
+          return;
+        }
+        resolve(pickBest(results));
+      },
+    );
+  });
+
+  if (fromText) {
+    console.info(
+      `[PLACES] destination_selected placeId=${fromText.placeId} via=textSearch`,
+    );
+  }
+
+  return fromText;
 }
 
 export async function getPlaceDetailsExact(
@@ -5152,6 +5286,17 @@ export async function getPlaceDetailsExact(
 ): Promise<PickerResult | null> {
   const localPlace = getRapaNuiLocalAutocompletePlace(placeId);
   if (localPlace) {
+    /* Calles: coords curadas OK. Todo lo demás (cabañas, hoteles, locales,
+       atracciones): SOLO Google Places. Nunca lat/lng inventadas del catálogo. */
+    if (mustResolvePlaceViaGoogle(localPlace)) {
+      const fromGoogle = await findGooglePlaceInRapaNuiByQuery(localPlace.name);
+      if (fromGoogle) return fromGoogle;
+      console.info(
+        `[PLACES] google_resolve_failed localId=${localPlace.id}`,
+      );
+      return null;
+    }
+
     return localRapaNuiPlaceToPickerResult(localPlace);
   }
 
@@ -5197,6 +5342,11 @@ export async function getPlaceDetailsExact(
           return;
         }
 
+        console.info(
+          `[PLACES] destination_selected placeId=${place.place_id ?? placeId}`,
+        );
+
+        /* Nunca reemplazar geometry de Google con el catálogo local. */
         resolve({
           text: place.name ?? place.formatted_address ?? "Destino seleccionado",
           address: place.formatted_address ?? "Rapa Nui, Chile",
@@ -5272,26 +5422,35 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
 
   if (localPlace) {
     await loadRapaGoGoogleMaps();
-    const localPoint = localRapaNuiPlaceToPickerResult(localPlace);
+
+    /* Todo POI (cabañas, hoteles, locales…): Google primero.
+       Solo calles usan coords curadas del catálogo. */
+    const basePoint = mustResolvePlaceViaGoogle(localPlace)
+      ? (await findGooglePlaceInRapaNuiByQuery(localPlace.name))
+      : localRapaNuiPlaceToPickerResult(localPlace);
+
+    if (!basePoint) return null;
 
     try {
       const snapped = await reverseGeocode({
-        lat: localPoint.lat,
-        lng: localPoint.lng,
-        placeId: localPoint.placeId ?? placeId,
+        lat: basePoint.lat,
+        lng: basePoint.lng,
+        placeId: basePoint.placeId ?? placeId,
       });
 
       return {
         ...snapped,
         text: snapped.isAccessiblePickup
-          ? `Recogida en ${localPlace.name}`
-          : localPlace.name,
-        address: localPlace.address,
-        placeId: localPoint.placeId,
-        placeTypes: [...localPlace.placeTypes],
+          ? `Recogida en ${basePoint.text}`
+          : basePoint.text,
+        address: basePoint.address,
+        placeId: basePoint.placeId,
+        placeTypes: basePoint.placeTypes ?? [...localPlace.placeTypes],
+        originalLat: basePoint.lat,
+        originalLng: basePoint.lng,
       };
     } catch {
-      return localPoint;
+      return basePoint;
     }
   }
 
@@ -5304,7 +5463,7 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
     service.getDetails(
       {
         placeId,
-        fields: ["name", "formatted_address", "geometry", "place_id"],
+        fields: ["name", "formatted_address", "geometry", "place_id", "types"],
       },
       (place, status) => {
         if (
@@ -5344,6 +5503,10 @@ async function getPlaceDetails(placeId: string): Promise<PickerResult | null> {
               ? `Recogida en ${combinedTitle}`
               : combinedTitle,
             address: snapped.address,
+            placeId: place.place_id ?? placeId,
+            placeTypes: Array.isArray(place.types) ? [...place.types] : [],
+            originalLat: placePoint.lat,
+            originalLng: placePoint.lng,
           });
         });
       },
@@ -6762,6 +6925,98 @@ function MapPointPicker({
     drawAccessiblePickupPreview(candidate, pickupCandidates);
   }
 
+  function getCurrentUserReferencePoint(fallback: Coords): Coords {
+    const bluePosition = realPointMarkerRef.current?.getPosition();
+    if (bluePosition) {
+      return {
+        lat: bluePosition.lat(),
+        lng: bluePosition.lng(),
+        placeId: null,
+      };
+    }
+
+    if (
+      selected?.originalLat != null &&
+      selected.originalLng != null &&
+      Number.isFinite(selected.originalLat) &&
+      Number.isFinite(selected.originalLng)
+    ) {
+      return {
+        lat: selected.originalLat,
+        lng: selected.originalLng,
+        placeId: null,
+      };
+    }
+
+    return fallback;
+  }
+
+  async function resolvePickupFromGreenDrag(draggedPoint: Coords): Promise<void> {
+    if (!isPointInsideRapaNuiServiceArea(draggedPoint)) {
+      setScopeMessage(
+        "Ese punto está fuera de Rapa Nui. Arrastra el punto verde dentro de la isla.",
+      );
+      if (selected) {
+        drawAccessiblePickupPreview(selected, pickupCandidates);
+      }
+      return;
+    }
+
+    const sequence = ++requestSequenceRef.current;
+    setScopeMessage(null);
+    setLoadingAddress(true);
+
+    try {
+      const userPoint = getCurrentUserReferencePoint(draggedPoint);
+      const snapped = await reverseGeocode({
+        lat: draggedPoint.lat,
+        lng: draggedPoint.lng,
+        placeId: null,
+      });
+
+      if (sequence !== requestSequenceRef.current) return;
+
+      const walkMeters = Math.round(
+        distanceMeters(userPoint, {
+          lat: snapped.lat,
+          lng: snapped.lng,
+        }),
+      );
+
+      const next: PickerResult = {
+        ...snapped,
+        originalLat: userPoint.lat,
+        originalLng: userPoint.lng,
+        walkMeters,
+        walkMinutes: Math.max(1, Math.ceil(walkMeters / 75)),
+        isAccessiblePickup: Boolean(snapped.isAccessiblePickup),
+        recommendationKind: snapped.isAccessiblePickup ? "road" : "exact",
+        isRecommended: true,
+        candidateId: `manual:${snapped.lat.toFixed(5)}:${snapped.lng.toFixed(5)}`,
+        recommendationReason: snapped.isAccessiblePickup
+          ? "Recogida en calle accesible elegida manualmente."
+          : "Punto elegido manualmente. Arrastra hacia una calle accesible.",
+      };
+
+      setSelected(next);
+      drawAccessiblePickupPreview(next, pickupCandidates);
+
+      if (!snapped.isAccessiblePickup) {
+        setScopeMessage(
+          "No encontramos una calle cerca. Arrastra el punto verde hacia una vía accesible.",
+        );
+      } else if (walkMeters > 8) {
+        setScopeMessage(
+          `Recogida en calle accesible. Camina aprox. ${walkMeters} m desde tu ubicación.`,
+        );
+      }
+    } finally {
+      if (sequence === requestSequenceRef.current) {
+        setLoadingAddress(false);
+      }
+    }
+  }
+
   function drawAccessiblePickupPreview(
     point: PickerResult | null,
     candidates: PickerResult[] = pickupCandidates,
@@ -6867,7 +7122,7 @@ function MapPointPicker({
     realPointMarkerRef.current = new google.maps.Marker({
       map,
       position: realPoint,
-      title: "Mantén presionado y mueve tu ubicación",
+      title: "Tu ubicación. Arrastra solo si el GPS no es correcto.",
       draggable: true,
       clickable: true,
       optimized: false,
@@ -6881,8 +7136,7 @@ function MapPointPicker({
         strokeWeight: 4,
         anchor: getBlueMarkerVisualAnchor(pointsOverlap),
       },
-      // Debe quedar por encima del verde para recibir siempre el gesto.
-      zIndex: 90,
+      zIndex: 80,
     });
 
     realPointMarkerRef.current.addListener("dragstart", () => {
@@ -6969,11 +7223,13 @@ function MapPointPicker({
     pickupPointMarkerRef.current = new google.maps.Marker({
       map,
       position: pickupPoint,
-      clickable: false,
+      draggable: true,
+      clickable: true,
       optimized: false,
+      cursor: "grab",
       title: point.referenceName
-        ? `Recogida en ${point.referenceName}`
-        : "Punto accesible recomendado",
+        ? `Recogida en ${point.referenceName}. Arrastra a la calle accesible.`
+        : "Arrastra a la calle donde te recoge el vehículo",
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 18,
@@ -6988,7 +7244,82 @@ function MapPointPicker({
         fontSize: "14px",
         fontWeight: "900",
       },
-      zIndex: 55,
+      zIndex: 95,
+    });
+
+    pickupPointMarkerRef.current.addListener("dragstart", () => {
+      map.setOptions({ draggableCursor: "grabbing" });
+    });
+
+    pickupPointMarkerRef.current.addListener("drag", () => {
+      const position = pickupPointMarkerRef.current?.getPosition();
+      if (!position) return;
+
+      const movedPickup = {
+        lat: position.lat(),
+        lng: position.lng(),
+      };
+
+      if (walkingDotsRef.current && walkingDotsShadowRef.current) {
+        walkingDotsRef.current.setPath([realPoint, movedPickup]);
+        walkingDotsShadowRef.current.setPath([realPoint, movedPickup]);
+      } else if ((point.walkMeters ?? 0) <= 8) {
+        walkingDotsShadowRef.current = new google.maps.Polyline({
+          map,
+          path: [realPoint, movedPickup],
+          strokeOpacity: 0,
+          zIndex: 20,
+          icons: [
+            {
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                fillColor: "#111111",
+                fillOpacity: 0.72,
+                strokeColor: "#111111",
+                strokeOpacity: 0.72,
+                scale: 6,
+              },
+              offset: "0",
+              repeat: "18px",
+            },
+          ],
+        });
+
+        walkingDotsRef.current = new google.maps.Polyline({
+          map,
+          path: [realPoint, movedPickup],
+          strokeOpacity: 0,
+          zIndex: 21,
+          icons: [
+            {
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                fillColor: "#ffffff",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeOpacity: 1,
+                scale: 3.8,
+              },
+              offset: "0",
+              repeat: "18px",
+            },
+          ],
+        });
+      }
+    });
+
+    pickupPointMarkerRef.current.addListener("dragend", () => {
+      map.setOptions({ draggableCursor: undefined });
+
+      const position = pickupPointMarkerRef.current?.getPosition();
+      if (!position) return;
+
+      lastResolvedCenterRef.current = null;
+      void resolvePickupFromGreenDrag({
+        lat: position.lat(),
+        lng: position.lng(),
+        placeId: null,
+      });
     });
 
     if ((point.walkMeters ?? 0) > 8) {
@@ -7180,13 +7511,25 @@ function MapPointPicker({
         const initialPointIsInside = Boolean(
           initialPoint && isPointInsideRapaNuiServiceArea(initialPoint),
         );
-        const center = initialPointIsInside
-          ? (initialPoint as Coords)
-          : RAPA_NUI_CENTER;
+        const originBootstrap =
+          mode === "origin"
+            ? await resolveOriginPickerBootstrapPoint(initialPoint)
+            : null;
+        const center =
+          originBootstrap?.point ??
+          (initialPointIsInside
+            ? (initialPoint as Coords)
+            : RAPA_NUI_CENTER);
 
-        if (initialPoint && !initialPointIsInside) {
+        if (initialPoint && !initialPointIsInside && mode !== "origin") {
           setScopeMessage(
             "Tu GPS está fuera de Rapa Nui. El mapa se mantuvo dentro de la isla para que elijas el punto correcto.",
+          );
+        }
+
+        if (initialPoint && !initialPointIsInside && mode === "origin") {
+          setScopeMessage(
+            "Tu GPS está fuera de Rapa Nui. Elige manualmente un punto dentro de la isla.",
           );
         }
 
@@ -7221,10 +7564,29 @@ function MapPointPicker({
            destino según el modo del selector. */
         map.addListener("click", (event: google.maps.MapMouseEvent) => {
           const placeId = (event as google.maps.IconMouseEvent).placeId;
-          if (!placeId) return;
+          if (placeId) {
+            event.stop();
+            pickPlaceIdRef.current(placeId);
+            return;
+          }
 
-          event.stop();
-          pickPlaceIdRef.current(placeId);
+          const latLng = event.latLng;
+          if (!latLng) return;
+
+          const point = {
+            lat: latLng.lat(),
+            lng: latLng.lng(),
+          };
+
+          if (!isPointInsideRapaNuiServiceArea(point)) {
+            setScopeMessage(
+              "Ese punto está fuera de Rapa Nui. Toca dentro de la isla.",
+            );
+            return;
+          }
+
+          setScopeMessage(null);
+          void resolveMapPoint(point, true);
         });
 
         mapRef.current = map;
@@ -7252,23 +7614,24 @@ function MapPointPicker({
           setReady(true);
         }, 120);
 
-        await resolveMapPoint(
-          {
-            lat: center.lat,
-            lng: center.lng,
-          },
-          true,
-        );
+        await (mode === "origin" || initialPointIsInside
+          ? resolveMapPoint(
+              {
+                lat: center.lat,
+                lng: center.lng,
+              },
+              true,
+            )
+          : Promise.resolve());
 
-        if (initialPoint && !initialPointIsInside) {
+        if (mode === "origin" && originBootstrap?.source === "fallback") {
           setScopeMessage(
-            "Tu GPS está fuera de Rapa Nui. Elige manualmente un punto dentro de la isla.",
+            "Arrastra el punto verde ✓ a la calle donde te recoge el vehículo.",
           );
         }
 
-        // El mapa se puede explorar libremente, pero el punto del pasajero
-        // solo cambia al arrastrar el círculo azul, usar GPS o elegir una
-        // búsqueda. Así el usuario no pierde su ubicación por mover el mapa.
+        // El mapa se puede explorar libremente. El azul marca tu ubicación y
+        // el verde ✓ la recogida vehicular; ambos se mueven solo al arrastrarlos.
       })
       .catch(() => {
         setReady(true);
@@ -7305,12 +7668,15 @@ function MapPointPicker({
     const value = searchText.trim();
     const sequence = ++pickerSearchSequenceRef.current;
 
-    if (!isOpen || normalizeRapaNuiAutocompleteText(value).length < 2) {
+    if (!isOpen || normalizeRapaNuiAutocompleteText(value).length < 1) {
       setPickerSuggestions([]);
       setSearchingPicker(false);
       if (value.length === 0) setScopeMessage(null);
       return;
     }
+
+    const instant = getRapaNuiLocalAutocompletePredictions(value);
+    if (instant.length > 0) setPickerSuggestions(instant);
 
     setSearchingPicker(true);
     setScopeMessage(null);
@@ -7323,7 +7689,7 @@ function MapPointPicker({
           setPickerSuggestions(suggestions);
           setScopeMessage(
             suggestions.length === 0
-              ? "No encontramos ese lugar dentro de Rapa Nui. Prueba con otro nombre o mueve el punto azul."
+              ? "No encontramos ese lugar dentro de Rapa Nui. Prueba con otro nombre o arrastra el punto verde."
               : null,
           );
         })
@@ -7348,6 +7714,69 @@ function MapPointPicker({
   /* Un lugar de Google elegido dentro del selector, venga del buscador o de un
      icono tocado sobre el mapa: en ambos casos lo único que hay es un
      place_id, así que comparten el mismo camino. */
+  async function resolveDestinationFromExplicitPlace(
+    exact: PickerResult,
+  ): Promise<void> {
+    if (
+      !isPointInsideRapaNuiServiceArea({
+        lat: exact.lat,
+        lng: exact.lng,
+      })
+    ) {
+      setScopeMessage("Ese destino está fuera de Rapa Nui.");
+      return;
+    }
+
+    const exactCandidate: PickerResult = {
+      ...exact,
+      originalLat: exact.lat,
+      originalLng: exact.lng,
+      recommendationKind: "exact",
+      isRecommended: true,
+      walkMeters: 0,
+      walkMinutes: 0,
+      candidateId: `exact:${exact.placeId ?? `${exact.lat}:${exact.lng}`}`,
+      recommendationReason: `${exact.text} en Rapa Nui.`,
+    };
+
+    setScopeMessage(null);
+    setPickupCandidates([]);
+    setSelected(exactCandidate);
+    drawAccessiblePickupPreview(exactCandidate, []);
+  }
+
+  async function resolveOriginFromExplicitPlace(
+    exact: PickerResult,
+  ): Promise<void> {
+    if (
+      !isPointInsideRapaNuiServiceArea({
+        lat: exact.lat,
+        lng: exact.lng,
+      })
+    ) {
+      setScopeMessage("Ese lugar está fuera de Rapa Nui.");
+      return;
+    }
+
+    const exactCandidate: PickerResult = {
+      ...exact,
+      originalLat: exact.lat,
+      originalLng: exact.lng,
+      recommendationKind: "exact",
+      isRecommended: true,
+      referenceName: exact.text,
+      walkMeters: 0,
+      walkMinutes: 0,
+      candidateId: `exact:${exact.placeId ?? `${exact.lat}:${exact.lng}`}`,
+      recommendationReason: `${exact.text} en Rapa Nui.`,
+    };
+
+    setScopeMessage(null);
+    setPickupCandidates([]);
+    setSelected(exactCandidate);
+    drawAccessiblePickupPreview(exactCandidate, []);
+  }
+
   async function pickPlaceId(placeId: string): Promise<void> {
     setLoadingAddress(true);
 
@@ -7376,14 +7805,9 @@ function MapPointPicker({
       };
 
       if (mode === "origin") {
-        const preferredReference = createPreferredReferenceFromExactPlace(
-          exact,
-          exactPoint,
-        );
-
-        await resolveOriginPoint(exactPoint, preferredReference);
+        await resolveOriginFromExplicitPlace(exact);
       } else {
-        await resolveMapPoint(exactPoint, true);
+        await resolveDestinationFromExplicitPlace(exact);
       }
 
       openSheetDetails();
@@ -7404,6 +7828,31 @@ function MapPointPicker({
     setPickerSuggestions([]);
 
     try {
+      /* Catálogo local primero: coordenadas curadas, sin depender del primer
+         resultado de Google (que a veces es otra comisaría u hospital). */
+      const localByName = RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.find(
+        (place) =>
+          normalizeRapaNuiAutocompleteText(place.name) ===
+          normalizeRapaNuiAutocompleteText(destination.name),
+      );
+
+      if (localByName) {
+        if (sequence !== requestSequenceRef.current) return;
+        await pickPlaceId(
+          `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${localByName.id}`,
+        );
+        return;
+      }
+
+      const localInstant = getRapaNuiLocalAutocompletePredictions(
+        destination.name,
+      )[0];
+      if (localInstant) {
+        if (sequence !== requestSequenceRef.current) return;
+        await pickPlaceId(localInstant.placeId);
+        return;
+      }
+
       const predictions = await getGooglePredictions(destination.search);
 
       if (sequence !== requestSequenceRef.current) return;
@@ -7411,6 +7860,8 @@ function MapPointPicker({
       const targetKey = normalizePlaceStreetCompare(destination.name);
       const preferred =
         predictions.find((prediction) => {
+          if (isGoogleSuggestionMainlandChile(prediction)) return false;
+
           const predictionKey = normalizePlaceStreetCompare(
             prediction.mainText,
           );
@@ -7420,9 +7871,7 @@ function MapPointPicker({
             predictionKey.includes(targetKey) ||
             targetKey.includes(predictionKey)
           );
-        }) ??
-        predictions[0] ??
-        null;
+        }) ?? null;
 
       const details = preferred
         ? await getPlaceDetailsExact(preferred.placeId)
@@ -7666,8 +8115,8 @@ function MapPointPicker({
                     value={searchText}
                     placeholder={
                       mode === "origin"
-                        ? "Busca origen: hospital, aeropuerto, hotel..."
-                        : "Busca destino: hospital, playa, mercado..."
+                        ? "Busca calle, hospital, comisaría..."
+                        : "Busca calle, playa, mercado..."
                     }
                     onIonFocus={closeSheetForSearch}
                     onIonInput={(event) => {
@@ -7703,6 +8152,28 @@ function MapPointPicker({
                     ))}
                   </div>
                 )}
+
+                {mode === "origin" &&
+                  pickerSuggestions.length === 0 &&
+                  selected &&
+                  (selected.walkMeters == null || selected.walkMeters <= 8) && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        background: "rgba(17,17,17,.94)",
+                        color: "#ffffff",
+                        border: "1px solid rgba(34,197,94,.65)",
+                        borderRadius: "16px",
+                        padding: "8px 14px",
+                        textAlign: "center",
+                        fontWeight: 800,
+                        fontSize: ".72rem",
+                        boxShadow: "0 5px 14px rgba(0,0,0,.35)",
+                        pointerEvents: "none",
+                      }}>
+                      Arrastra el punto verde ✓ a la calle accesible
+                    </div>
+                  )}
 
                 {mode === "origin" &&
                   pickerSuggestions.length === 0 &&
@@ -7835,6 +8306,46 @@ function MapPointPicker({
               </div>
 
               <div className="rp-request-map-sheet-scroll">
+                <section
+                  className="request-map-frequent request-map-frequent--streets"
+                  aria-label="Calles principales de Hanga Roa">
+                  <div className="request-map-frequent__heading">
+                    <div>
+                      <strong>Calles principales</strong>
+                      <span>
+                        Toca una calle o busca por nombre en el mapa.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="request-map-frequent__list">
+                    {RAPA_NUI_MAIN_STREET_SUGGESTIONS.map((street) => {
+                      const active =
+                        normalizePlaceStreetCompare(selected?.text ?? "") ===
+                        normalizePlaceStreetCompare(street.name);
+
+                      return (
+                        <button
+                          key={street.name}
+                          type="button"
+                          className={`request-map-frequent__item request-map-frequent__item--street ${
+                            active ? "request-map-frequent__item--active" : ""
+                          }`}
+                          onClick={() => void pickFrequentDestination(street)}
+                          disabled={loadingAddress}
+                          aria-pressed={active}>
+                          <IonIcon icon={navigateOutline} />
+
+                          <span>
+                            <strong>{street.name}</strong>
+                            <small>{street.subtitle}</small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
                 {mode === "destination" && (
                   <section
                     className="request-map-frequent"
@@ -8688,6 +9199,7 @@ export default function RequestRidePage(): JSX.Element {
      principal). */
   const [activeSearchField, setActiveSearchField] =
     useState<PickerTarget | null>(null);
+  const [recentLocationsTick, setRecentLocationsTick] = useState(0);
   /* Aviso de orden en el riel: el destino no se puede elegir antes que el
      origen. No es una validación nueva —el viaje siempre necesitó los dos
      puntos— sino decirlo en el momento en que el pasajero lo intenta, en vez
@@ -8742,7 +9254,10 @@ export default function RequestRidePage(): JSX.Element {
     [session?.user],
   );
   const roundTripPromotions = useMemo(
-    () => buildAdminRoundTripPromotions(fareRules, passengerFareType),
+    () =>
+      SHOW_ROUND_TRIP_EXPERIENCES
+        ? buildAdminRoundTripPromotions(fareRules, passengerFareType)
+        : [],
     [fareRules, passengerFareType],
   );
   const selectedRoundTripPromotion = useMemo(
@@ -8771,6 +9286,13 @@ export default function RequestRidePage(): JSX.Element {
   const isRoundTripPromotionSelected = Boolean(selectedRoundTripPromotion);
   const isAirportScheduledRide =
     rideMode === "scheduled" && !isRoundTripPromotionSelected;
+  const flowerLeiLeadOk = useMemo(() => {
+    if (!isAirportScheduledRide || !scheduledAt) return false;
+    const pickup = parseScheduleInput(scheduledAt);
+    if (!pickup) return false;
+    return pickup.getTime() - Date.now() >= FLOWER_LEI_MIN_LEAD_MS;
+  }, [isAirportScheduledRide, scheduledAt]);
+  const canOfferFlowerLei = isAirportScheduledRide && flowerLeiLeadOk;
   const reservationRequiresCard =
     rideMode === "scheduled" || Boolean(selectedRoundTripPromotion);
   const airportScheduledRequiresCard = isAirportScheduledRide;
@@ -8778,6 +9300,12 @@ export default function RequestRidePage(): JSX.Element {
     rideMode !== "scheduled" || isRoundTripPromotionSelected;
   const requireReturnScheduledAt = effectiveTripFareMode === "round_trip";
   const roundTripPromotionReturnOnly = false;
+
+  useEffect(() => {
+    if (!canOfferFlowerLei && airportWelcomeOption === "flower_lei") {
+      setAirportWelcomeOption("none");
+    }
+  }, [airportWelcomeOption, canOfferFlowerLei]);
 
   useEffect(() => {
     if (!reservationRequiresCard) return;
@@ -9055,7 +9583,7 @@ export default function RequestRidePage(): JSX.Element {
 
     if (
       isAirportScheduledRide ||
-      normalizeRapaNuiAutocompleteText(value).length < 2 ||
+      normalizeRapaNuiAutocompleteText(value).length < 1 ||
       originPoint?.text === value
     ) {
       setOriginSuggestions([]);
@@ -9092,7 +9620,7 @@ export default function RequestRidePage(): JSX.Element {
     const value = destInput.trim();
 
     if (
-      normalizeRapaNuiAutocompleteText(value).length < 2 ||
+      normalizeRapaNuiAutocompleteText(value).length < 1 ||
       destinationPoint?.text === value
     ) {
       setDestSuggestions([]);
@@ -9154,6 +9682,13 @@ export default function RequestRidePage(): JSX.Element {
     setOriginPoint(confirmed);
     setOriginInput(confirmed.text);
     setOriginSuggestions([]);
+    recentLocationHistoryService.remember({
+      placeId: confirmed.placeId,
+      name: confirmed.text,
+      formattedAddress: confirmed.address,
+      lat: confirmed.lat,
+      lng: confirmed.lng,
+    });
     /* Ya hay origen: el aviso de orden pierde sentido y se retira solo. */
     setRouteOrderHint(false);
     setSubmitError(null);
@@ -9289,6 +9824,13 @@ export default function RequestRidePage(): JSX.Element {
     setDestinationPoint(confirmed);
     setDestInput(confirmed.text);
     setDestSuggestions([]);
+    recentLocationHistoryService.remember({
+      placeId: confirmed.placeId,
+      name: confirmed.text,
+      formattedAddress: confirmed.address,
+      lat: confirmed.lat,
+      lng: confirmed.lng,
+    });
     setSubmitError(null);
     /* Baja la hoja al reposo para que el pin quede visible en el mapa. */
     setSheetShift(Math.round(sheetMaxShift * REQUEST_SHEET_REST_FRACTION));
@@ -9354,9 +9896,32 @@ export default function RequestRidePage(): JSX.Element {
     );
     if (!full) return;
 
-    const picker = localRapaNuiPlaceToPickerResult(full);
     setSubmitError(null);
     setActiveSearchField(null);
+
+    /* POIs del catálogo: siempre Google Places (place_id + geometry).
+       Las calles sí pueden usar coords curadas. */
+    if (mustResolvePlaceViaGoogle(full)) {
+      void (async () => {
+        const details = await getPlaceDetailsExact(
+          `${RAPA_NUI_LOCAL_AUTOCOMPLETE_PREFIX}${full.id}`,
+        );
+        if (!details) {
+          setSubmitError(
+            "No pudimos ubicar ese lugar en Google Maps dentro de Rapa Nui. Prueba otra sugerencia o el mapa.",
+          );
+          return;
+        }
+        if (canChooseOrigin && !originPoint) {
+          applyOrigin(details);
+          return;
+        }
+        applyDestination(details);
+      })();
+      return;
+    }
+
+    const picker = localRapaNuiPlaceToPickerResult(full);
 
     if (canChooseOrigin && !originPoint) {
       applyOrigin(picker);
@@ -9446,7 +10011,7 @@ export default function RequestRidePage(): JSX.Element {
      texto: antes este bloque traía su propia caja y el pasajero escribía ahí,
      separado de la fila; ahora el campo real es el de arriba (rq-field) y
      esto es sólo la respuesta que aparece debajo mientras se escribe, como en
-     Uber. Sin texto, lista los lugares disponibles; desde 2 caracteres,
+     Uber. Sin texto, lista los lugares disponibles; desde 1 carácter,
      muestra los resultados (locales + Google) que ya calculan los efectos
      existentes. */
   function renderRouteResults(target: PickerTarget): JSX.Element {
@@ -9454,7 +10019,9 @@ export default function RequestRidePage(): JSX.Element {
     const value = isOrigin ? originInput : destInput;
     const suggestions = isOrigin ? originSuggestions : destSuggestions;
     const searching = isOrigin ? searchingOrigin : searchingDest;
-    const showBaseList = normalizeRapaNuiAutocompleteText(value).length < 2;
+    const showBaseList = normalizeRapaNuiAutocompleteText(value).length < 1;
+    void recentLocationsTick;
+    const recentPlaces = showBaseList ? recentLocationHistoryService.list() : [];
 
     return (
       <div
@@ -9462,10 +10029,60 @@ export default function RequestRidePage(): JSX.Element {
         role="group"
         aria-label={isOrigin ? "Resultados de origen" : "Resultados de destino"}>
         <div className="rq-results__hint">
-          {showBaseList ? "Lugares disponibles" : "Resultados"}
+          {showBaseList
+            ? recentPlaces.length > 0
+              ? "Recientes y lugares disponibles"
+              : "Lugares disponibles"
+            : "Resultados"}
+          {showBaseList && recentPlaces.length > 0 ? (
+            <button
+              type="button"
+              className="rq-results__clear-recents"
+              onClick={() => {
+                recentLocationHistoryService.clear();
+                setRecentLocationsTick((tick) => tick + 1);
+              }}>
+              Borrar recientes
+            </button>
+          ) : null}
         </div>
 
         <ul className="rq-results__list">
+          {showBaseList && recentPlaces.length > 0
+            ? recentPlaces.map((recent) => (
+                <li key={`recent-${recent.placeId ?? recent.name}-${recent.lat}`}>
+                  <button
+                    type="button"
+                    className="rq-results__item rq-results__item--recent"
+                    onClick={() => {
+                      const picker: PickerResult = {
+                        text: recent.name,
+                        address: recent.formattedAddress,
+                        lat: recent.lat,
+                        lng: recent.lng,
+                        placeId: recent.placeId,
+                        placeTypes: [],
+                        originalLat: null,
+                        originalLng: null,
+                        walkMeters: 0,
+                        isAccessiblePickup: false,
+                      };
+                      if (isOrigin) applyOrigin(picker);
+                      else applyDestination(picker);
+                      setActiveSearchField(null);
+                      dismissSoftKeyboard();
+                    }}>
+                    <span className="rq-results__pin" aria-hidden="true">
+                      <IonIcon icon={timeOutline} />
+                    </span>
+                    <span className="rq-results__copy">
+                      <strong>{recent.name}</strong>
+                      <small>{recent.formattedAddress}</small>
+                    </span>
+                  </button>
+                </li>
+              ))
+            : null}
           {showBaseList ? (
             RAPA_NUI_LOCAL_AUTOCOMPLETE_PLACES.map((place) => (
               <li key={place.id}>
@@ -9644,6 +10261,29 @@ export default function RequestRidePage(): JSX.Element {
     setDestInput("");
     setDestSuggestions([]);
     setSubmitError(null);
+  }
+
+  function openRouteFieldPicker(target: PickerTarget): void {
+    dismissSoftKeyboard();
+    setActiveSearchField(null);
+    openLocationPicker(target);
+  }
+
+  function openLocationPicker(
+    target: PickerTarget,
+    options?: { autoFocusSearch?: boolean },
+  ): void {
+    if (target === "destination" && canChooseOrigin && !originPoint) {
+      setRouteOrderHint(true);
+      setActiveSearchField("origin");
+      return;
+    }
+
+    dismissSoftKeyboard();
+    setActiveSearchField(null);
+    setRouteOrderHint(false);
+    setPickerAutoFocusSearch(options?.autoFocusSearch ?? false);
+    setPickerTarget(target);
   }
 
   function handleUseCurrentLocation(): void {
@@ -9844,7 +10484,7 @@ export default function RequestRidePage(): JSX.Element {
     Math.max(1, Math.round(Number(flowerLeiQuantity) || 1)),
   );
   const airportWelcomeSurchargeClp =
-    isAirportScheduledRide && airportWelcomeOption === "flower_lei"
+    canOfferFlowerLei && airportWelcomeOption === "flower_lei"
       ? AIRPORT_FLOWER_LEI_SURCHARGE_CLP * normalizedFlowerLeiQuantity
       : 0;
   const hasAirportFlowerLei = airportWelcomeSurchargeClp > 0;
@@ -10339,6 +10979,25 @@ export default function RequestRidePage(): JSX.Element {
           notes.push(
             `RAPAGO_AIRPORT_ORIGIN_LNG: ${RAPA_NUI_AIRPORT_DESTINATION.lng}.`,
           );
+          notes.push(
+            `RAPAGO_ORIGIN_PLACE_ID: ${RAPA_NUI_AIRPORT_DESTINATION.placeId ?? "rapago-local:aeropuerto-mataveri"}.`,
+          );
+          if (destinationPoint?.placeId) {
+            notes.push(
+              `RAPAGO_DESTINATION_PLACE_ID: ${destinationPoint.placeId}.`,
+            );
+          }
+          if (
+            destinationPoint?.lat != null &&
+            destinationPoint?.lng != null
+          ) {
+            notes.push(
+              `RAPAGO_DESTINATION_LAT: ${destinationPoint.lat}.`,
+            );
+            notes.push(
+              `RAPAGO_DESTINATION_LNG: ${destinationPoint.lng}.`,
+            );
+          }
         }
 
         if (effectiveTripFareMode === "round_trip" && returnScheduledAt) {
@@ -10361,7 +11020,10 @@ export default function RequestRidePage(): JSX.Element {
           notes.push(
             "Servicio de aeropuerto: no aplica para esta experiencia.",
           );
-        } else if (airportWelcomeOption === "flower_lei") {
+        } else if (
+          canOfferFlowerLei &&
+          airportWelcomeOption === "flower_lei"
+        ) {
           notes.push(
             `Recibimiento aeropuerto: ${AIRPORT_FLOWER_LEI_LABEL} solicitado.`,
           );
@@ -10767,8 +11429,10 @@ export default function RequestRidePage(): JSX.Element {
           );
         }
 
-        // Flujo directo: el botón de pago abre inmediatamente el Checkout
-        // oficial alojado por Klap. No mostramos un modal intermedio de RAPA GO.
+        savePendingKlapPayment(pendingKlapPayment);
+
+        // Apple Pay y Google Pay se pinchan en el checkout alojado de Klap
+        // (klap.cl/pagos/order/...), no en un modal de RAPA GO.
         const startedPayment =
           markPendingKlapPaymentStarted(pendingKlapPayment);
         openKlapHostedCheckout(
@@ -11670,39 +12334,44 @@ export default function RequestRidePage(): JSX.Element {
                   <div
                     className="rq-field rq-field--origin"
                     data-state={originPoint ? "set" : "empty"}
-                    data-active={activeSearchField === "origin"}>
+                    data-active={activeSearchField === "origin"}
+                    role="button"
+                    tabIndex={canChooseOrigin ? 0 : -1}
+                    aria-label="Origen del viaje. Toca para elegir en el mapa."
+                    onClick={(event) => {
+                      const target = event.target as HTMLElement;
+                      if (
+                        target.closest(".rq-field__clear") ||
+                        target.closest(".rq-field__map")
+                      ) {
+                        return;
+                      }
+                      if (!canChooseOrigin) return;
+                      openRouteFieldPicker("origin");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      if (!canChooseOrigin) return;
+                      event.preventDefault();
+                      openRouteFieldPicker("origin");
+                    }}>
                     <span className="rq-field__marker" aria-hidden="true" />
 
                     <IonInput
                       className="rq-field__input"
                       value={originInput}
+                      readonly
                       disabled={!canChooseOrigin}
                       placeholder={
                         canChooseOrigin
-                          ? "¿Dónde te recogemos?"
+                          ? "Toca para elegir recogida en el mapa"
                           : "Aeropuerto Internacional Mataveri"
                       }
                       aria-label="Origen del viaje"
                       onIonFocus={() => {
                         if (!canChooseOrigin) return;
-                        setRouteOrderHint(false);
-                        setActiveSearchField("origin");
+                        openRouteFieldPicker("origin");
                       }}
-                      /* El toque en un resultado dispara blur ANTES que su
-                         propio click, así que cerrar de inmediato se comería
-                         la selección. El margen deja que el click del
-                         resultado corra primero; si en cambio se tocó fuera de
-                         la lista, cierra igual. */
-                      onIonBlur={() => {
-                        window.setTimeout(() => {
-                          setActiveSearchField((current) =>
-                            current === "origin" ? null : current,
-                          );
-                        }, 180);
-                      }}
-                      onIonInput={(event) =>
-                        setOriginInput(String(event.detail.value ?? ""))
-                      }
                     />
 
                     <span className="rq-field__action">
@@ -11716,6 +12385,16 @@ export default function RequestRidePage(): JSX.Element {
                         />
                       ) : null}
 
+                      {canChooseOrigin ? (
+                        <button
+                          type="button"
+                          className="rq-field__map"
+                          aria-label="Elegir origen en el mapa"
+                          onClick={() => openRouteFieldPicker("origin")}>
+                          <IonIcon icon={mapOutline} aria-hidden="true" />
+                        </button>
+                      ) : null}
+
                       {originInput.trim() ? (
                         <button
                           type="button"
@@ -11723,7 +12402,6 @@ export default function RequestRidePage(): JSX.Element {
                           aria-label="Borrar origen"
                           onClick={() => {
                             clearOriginSelection();
-                            setActiveSearchField("origin");
                           }}>
                           <IonIcon icon={closeOutline} aria-hidden="true" />
                         </button>
@@ -11734,45 +12412,52 @@ export default function RequestRidePage(): JSX.Element {
                   <div
                     className="rq-field rq-field--destination"
                     data-state={destinationPoint ? "set" : "empty"}
-                    data-active={activeSearchField === "destination"}>
+                    data-active={activeSearchField === "destination"}
+                    role="button"
+                    tabIndex={selectedRoundTripPromotion ? -1 : 0}
+                    aria-label="Destino del viaje. Toca para elegir en el mapa."
+                    onClick={(event) => {
+                      const target = event.target as HTMLElement;
+                      if (
+                        target.closest(".rq-field__clear") ||
+                        target.closest(".rq-field__map")
+                      ) {
+                        return;
+                      }
+                      if (selectedRoundTripPromotion) return;
+                      openRouteFieldPicker("destination");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      if (selectedRoundTripPromotion) return;
+                      event.preventDefault();
+                      openRouteFieldPicker("destination");
+                    }}>
                     <span className="rq-field__marker" aria-hidden="true" />
 
                     <IonInput
                       className="rq-field__input"
                       value={destInput}
+                      readonly
                       disabled={Boolean(selectedRoundTripPromotion)}
                       placeholder={
                         selectedRoundTripPromotion
                           ? selectedRoundTripPromotion.destinationName
-                          : "¿A dónde vas?"
+                          : "Toca para elegir destino en el mapa"
                       }
                       aria-label="Destino del viaje"
                       onIonFocus={() => {
                         if (selectedRoundTripPromotion) return;
 
-                        /* Sin origen no se escribe el destino: la búsqueda y
-                           la ruta se calculan desde el origen, así que
-                           empezar por el otro extremo deja media pantalla sin
-                           referencia. Se avisa y el foco vuelve al que falta. */
                         if (canChooseOrigin && !originPoint) {
                           setRouteOrderHint(true);
-                          setActiveSearchField("origin");
+                          openRouteFieldPicker("origin");
                           return;
                         }
 
                         setRouteOrderHint(false);
-                        setActiveSearchField("destination");
+                        openRouteFieldPicker("destination");
                       }}
-                      onIonBlur={() => {
-                        window.setTimeout(() => {
-                          setActiveSearchField((current) =>
-                            current === "destination" ? null : current,
-                          );
-                        }, 180);
-                      }}
-                      onIonInput={(event) =>
-                        setDestInput(String(event.detail.value ?? ""))
-                      }
                     />
 
                     <span className="rq-field__action">
@@ -11786,6 +12471,16 @@ export default function RequestRidePage(): JSX.Element {
                         />
                       ) : null}
 
+                      {!selectedRoundTripPromotion ? (
+                        <button
+                          type="button"
+                          className="rq-field__map"
+                          aria-label="Elegir el destino en el mapa"
+                          onClick={() => openRouteFieldPicker("destination")}>
+                          <IonIcon icon={mapOutline} aria-hidden="true" />
+                        </button>
+                      ) : null}
+
                       {destInput.trim() ? (
                         <button
                           type="button"
@@ -11793,7 +12488,6 @@ export default function RequestRidePage(): JSX.Element {
                           aria-label="Borrar destino"
                           onClick={() => {
                             clearDestinationSelection();
-                            setActiveSearchField("destination");
                           }}>
                           <IonIcon icon={closeOutline} aria-hidden="true" />
                         </button>
@@ -11832,21 +12526,31 @@ export default function RequestRidePage(): JSX.Element {
                 !selectedRoundTripPromotion ? (
                   <div className="rq-quick">
                     {canChooseOrigin && !originPoint ? (
-                      <button
-                        type="button"
-                        className="rq-quick__btn rq-quick__btn--primary"
-                        onClick={handleUseCurrentLocation}
-                        disabled={locating}
-                        aria-label="Usar mi ubicación actual como origen">
-                        {locating ? (
-                          <IonSpinner name="dots" />
-                        ) : (
-                          <>
-                            <IonIcon icon={locateOutline} aria-hidden="true" />
-                            Usar mi ubicación actual
-                          </>
-                        )}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="rq-quick__btn rq-quick__btn--primary"
+                          onClick={handleUseCurrentLocation}
+                          disabled={locating}
+                          aria-label="Usar mi ubicación actual como origen">
+                          {locating ? (
+                            <IonSpinner name="dots" />
+                          ) : (
+                            <>
+                              <IonIcon icon={locateOutline} aria-hidden="true" />
+                              Usar mi ubicación actual
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="rq-quick__btn"
+                          aria-label="Elegir el origen en el mapa"
+                          onClick={() => openRouteFieldPicker("origin")}>
+                          <IonIcon icon={mapOutline} aria-hidden="true" />
+                          Elegir origen en el mapa
+                        </button>
+                      </>
                     ) : null}
 
                     {!selectedRoundTripPromotion && !destinationPoint ? (
@@ -11854,29 +12558,9 @@ export default function RequestRidePage(): JSX.Element {
                         type="button"
                         className="rq-quick__btn"
                         aria-label="Elegir el destino en el mapa"
-                        onClick={() => {
-                          /* Mismo guardia que el campo de destino: sin origen
-                             no se elige el otro extremo, porque la ruta y la
-                             búsqueda se calculan desde él. Se reutiliza tal
-                             cual para no abrir por aquí un camino que se
-                             saltara la regla. */
-                          if (canChooseOrigin && !originPoint) {
-                            setRouteOrderHint(true);
-                            setActiveSearchField("origin");
-                            return;
-                          }
-
-                          setRouteOrderHint(false);
-                          /* El modal se abre sobre el teclado si venía de
-                             escribir en un campo; bajarlo antes deja el mapa
-                             entero a la vista. */
-                          dismissSoftKeyboard();
-                          setActiveSearchField(null);
-                          setPickerAutoFocusSearch(false);
-                          setPickerTarget("destination");
-                        }}>
+                        onClick={() => openRouteFieldPicker("destination")}>
                         <IonIcon icon={mapOutline} aria-hidden="true" />
-                        Elegir en el mapa
+                        Elegir destino en el mapa
                       </button>
                     ) : null}
                   </div>
@@ -11886,9 +12570,8 @@ export default function RequestRidePage(): JSX.Element {
                     lo que se escribe arriba se responde abajo, sin tapar el
                     campo que se está rellenando. Misma fuente de lugares y
                     mismos handlers de selección que ya existían. */}
-                {wizardStep === 0 && activeSearchField
-                  ? renderRouteResults(activeSearchField)
-                  : null}
+                {/* La búsqueda de lugares vive solo dentro del selector de mapa.
+                    Aquí no se escribe: tocar recogida o destino abre el mapa. */}
 
                 {/* Navegación del paso 1. Va pegada a los campos de ruta, no
                     al fondo de las notas: en cuanto origen y destino están
@@ -12031,7 +12714,7 @@ export default function RequestRidePage(): JSX.Element {
                   )}
                 </div>
 
-                {rideMode === "scheduled" && (
+                {SHOW_ROUND_TRIP_EXPERIENCES && rideMode === "scheduled" && (
                   <>
                     <div
                       style={{
@@ -12535,9 +13218,22 @@ export default function RequestRidePage(): JSX.Element {
                         </IonItem>
 
                         <div className="rq-eyebrow">
-                          Recibimiento (opcional)
+                          🌺 Recepción con collar de flores
                         </div>
 
+                        <p
+                          style={{
+                            margin: "0 0 10px",
+                            fontSize: "0.78rem",
+                            lineHeight: 1.35,
+                            opacity: 0.86,
+                          }}>
+                          {canOfferFlowerLei
+                            ? "Agrega collares de bienvenida para recibir a los pasajeros al llegar a Rapa Nui. Disponible hasta 4 horas antes de tu traslado desde el aeropuerto."
+                            : "Los collares solo están disponibles con al menos 4 horas de anticipación respecto de la hora programada del traslado desde Mataveri."}
+                        </p>
+
+                        {canOfferFlowerLei ? (
                         <div
                           style={{
                             display: "grid",
@@ -12555,7 +13251,7 @@ export default function RequestRidePage(): JSX.Element {
                             {
                               id: "flower_lei" as AirportWelcomeOption,
                               icon: flowerOutline,
-                              title: "Collar de flores",
+                              title: "Quiero agregar collares",
                               text: `Bienvenida Rapa Nui al llegar · +${formatCLP(AIRPORT_FLOWER_LEI_SURCHARGE_CLP)}`,
                             },
                           ].map((option) => {
@@ -12625,8 +13321,10 @@ export default function RequestRidePage(): JSX.Element {
                             );
                           })}
                         </div>
+                        ) : null}
 
-                        {airportWelcomeOption === "flower_lei" && (
+                        {canOfferFlowerLei &&
+                          airportWelcomeOption === "flower_lei" && (
                           <div
                             style={{
                               background: isDark
@@ -13449,6 +14147,16 @@ export default function RequestRidePage(): JSX.Element {
           />
         )}
       </IonContent>
+
+      <KlapCheckoutModal
+        payment={klapPayment}
+        accessToken={session?.accessToken}
+        onApproved={handleKlapApproved}
+        onRejected={handleKlapRejected}
+        onRetryRequest={handleRetryKlapPayment}
+        onClose={handleCloseKlapCheckout}
+        onCancelRequest={handleCancelKlapRequest}
+      />
     </IonPage>
   );
 }
