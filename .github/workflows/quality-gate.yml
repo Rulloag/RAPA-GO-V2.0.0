@@ -206,30 +206,41 @@ jobs:
         env:
           DATABASE_URL: postgresql://quality_gate:quality_gate@localhost:5432/quality_gate_migrations
         run: npm run db:migrate
+      # Cadena post-journal (0056â†’0057â†’0058): no estÃ¡ en _journal.json; el runner
+      # auditable la aplica con checksum + registro en rapago_manual_migrations.
+      - name: Aplicar cadena manual vehicle categories (0056â†’0058)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://quality_gate:quality_gate@localhost:5432/quality_gate_migrations
+        run: npm run db:migrate:manual
 
   secret-scan:
     name: BÃºsqueda de secretos
     runs-on: ubuntu-latest
-    # gitleaks-action llama a GET /repos/{owner}/{repo}/pulls/{n}/commits para resolver el rango de
-    # commits del PR a escanear. Sin este permiso explÃ­cito, el GITHUB_TOKEN por defecto responde
-    # 403 "Resource not accessible by integration" en ese endpoint y el job falla â€” no por un
-    # secreto detectado, sino por falta de acceso de lectura a PRs.
     permissions:
       contents: read
-      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # gitleaks-action es gratuita para repos pÃºblicos y cuentas personales. Si este repositorio
-      # pasa a vivir bajo una organizaciÃ³n de GitHub, Gitleaks puede exigir la variable
-      # GITLEAKS_LICENSE para seguir funcionando â€” no se agrega ninguna licencia ni secreto aquÃ­.
-      # Si este job falla especÃ­ficamente por falta de licencia (no por secretos detectados), se
-      # reemplaza en un commit separado â€” ver docs/security/QUALITY_GATE.md.
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # gitleaks/gitleaks-action@v2+ exige GITLEAKS_LICENSE en repos de organizaciÃ³n.
+      # El escÃ¡ner CLI oficial (MIT) no requiere licencia; mantenemos detecciÃ³n real
+      # con salida redactada y exit != 0 ante hallazgos.
+      - name: Install Gitleaks CLI
+        run: |
+          GITLEAKS_VERSION="8.27.2"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Run Gitleaks
+        run: |
+          # Usar SHAs del PR evita rangos rotos por fetch shallow del base ref.
+          gitleaks detect \
+            --source . \
+            --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" \
+            --redact \
+            --verbose
 
   financial-authz-regression:
     name: RegresiÃ³n financiera y de autorizaciÃ³n
