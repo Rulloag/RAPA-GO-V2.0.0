@@ -882,6 +882,12 @@ export function LoginPage(): JSX.Element {
       return;
     }
 
+    if (outcome.kind === "linking_required") {
+      setAppleSetupError("");
+      setServerError(outcome.message);
+      return;
+    }
+
     setAppleSetupError("");
 
     if (outcome.kind === "cancelled") {

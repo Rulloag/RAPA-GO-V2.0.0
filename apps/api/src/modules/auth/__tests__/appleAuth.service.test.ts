@@ -81,14 +81,21 @@ function buildFakes(opts: {
   existingIdentity?: { id: string; userId: string } | null;
   userById?: Record<string, unknown> | null;
   userByEmail?: Record<string, unknown> | null;
+  credentials?: Record<string, unknown> | null;
   createUserWithIdentityResult?: { user: Record<string, unknown>; identity: { id: string } } | null;
   identityClaims?: Record<string, unknown>;
   exchangedClaims?: Record<string, unknown>;
   exchangeResult?: Record<string, unknown>;
 }) {
   const mockFindByProviderAndSub = vi.fn().mockResolvedValue(opts.existingIdentity ?? null);
-  const mockFindById             = vi.fn().mockResolvedValue(opts.userById ?? null);
+  const mockFindByUserAndProvider = vi.fn().mockResolvedValue(null);
+  const mockAttachToExistingUser = vi.fn().mockResolvedValue({
+    id: "identity-linked",
+    userId: opts.userByEmail?.id ?? "user-linked",
+  });
+  const mockFindById             = vi.fn().mockResolvedValue(opts.userById ?? opts.userByEmail ?? null);
   const mockFindByEmail          = vi.fn().mockResolvedValue(opts.userByEmail ?? null);
+  const mockFindCredentials      = vi.fn().mockResolvedValue(opts.credentials ?? null);
   const mockUpdateRefreshToken   = vi.fn().mockResolvedValue(undefined);
   const mockCreateUserWithIdentity = vi.fn().mockResolvedValue(opts.createUserWithIdentityResult ?? null);
   const mockRecordSafe           = vi.fn();
@@ -111,8 +118,13 @@ function buildFakes(opts: {
   const usersRepository = { findById: mockFindById, findByEmail: mockFindByEmail } as never;
   const identitiesRepository = {
     findByProviderAndSub:  mockFindByProviderAndSub,
+    findByUserAndProvider: mockFindByUserAndProvider,
+    attachToExistingUser: mockAttachToExistingUser,
     updateProviderCredentials: mockUpdateRefreshToken,
     createUserWithIdentity: mockCreateUserWithIdentity,
+  } as never;
+  const credentialsRepository = {
+    findByUserId: mockFindCredentials,
   } as never;
   const auditService = { recordSafe: mockRecordSafe } as never;
   const identityTokenVerifier = { verify: mockVerify } as never;
@@ -133,13 +145,17 @@ function buildFakes(opts: {
     tokenExchangeClient,
     tokenService,
     sessionService,
+    credentialsRepository,
   );
 
   return {
     service,
     mockFindByProviderAndSub,
+    mockFindByUserAndProvider,
+    mockAttachToExistingUser,
     mockFindById,
     mockFindByEmail,
+    mockFindCredentials,
     mockUpdateRefreshToken,
     mockCreateUserWithIdentity,
     mockRecordSafe,
@@ -240,11 +256,37 @@ describe("AppleAuthService.signIn", () => {
     if (!result.ok) expect(result.statusCode).toBe(403);
   });
 
-  it("returns a controlled conflict, without auto-linking, when the email already belongs to another account", async () => {
+  it("links a verified Google-style account without local password instead of asking to complete a new profile", async () => {
     const otherAccount = { id: "user-other", email: "newuser@example.com", name: "Other", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
     const fakes = buildFakes({
       existingIdentity: null,
       userByEmail: otherAccount,
+    });
+
+    const result = await fakes.service.signIn({
+      identityToken: "fake-identity-token",
+      authorizationCode: "fake-authorization-code",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.session.user.id).toBe("user-other");
+    expect(fakes.mockAttachToExistingUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-other",
+        provider: "apple",
+        providerUserId: VALID_SUB,
+        providerEmail: "newuser@example.com",
+      }),
+    );
+    expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+  });
+
+  it("asks to use the current login method when the email already has a local password", async () => {
+    const otherAccount = { id: "user-other", email: "newuser@example.com", name: "Other", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
+    const fakes = buildFakes({
+      existingIdentity: null,
+      userByEmail: otherAccount,
+      credentials: { userId: "user-other", passwordHash: "hash" },
     });
 
     const result = await fakes.service.signIn({ ...basePayload, role: "passenger" });
@@ -255,6 +297,7 @@ describe("AppleAuthService.signIn", () => {
       expect(result.statusCode).toBe(409);
     }
     expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
+    expect(fakes.mockAttachToExistingUser).not.toHaveBeenCalled();
   });
 
   it("handles Apple's private relay email correctly for a new user", async () => {
@@ -385,9 +428,13 @@ describe("AppleAuthService.signIn", () => {
     expect(fakes.mockExchange).not.toHaveBeenCalled();
   });
 
-  it("does not consume the authorizationCode when the email already belongs to another account", async () => {
+  it("does not consume the authorizationCode when the email already belongs to an account with a local password", async () => {
     const otherAccount = { id: "user-other2", email: "newuser@example.com", name: "Other2", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
-    const fakes = buildFakes({ existingIdentity: null, userByEmail: otherAccount });
+    const fakes = buildFakes({
+      existingIdentity: null,
+      userByEmail: otherAccount,
+      credentials: { userId: "user-other2", passwordHash: "hash" },
+    });
 
     const result = await fakes.service.signIn({ ...basePayload, role: "passenger" });
 

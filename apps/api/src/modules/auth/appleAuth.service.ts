@@ -28,6 +28,7 @@ import type {
   AppleWebCompleteInput,
 } from "./appleWeb.types.js";
 import type { AuthUser } from "./auth.types.js";
+import { AuthCredentialsRepository } from "./authCredentials.repository.js";
 import { SessionService } from "./session.service.js";
 import { TokenService } from "./token.service.js";
 import { buildLegalAcceptanceEvidence } from "../legal/legalEvidence.js";
@@ -295,6 +296,7 @@ export class AppleAuthService {
     private readonly tokenExchangeClient = new AppleTokenExchangeClient(),
     private readonly tokenService = new TokenService(),
     private readonly sessionService = new SessionService(),
+    private readonly credentialsRepository = new AuthCredentialsRepository(),
   ) {}
 
   private async issueSession(user: User): Promise<{
@@ -388,6 +390,18 @@ export class AppleAuthService {
         existing.id,
         requestId,
       );
+    }
+
+    const linkedExisting = await this.tryLinkExistingVerifiedEmailAccount(
+      identityClaims,
+      { payload, requestId },
+    );
+    if (linkedExisting) {
+      logAppleStage(requestId, "signIn:linkedExistingVerifiedEmail", {
+        ok: linkedExisting.ok,
+        code: linkedExisting.ok ? null : linkedExisting.code,
+      });
+      return linkedExisting;
     }
 
     const precondition = this.checkNewAccountPreconditions(
@@ -555,6 +569,21 @@ export class AppleAuthService {
         prepared.encryptedRefreshToken,
         requestId,
       );
+    }
+
+    const linkedExisting = await this.tryLinkExistingVerifiedEmailAccount(
+      identityClaims,
+      {
+        encryptedRefreshToken: prepared.encryptedRefreshToken,
+        requestId,
+      },
+    );
+    if (linkedExisting) {
+      logAppleStage(requestId, "web:complete:linkedExistingVerifiedEmail", {
+        ok: linkedExisting.ok,
+        code: linkedExisting.ok ? null : linkedExisting.code,
+      });
+      return linkedExisting;
     }
 
     const payload: AppleAuthRequest = {
@@ -1112,6 +1141,209 @@ export class AppleAuthService {
         : undefined;
 
     return { ok: true, encryptedRefreshToken };
+  }
+
+  /**
+   * Si Apple entrega un correo verificado (no Hide My Email) que ya pertenece
+   * a una cuenta RAPA GO —p. ej. creada con Google—, vincula Apple a esa
+   * misma cuenta. Sin contraseña local se entra directo, igual que Google.
+   * Con contraseña se pide ingresar con el método actual (409).
+   */
+  private async tryLinkExistingVerifiedEmailAccount(
+    identityClaims: VerifiedAppleClaims,
+    options: {
+      payload?: AppleAuthRequest;
+      encryptedRefreshToken?: string;
+      requestId?: string;
+    },
+  ): Promise<AppleAuthResult | null> {
+    const email = identityClaims.email?.toLowerCase().trim();
+
+    if (
+      !email ||
+      !identityClaims.emailVerified ||
+      identityClaims.isPrivateEmail
+    ) {
+      return null;
+    }
+
+    const emailOwner = await this.usersRepository.findByEmail(email);
+    if (!emailOwner) {
+      return null;
+    }
+
+    if (emailOwner.status === "deleted") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_DELETED",
+        message: "Esta cuenta fue eliminada.",
+        statusCode: 403,
+      };
+    }
+
+    if (emailOwner.status === "pending") {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_PENDING",
+        message: "Tu cuenta todavía está pendiente de aprobación.",
+        statusCode: 403,
+      };
+    }
+
+    if (
+      emailOwner.status === "suspended" ||
+      emailOwner.status === "banned"
+    ) {
+      return {
+        ok: false,
+        code: "AUTH_ACCOUNT_SUSPENDED",
+        message: "Esta cuenta está bloqueada. Contacta a soporte.",
+        statusCode: 403,
+      };
+    }
+
+    if (!emailOwner.isVerified) {
+      this.auditService.recordSafe({
+        eventType: "auth.apple.login.conflict",
+        entityType: "user",
+        entityId: emailOwner.id,
+        metadata: { reason: "email_owner_not_verified" },
+      });
+
+      return {
+        ok: false,
+        code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
+        message:
+          "Ya existe una cuenta RAPA GO con este correo. Ingresa con Google o tu método actual y luego vincula Apple.",
+        statusCode: 409,
+      };
+    }
+
+    const alreadyLinked =
+      await this.identitiesRepository.findByUserAndProvider(
+        emailOwner.id,
+        PROVIDER,
+      );
+
+    if (alreadyLinked) {
+      if (alreadyLinked.providerUserId !== identityClaims.sub) {
+        return {
+          ok: false,
+          code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
+          message:
+            "Esta cuenta RAPA GO ya tiene otra cuenta de Apple vinculada.",
+          statusCode: 409,
+        };
+      }
+
+      return this.finishExistingAppleSession(
+        identityClaims,
+        emailOwner.id,
+        alreadyLinked.id,
+        options,
+      );
+    }
+
+    const credentials =
+      await this.credentialsRepository.findByUserId(emailOwner.id);
+
+    if (credentials) {
+      this.auditService.recordSafe({
+        eventType: "auth.apple.login.conflict",
+        entityType: "user",
+        entityId: emailOwner.id,
+        metadata: { reason: "email_taken_password_confirmation_required" },
+      });
+
+      return {
+        ok: false,
+        code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
+        message:
+          "Ya existe una cuenta RAPA GO con este correo. Ingresa con Google o tu correo y contraseña; después puedes vincular Apple en tu perfil.",
+        statusCode: 409,
+      };
+    }
+
+    const attached =
+      await this.identitiesRepository.attachToExistingUser({
+        userId: emailOwner.id,
+        provider: PROVIDER,
+        providerUserId: identityClaims.sub,
+        providerClientId: identityClaims.aud,
+        providerEmail: email,
+        providerEmailVerified: true,
+        providerIsPrivateEmail: false,
+        encryptedRefreshToken: options.encryptedRefreshToken,
+      });
+
+    if (!attached) {
+      const winner =
+        await this.identitiesRepository.findByProviderAndSub(
+          PROVIDER,
+          identityClaims.sub,
+        );
+
+      if (!winner || winner.userId !== emailOwner.id) {
+        return {
+          ok: false,
+          code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
+          message:
+            "Esta cuenta de Apple ya está vinculada a otra cuenta RAPA GO.",
+          statusCode: 409,
+        };
+      }
+
+      return this.finishExistingAppleSession(
+        identityClaims,
+        emailOwner.id,
+        winner.id,
+        options,
+      );
+    }
+
+    this.auditService.recordSafe({
+      eventType: "auth.apple.link.success",
+      entityType: "user",
+      entityId: emailOwner.id,
+      actorUserId: emailOwner.id,
+      metadata: { method: "verified_email_without_local_password" },
+    });
+
+    return this.finishExistingAppleSession(
+      identityClaims,
+      emailOwner.id,
+      attached.id,
+      options,
+    );
+  }
+
+  private finishExistingAppleSession(
+    identityClaims: VerifiedAppleClaims,
+    userId: string,
+    identityId: string,
+    options: {
+      payload?: AppleAuthRequest;
+      encryptedRefreshToken?: string;
+      requestId?: string;
+    },
+  ): Promise<AppleAuthResult> {
+    if (options.payload) {
+      return this.signInExisting(
+        options.payload,
+        identityClaims,
+        userId,
+        identityId,
+        options.requestId,
+      );
+    }
+
+    return this.signInExistingAfterExchange(
+      identityClaims,
+      userId,
+      identityId,
+      options.encryptedRefreshToken,
+      options.requestId,
+    );
   }
 
   private async signInExisting(
