@@ -188,7 +188,7 @@
   box-shadow: none !important;
 }
 
-/* Segmentos de filtro (Todos / Activos / Completados) — en Mis viajes se
+/* Segmentos de filtro (Activos / Completados / Cancelados) — en Mis viajes se
    salían de pantalla. Con scroll horizontal propio dejan de recortarse. */
 .rapago-section-page ion-segment {
   overflow-x: auto !important;
