@@ -19,6 +19,7 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:manual": "tsx scripts/apply-manual-migrations.ts",
     "db:studio": "drizzle-kit studio",
     "migrate:prod": "tsx scripts/migrate-prod.ts",
     "seed:dev": "tsx scripts/seed-dev-users.ts"
