@@ -8,6 +8,7 @@ import type {
 import {
   KlapProviderError,
   KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+  KLAP_TRANSACTION_TYPE_SALE,
   type KlapConfig,
   type KlapEnvironment,
   type KlapCustom,
@@ -630,12 +631,14 @@ export class KlapProvider implements PaymentProvider {
       );
     }
 
-    // Política RAPA GO: el checkout NUNCA es una venta. Aunque el flag de
-    // captura diferida esté en false (Hostinger histórico), la orden declara
-    // authorization para retener el 100% de la tarifa hasta captura/void.
+    // Viaje: retención (authorization). RapaGo más veloz: cobro inmediato de $800 (sale).
+    const transactionType =
+      params.transactionType === "sale"
+        ? KLAP_TRANSACTION_TYPE_SALE
+        : KLAP_TRANSACTION_TYPE_AUTHORIZATION;
     customs.push({
       key: "transaction_type",
-      value: KLAP_TRANSACTION_TYPE_AUTHORIZATION,
+      value: transactionType,
     });
 
     // Comprobante de pago (confirmado por Klap para POST /orders): el aviso

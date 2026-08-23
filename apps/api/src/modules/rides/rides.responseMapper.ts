@@ -123,5 +123,7 @@ export function toAvailableResponse(r: RideRequest): AvailableRideResponse {
     status:                r.status,
     requestedAt:           r.requestedAt.toISOString(),
     createdAt:             r.createdAt.toISOString(),
+    requestedVehicleCategory: r.requestedVehicleCategory ?? "standard",
+    priorityFeeClp:        r.priorityFeeClp ?? null,
   };
 }

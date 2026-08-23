@@ -77,7 +77,7 @@ describe("efectos del polling de Klap al confirmar el pago (fuente real de Trips
     const countOccurrences = (needle: string): number =>
       tripsSource.split(needle).length - 1;
 
-    expect(countOccurrences("isKlapPaymentConfirmedStatus(status)")).toBe(1);
+    expect(countOccurrences("isKlapPaymentConfirmedStatus(status)")).toBe(2);
     expect(countOccurrences("isKlapPaymentRejectedStatus(status)")).toBe(1);
     // Los flujos de Mercado Pago siguen con su propia comparación literal,
     // sin tocar (reconciled.status/status de fast search).

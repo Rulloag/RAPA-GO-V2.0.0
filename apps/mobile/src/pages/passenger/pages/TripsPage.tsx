@@ -28,6 +28,7 @@ import { rideLocationService } from "../../../features/location/rideLocation.ser
 import { walletService } from "../../../features/wallet/wallet.service.js";
 import {
   cancelPendingKlapRide,
+  createKlapHostedOrder,
   openKlapHostedCheckout,
   type PendingKlapPaymentRecord,
 } from "../../../features/payments/klapCheckout.service.js";
@@ -1687,7 +1688,29 @@ async function applyPassengerFastSearchChoice(
   }
 
   const paymentLabel = getRidePaymentMethodLabel(ride);
-  const isCard = paymentLabel.includes("Klap") || paymentLabel.includes("Mercado Pago");
+  const isCard = paymentLabel.includes("Klap");
+  if (isCard) {
+    const order = await createKlapHostedOrder(
+      accessToken,
+      ride.id,
+      "fast_search",
+    );
+    const redirectUrl = String(order.publicCheckoutData.redirectUrl ?? "").trim();
+    if (!order.paymentId || !redirectUrl) {
+      throw new Error("El backend no devolvió el pago de RapaGo más veloz correctamente.");
+    }
+    savePendingFastSearchPayment({
+      rideRequestId: ride.id,
+      paymentId: order.paymentId,
+      provider: "klap",
+      amountClp: RAPAGO_FAST_SEARCH_FEE_CLP,
+      createdAt: new Date().toISOString(),
+      rideMirror: ride as RideRequestData & Record<string, unknown>,
+    });
+    openKlapHostedCheckout(redirectUrl);
+    return;
+  }
+
   const result = await requestPassengerFastSearch(ride, accessToken);
 
   if (result.activated) {
@@ -1695,20 +1718,7 @@ async function applyPassengerFastSearchChoice(
     return;
   }
 
-  if (!isCard || !result.paymentId || !result.urlPay) {
-    throw new Error("El backend no devolvió el pago de RapaGo más veloz correctamente.");
-  }
-
-  savePendingFastSearchPayment({
-    rideRequestId: ride.id,
-    paymentId: result.paymentId,
-    provider: "klap",
-    amountClp: RAPAGO_FAST_SEARCH_FEE_CLP,
-    createdAt: new Date().toISOString(),
-    rideMirror: ride as RideRequestData & Record<string, unknown>,
-  });
-
-  window.location.href = result.urlPay;
+  throw new Error("El backend no devolvió el pago de RapaGo más veloz correctamente.");
 }
 
 function getPassengerRideMinimumFareClp(ride: RideRequestData): number {
@@ -3599,13 +3609,14 @@ function getRidePaymentMethodLabel(
   if (
     provider === "mercadopago" ||
     provider === "prontopaga" ||
+    method === "card" ||
     text.includes("prontopaga") ||
     text.includes("mercadopago") ||
-    text.includes("mercado pago")
+    text.includes("mercado pago") ||
+    text.includes("tarjeta")
   ) {
-    return "Tarjeta / Mercado Pago";
+    return "Tarjeta / Klap";
   }
-  if (method === "card" || text.includes("tarjeta")) return "Tarjeta";
   if (method === "cash" || text.includes("efectivo")) return "Efectivo";
   return "Pendiente";
 }
@@ -8783,7 +8794,6 @@ function PassengerRideCard({
   const fastSearchRecord = getPassengerFastSearchRecord(ride as RideRequestData & Record<string, unknown>);
   const fastSearchFeeClp = getPassengerFastSearchFeeClp(ride as RideRequestData & Record<string, unknown>);
   const showFastSearchPrompt = shouldShowPassengerFastSearchPrompt(ride as RideRequestData & Record<string, unknown>, nowMs);
-  const fastSearchUsesMercadoPago = paymentLabel.includes("Mercado Pago");
   const fastSearchUsesKlap = paymentLabel.includes("Klap");
   const cancellationPolicy = getPassengerCancellationPolicyForRide(ride);
   const passengerCancelledChargeClp = Math.max(
@@ -9214,13 +9224,6 @@ function PassengerRideCard({
                         type="button"
                         className="rapago-fast-search-panel__primary"
                         onClick={() => {
-                          if (fastSearchUsesKlap) {
-                            setFastSearchActionError(
-                              "RapaGo más veloz todavía no está habilitado para pagos Klap. El viaje principal continúa normalmente.",
-                            );
-                            return;
-                          }
-
                           setFastSearchBusy(true);
                           setFastSearchActionError(null);
                           void applyPassengerFastSearchChoice(ride, true, token)
@@ -9250,11 +9253,9 @@ function PassengerRideCard({
                         {fastSearchBusy ? (
                           "Procesando…"
                         ) : fastSearchUsesKlap ? (
-                          "No disponible para Klap"
-                        ) : fastSearchUsesMercadoPago ? (
                           <>
                             <IonIcon icon={cardOutline} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: 4 }} />
-                            Pagar {formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)} con Mercado Pago
+                            Pagar {formatClp(RAPAGO_FAST_SEARCH_FEE_CLP)} con Klap
                           </>
                         ) : (
                           <>
@@ -9321,10 +9322,8 @@ function PassengerRideCard({
                       }}
                     >
                       {fastSearchUsesKlap
-                        ? "El backend Klap actual solo procesa el pago principal del viaje; no se generará un cobro adicional de Mercado Pago."
-                        : fastSearchUsesMercadoPago
-                          ? "La prioridad se activará solamente cuando Mercado Pago confirme realmente el pago de $800."
-                          : "Los $800 se sumarán al total en efectivo y el conductor verá el monto actualizado."}
+                        ? "Klap retendrá $800 en tu tarjeta. El cobro se confirma al completar el viaje, igual que la tarifa."
+                        : "Los $800 se sumarán al total en efectivo y el conductor verá el monto actualizado."}
                     </div>
                   </div>
                 )}
@@ -9532,10 +9531,6 @@ function PassengerRideCard({
                   ? effectiveStatus === "pending_payment"
                     ? "Pago en proceso de aprobación por Klap. No vuelvas a pagar; la solicitud se habilitará automáticamente."
                     : "Pago con tarjeta validado por Klap y el backend de RAPA GO."
-                  : paymentLabel.includes("Mercado Pago")
-                    ? effectiveStatus === "pending_payment"
-                      ? "Pago histórico en proceso de aprobación por Mercado Pago."
-                      : "Pago histórico validado por Mercado Pago y el backend de RAPA GO."
                     : "Este es el valor que pagarás al finalizar el viaje."}
               </div>
             </div>
@@ -10218,7 +10213,7 @@ export default function TripsPage(): JSX.Element {
         setPaymentReturnMessage({
           tone: "checking",
           title: "Verificando RapaGo más veloz",
-          body: "La prioridad no se activa solo por volver desde Klap. Estamos esperando la aprobación real de los $800.",
+          body: "La prioridad no se activa solo por volver desde Klap. Estamos esperando que autorice la retención de $800.",
         });
 
         for (let attempt = 0; attempt < 15 && !disposed; attempt += 1) {
@@ -10233,7 +10228,7 @@ export default function TripsPage(): JSX.Element {
               pendingFastSearch.paymentId,
             );
 
-            if (status === "success") {
+            if (isKlapPaymentConfirmedStatus(status)) {
               const serverRides = await ridesService.listMyRides(accessToken);
               const serverRide = serverRides.find(
                 (item) => item.id === pendingFastSearch.rideRequestId,
@@ -10248,7 +10243,7 @@ export default function TripsPage(): JSX.Element {
               setPaymentReturnMessage({
                 tone: "approved",
                 title: "RapaGo más veloz activado",
-                body: "Klap confirmó los $800. Tu solicitud tiene prioridad y el conductor verá el recargo como pagado.",
+                body: "Klap retuvo los $800. Tu solicitud tiene prioridad; el cobro se confirma al completar el viaje.",
               });
               await loadRides();
               return;

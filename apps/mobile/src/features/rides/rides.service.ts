@@ -183,6 +183,8 @@ export interface AvailableRideData {
   status:           string;
   requestedAt:     string;
   createdAt:       string;
+  requestedVehicleCategory?: string | null;
+  priorityFeeClp?: number | null;
 }
 
 export interface ActiveRideOfferRideData {

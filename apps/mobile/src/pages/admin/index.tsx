@@ -7166,8 +7166,13 @@ export function AdminDriversPage(): JSX.Element {
 
   function getAdminPaymentMethod(notes: string | null | undefined): string {
     const text = String(notes ?? "").toLowerCase();
-    if (text.includes("prontopaga") || text.includes("tarjeta"))
-      return "ProntoPaga";
+    if (
+      text.includes("klap") ||
+      text.includes("prontopaga") ||
+      text.includes("mercadopago") ||
+      text.includes("tarjeta")
+    )
+      return "Klap";
     if (text.includes("efectivo")) return "Efectivo";
     return "No informado";
   }
@@ -11944,8 +11949,15 @@ function getAdminRideExcelPaymentLabel(ride: AdminRideData): string {
     .map((value) => String(value ?? "").toLowerCase())
     .join(" ");
 
-  if (raw.includes("mercadopago") || raw.includes("mercado pago") || raw.includes("tarjeta") || raw.includes("card")) {
-    return "Mercado Pago";
+  if (
+    raw.includes("klap") ||
+    raw.includes("mercadopago") ||
+    raw.includes("mercado pago") ||
+    raw.includes("prontopaga") ||
+    raw.includes("tarjeta") ||
+    raw.includes("card")
+  ) {
+    return "Klap";
   }
   if (raw.includes("cash") || raw.includes("efectivo")) return "Efectivo";
 

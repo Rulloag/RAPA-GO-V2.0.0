@@ -11459,7 +11459,8 @@ function getDriverFastSearchInfo(
     /RAPAGO_FAST_SEARCH_ACTIVE:\s*true/i.test(notes) ||
     ride.rapagoFastSearchAccepted === true ||
     ride.fastSearchRequested === true ||
-    ride.passengerPrioritySearch === true;
+    ride.passengerPrioritySearch === true ||
+    Number(ride.priorityFeeClp ?? 0) > 0;
 
   const feeValue = Number(
     notes.match(/RAPAGO_FAST_SEARCH_FEE_CLP:\s*(\d+)/i)?.[1] ??
@@ -11603,7 +11604,7 @@ function DriverFastSearchBadge({
                 aria-hidden="true"
                 style={{ fontSize: "1em", verticalAlign: "-0.125em" }}
               />{" "}
-              Recargo pagado con Mercado Pago. No cobrar efectivo.
+              Recargo retenido con Klap. No cobrar ese extra en efectivo.
             </>
           ) : (
             <>
@@ -12745,20 +12746,21 @@ function markPassengerRideNoShowCancelledFromDriver(
 function getRidePaymentMethodLabel(notes: string | null | undefined): string {
   const text = String(notes ?? "").toLowerCase();
   if (
+    text.includes("klap") ||
     text.includes("tarjeta") ||
     text.includes("mercadopago") ||
     text.includes("mercado pago") ||
     text.includes("prontopaga") ||
     text.includes("webpay")
   )
-    return "Mercado Pago";
+    return "Klap";
   if (text.includes("efectivo")) return "Efectivo";
   return "Pendiente";
 }
 
 function getRidePaymentIcon(notes: string | null | undefined): string {
   const label = getRidePaymentMethodLabel(notes);
-  if (label === "Mercado Pago") return "💳";
+  if (label === "Klap") return "💳";
   if (label === "Efectivo") return "💵";
   return "⌛";
 }
@@ -15903,6 +15905,24 @@ function AssignedRidesPage({
   const displayedAvailableRides = showOnlyReservations
     ? []
     : [...availableRides].sort((a, b) => {
+        const aFast = getDriverFastSearchInfo(
+          a as RideWithFarePayload & Record<string, unknown>,
+        );
+        const bFast = getDriverFastSearchInfo(
+          b as RideWithFarePayload & Record<string, unknown>,
+        );
+        const aPriority =
+          (aFast.active && aFast.paymentStatus === "approved") ||
+          Number(a.priorityFeeClp ?? 0) > 0
+            ? 0
+            : 1;
+        const bPriority =
+          (bFast.active && bFast.paymentStatus === "approved") ||
+          Number(b.priorityFeeClp ?? 0) > 0
+            ? 0
+            : 1;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+
         const driverCat = getApprovedDriverCategoryForComparison(
           session?.accessToken,
           session?.user,
@@ -18861,13 +18881,13 @@ La reserva fue retirada. No continúes hacia la recogida.`,
             <div style={styles.pill}>
               <IonIcon
                 icon={
-                  paymentLabel === "Mercado Pago" ? cardOutline : cashOutline
+                  paymentLabel === "Klap" ? cardOutline : cashOutline
                 }
                 aria-hidden="true"
                 style={{
                   fontSize: 15,
                   color:
-                    paymentLabel === "Mercado Pago"
+                    paymentLabel === "Klap"
                       ? "var(--rp-info-fg)"
                       : "var(--rp-ok-fg)",
                 }}

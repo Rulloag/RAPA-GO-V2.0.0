@@ -34,8 +34,8 @@ function klapWebhookErrorStatus(code: string): string {
       return "payment_mismatch";
     case "AMOUNT_MISMATCH":
       return "amount_mismatch";
-    case "UNSUPPORTED_PAYMENT_METHOD":
-      return "unsupported_payment_method";
+    case "TRANSACTION_TYPE_MISMATCH":
+      return "transaction_type_mismatch";
     case "STATE_CONFLICT":
       return "state_conflict";
     default:
