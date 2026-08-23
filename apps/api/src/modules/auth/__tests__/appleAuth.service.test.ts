@@ -281,23 +281,23 @@ describe("AppleAuthService.signIn", () => {
     expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
   });
 
-  it("asks to use the current login method when the email already has a local password", async () => {
-    const otherAccount = { id: "user-other", email: "newuser@example.com", name: "Other", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
+  it("links Apple to the existing account even when that account already has a local password", async () => {
+    const otherAccount = { id: "user-other", email: "newuser@example.com", name: "Other", role: "passenger", status: "active", avatarUrl: null, isVerified: false };
     const fakes = buildFakes({
       existingIdentity: null,
       userByEmail: otherAccount,
       credentials: { userId: "user-other", passwordHash: "hash" },
     });
 
-    const result = await fakes.service.signIn({ ...basePayload, role: "passenger" });
+    const result = await fakes.service.signIn({
+      identityToken: "fake-identity-token",
+      authorizationCode: "fake-authorization-code",
+    });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.code).toBe("AUTH_APPLE_ACCOUNT_LINKING_REQUIRED");
-      expect(result.statusCode).toBe(409);
-    }
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.session.user.id).toBe("user-other");
+    expect(fakes.mockAttachToExistingUser).toHaveBeenCalled();
     expect(fakes.mockCreateUserWithIdentity).not.toHaveBeenCalled();
-    expect(fakes.mockAttachToExistingUser).not.toHaveBeenCalled();
   });
 
   it("handles Apple's private relay email correctly for a new user", async () => {
@@ -428,18 +428,17 @@ describe("AppleAuthService.signIn", () => {
     expect(fakes.mockExchange).not.toHaveBeenCalled();
   });
 
-  it("does not consume the authorizationCode when the email already belongs to an account with a local password", async () => {
-    const otherAccount = { id: "user-other2", email: "newuser@example.com", name: "Other2", role: "passenger", status: "active", avatarUrl: null, isVerified: true };
+  it("does not consume the authorizationCode when the matching account is suspended", async () => {
+    const otherAccount = { id: "user-other2", email: "newuser@example.com", name: "Other2", role: "passenger", status: "suspended", avatarUrl: null, isVerified: true };
     const fakes = buildFakes({
       existingIdentity: null,
       userByEmail: otherAccount,
-      credentials: { userId: "user-other2", passwordHash: "hash" },
     });
 
     const result = await fakes.service.signIn({ ...basePayload, role: "passenger" });
 
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("AUTH_APPLE_ACCOUNT_LINKING_REQUIRED");
+    if (!result.ok) expect(result.code).toBe("AUTH_ACCOUNT_SUSPENDED");
     expect(fakes.mockExchange).not.toHaveBeenCalled();
   });
 
