@@ -28,7 +28,6 @@ import type {
   AppleWebCompleteInput,
 } from "./appleWeb.types.js";
 import type { AuthUser } from "./auth.types.js";
-import { AuthCredentialsRepository } from "./authCredentials.repository.js";
 import { SessionService } from "./session.service.js";
 import { TokenService } from "./token.service.js";
 import { buildLegalAcceptanceEvidence } from "../legal/legalEvidence.js";
@@ -302,7 +301,6 @@ export class AppleAuthService {
     private readonly tokenExchangeClient = new AppleTokenExchangeClient(),
     private readonly tokenService = new TokenService(),
     private readonly sessionService = new SessionService(),
-    private readonly credentialsRepository = new AuthCredentialsRepository(),
   ) {}
 
   private async issueSession(user: User): Promise<{
@@ -1151,9 +1149,8 @@ export class AppleAuthService {
 
   /**
    * Si Apple entrega un correo verificado (no Hide My Email) que ya pertenece
-   * a una cuenta RAPA GO —p. ej. creada con Google—, vincula Apple a esa
-   * misma cuenta. Sin contraseña local se entra directo, igual que Google.
-   * Con contraseña se pide ingresar con el método actual (409).
+   * a una cuenta RAPA GO —p. ej. creada con Google—, vincula Apple y entra
+   * a esa misma cuenta. Apple ya demostró la posesión del correo.
    */
   private async tryLinkExistingVerifiedEmailAccount(
     identityClaims: VerifiedAppleClaims,
@@ -1204,23 +1201,6 @@ export class AppleAuthService {
       };
     }
 
-    if (!emailOwner.isVerified) {
-      this.auditService.recordSafe({
-        eventType: "auth.apple.login.conflict",
-        entityType: "user",
-        entityId: emailOwner.id,
-        metadata: { reason: "email_owner_not_verified" },
-      });
-
-      return {
-        ok: false,
-        code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
-        message:
-          "Ya existe una cuenta RAPA GO con este correo. Ingresa con Google o tu método actual y luego vincula Apple.",
-        statusCode: 409,
-      };
-    }
-
     const alreadyLinked =
       await this.identitiesRepository.findByUserAndProvider(
         emailOwner.id,
@@ -1244,26 +1224,6 @@ export class AppleAuthService {
         alreadyLinked.id,
         options,
       );
-    }
-
-    const credentials =
-      await this.credentialsRepository.findByUserId(emailOwner.id);
-
-    if (credentials) {
-      this.auditService.recordSafe({
-        eventType: "auth.apple.login.conflict",
-        entityType: "user",
-        entityId: emailOwner.id,
-        metadata: { reason: "email_taken_password_confirmation_required" },
-      });
-
-      return {
-        ok: false,
-        code: "AUTH_APPLE_ACCOUNT_LINKING_REQUIRED",
-        message:
-          "Ya existe una cuenta RAPA GO con este correo. Ingresa con Google o tu correo y contraseña; después puedes vincular Apple en tu perfil.",
-        statusCode: 409,
-      };
     }
 
     const attached =
@@ -1308,7 +1268,7 @@ export class AppleAuthService {
       entityType: "user",
       entityId: emailOwner.id,
       actorUserId: emailOwner.id,
-      metadata: { method: "verified_email_without_local_password" },
+      metadata: { method: "verified_email_match" },
     });
 
     return this.finishExistingAppleSession(
