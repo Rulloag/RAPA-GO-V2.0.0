@@ -1986,7 +1986,7 @@ const RAPA_NUI_PLACE_HINTS: readonly RapaNuiPlaceHint[] = [
   },
   {
     query: "Ahu Tahai",
-    keywords: ["ahu tahai"],
+    keywords: ["tahai", "ahu tahai"],
   },
   {
     query: "Hotel Taha Tai",
@@ -12475,7 +12475,7 @@ export default function RequestRidePage(): JSX.Element {
                         <button
                           type="button"
                           className="rq-field__map"
-                          aria-label="Elegir destino en el mapa"
+                          aria-label="Elegir el destino en el mapa"
                           onClick={() => openRouteFieldPicker("destination")}>
                           <IonIcon icon={mapOutline} aria-hidden="true" />
                         </button>

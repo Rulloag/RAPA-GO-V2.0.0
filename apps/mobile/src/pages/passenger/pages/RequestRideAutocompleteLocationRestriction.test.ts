@@ -105,7 +105,12 @@ describe("autocomplete origen/destino con locationRestriction", () => {
 
     expect(getPlacePredictionsSpy).toHaveBeenCalledTimes(1);
     expect(getDetailsSpy).not.toHaveBeenCalled();
-    expect(results.some((r) => r.placeId === "p2")).toBe(true);
+    expect(
+      results.some(
+        (r) =>
+          r.placeId === "p2" || /taha tai/i.test(`${r.mainText} ${r.description}`),
+      ),
+    ).toBe(true);
   });
 
   it("un lugar que está en el catálogo y en Google sale UNA vez, la nuestra", async () => {

@@ -575,5 +575,11 @@ export function isLodgingPlace(place: RapaNuiLocalPlace): boolean {
  */
 export function mustResolvePlaceViaGoogle(place: RapaNuiLocalPlace): boolean {
   if (isRapaNuiMainStreet(place)) return false;
+  const types = new Set(place.placeTypes ?? []);
+  /* Civic POIs tienen coords OSM verificadas. Hoteles/cabañas/locales
+     siguen yendo a Google para no pintar pines inventados. */
+  if (types.has("airport") || types.has("police") || types.has("hospital")) {
+    return false;
+  }
   return true;
 }

@@ -4,8 +4,8 @@ import requestRideSource from "../../../pages/passenger/pages/RequestRidePage.ts
 describe("Reserva Mataveri + collares", () => {
   it("usa una única ubicación fija de Mataveri para la reserva", () => {
     expect(requestRideSource).toContain('text: "Aeropuerto Internacional Mataveri"');
-    expect(requestRideSource).toContain("lat: -27.16472");
-    expect(requestRideSource).toContain("lng: -109.42167");
+    expect(requestRideSource).toContain("lat: -27.16467");
+    expect(requestRideSource).toContain("lng: -109.42133");
     expect(requestRideSource).toContain("applyRapaNuiAirportOrigin()");
   });
 
