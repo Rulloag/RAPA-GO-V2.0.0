@@ -59,8 +59,8 @@ export function formatLeadTimeLabel(leadMs: number): string {
 }
 
 export function evaluateAirportFlowerLei(input: {
-  airportWelcomeOption?: "none" | "flower_lei" | null;
-  flowerLeiQuantity?: number | null;
+  airportWelcomeOption?: "none" | "flower_lei" | null | undefined;
+  flowerLeiQuantity?: number | null | undefined;
   originText?: string | null;
   isScheduled?: boolean;
   tripFareMode?: "one_way" | "round_trip" | null;

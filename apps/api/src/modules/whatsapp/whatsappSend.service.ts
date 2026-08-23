@@ -32,8 +32,8 @@ export async function sendWhatsAppText(input: {
 
   if (!env.whatsapp.enabled) {
     const queued = await waRepo.createMessage({
-      userId: input.userId,
-      rideId: input.rideId,
+      ...(input.userId !== undefined ? { userId: input.userId } : {}),
+      ...(input.rideId !== undefined ? { rideId: input.rideId } : {}),
       phoneE164: to,
       direction: "outgoing",
       messageType: "text",
@@ -73,8 +73,8 @@ export async function sendWhatsAppText(input: {
         payload.error?.message ?? `HTTP ${response.status}`;
       const errorCode = String(payload.error?.code ?? response.status);
       await waRepo.createMessage({
-        userId: input.userId,
-        rideId: input.rideId,
+        ...(input.userId !== undefined ? { userId: input.userId } : {}),
+        ...(input.rideId !== undefined ? { rideId: input.rideId } : {}),
         phoneE164: to,
         direction: "outgoing",
         messageType: "text",
@@ -92,12 +92,12 @@ export async function sendWhatsAppText(input: {
 
     const providerMessageId = payload.messages?.[0]?.id ?? null;
     await waRepo.createMessage({
-      userId: input.userId,
-      rideId: input.rideId,
+      ...(input.userId !== undefined ? { userId: input.userId } : {}),
+      ...(input.rideId !== undefined ? { rideId: input.rideId } : {}),
       phoneE164: to,
       direction: "outgoing",
       messageType: "text",
-      providerMessageId: providerMessageId ?? undefined,
+      ...(providerMessageId != null ? { providerMessageId } : {}),
       bodyPreview: preview,
       status: "sent",
       payloadJson: payload,
@@ -105,12 +105,12 @@ export async function sendWhatsAppText(input: {
     console.info(
       `[WHATSAPP] notification_sent reservationId=${input.rideId ?? "n/a"}`,
     );
-    return { ok: true, providerMessageId: providerMessageId ?? undefined };
+    return providerMessageId != null ? { ok: true, providerMessageId } : { ok: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await waRepo.createMessage({
-      userId: input.userId,
-      rideId: input.rideId,
+      ...(input.userId !== undefined ? { userId: input.userId } : {}),
+      ...(input.rideId !== undefined ? { rideId: input.rideId } : {}),
       phoneE164: to,
       direction: "outgoing",
       messageType: "text",

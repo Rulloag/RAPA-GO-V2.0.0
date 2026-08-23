@@ -390,9 +390,9 @@ function getAirportFlowerLeiPricing(
   scheduleMeta: ScheduleMeta | null,
 ): AirportFlowerLeiPricing {
   const evaluation = evaluateAirportFlowerLei({
-    airportWelcomeOption: input.airportWelcomeOption,
-    flowerLeiQuantity: input.flowerLeiQuantity,
-    originText: input.originText,
+    ...(input.airportWelcomeOption !== undefined ? { airportWelcomeOption: input.airportWelcomeOption } : {}),
+    ...(input.flowerLeiQuantity !== undefined ? { flowerLeiQuantity: input.flowerLeiQuantity } : {}),
+    ...(input.originText !== undefined ? { originText: input.originText } : {}),
     isScheduled: Boolean(scheduleMeta?.isScheduled),
     tripFareMode: scheduleMeta?.tripFareMode ?? input.tripFareMode ?? "one_way",
     scheduledAt:
@@ -1364,7 +1364,7 @@ export class RidesService {
             requestedVehicleCategory: requestedCategory,
             scheduledAt: lei.scheduledAt,
             leadMs: lei.leadMs,
-            originText: input.originText,
+            originText: input.originText ?? "",
             destinationText: input.destinationText,
           });
         })(),
