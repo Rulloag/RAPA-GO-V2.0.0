@@ -1966,23 +1966,54 @@ function getPassengerCancelledTimestampMs(
   ]);
 }
 
-function isPassengerCancelledRideVisibleForTenMinutes(
+function getPassengerCompletedTimestampMs(
   ride: Partial<RideRequestData> & Record<string, unknown>,
+): number | null {
+  return getPassengerRideTimestampMs(ride, [
+    "completedAt",
+    "completed_at",
+    "droppedOffAt",
+    "updatedAt",
+    "requestedAt",
+    "createdAt",
+  ]);
+}
+
+function isPassengerRideWithinTenMinuteWindow(
+  timestampMs: number | null,
   nowMs = Date.now(),
 ): boolean {
-  const cancelledAtMs = getPassengerCancelledTimestampMs(ride);
-
-  if (cancelledAtMs == null) {
+  if (timestampMs == null) {
     // Registros antiguos sin fecha no deben llenar indefinidamente el contador.
     return false;
   }
 
-  if (cancelledAtMs > nowMs) {
+  if (timestampMs > nowMs) {
     // Tolerancia a pequeños desfases del reloj del dispositivo/servidor.
     return true;
   }
 
-  return nowMs - cancelledAtMs < PASSENGER_CANCELLED_VISIBILITY_MS;
+  return nowMs - timestampMs < PASSENGER_CANCELLED_VISIBILITY_MS;
+}
+
+function isPassengerCancelledRideVisibleForTenMinutes(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): boolean {
+  return isPassengerRideWithinTenMinuteWindow(
+    getPassengerCancelledTimestampMs(ride),
+    nowMs,
+  );
+}
+
+function isPassengerCompletedRideVisibleForTenMinutes(
+  ride: Partial<RideRequestData> & Record<string, unknown>,
+  nowMs = Date.now(),
+): boolean {
+  return isPassengerRideWithinTenMinuteWindow(
+    getPassengerCompletedTimestampMs(ride),
+    nowMs,
+  );
 }
 
 function getDriverRequeueSearchStartedAtIso(
@@ -9760,7 +9791,7 @@ export default function TripsPage(): JSX.Element {
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError,      setRatingError]      = useState<string | null>(null);
   const [ratedIds,         setRatedIds]         = useState<Set<string>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed" | "cancelled">("active");
+  const [statusFilter, setStatusFilter] = useState<"active" | "completed" | "cancelled">("active");
   const [cancelledVisibilityNowMs, setCancelledVisibilityNowMs] = useState(() => Date.now());
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
   const [passengerNotice, setPassengerNotice] = useState<PassengerNotificationPayload | null>(() =>
@@ -10463,7 +10494,7 @@ export default function TripsPage(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    // Regla operativa: una cancelación queda visible solo 10 minutos.
+    // Regla operativa: cancelados y completados quedan visibles 10 minutos.
     // No borramos el viaje del backend ni de la BD; únicamente se limpia
     // automáticamente de "Mis Viajes" y de sus contadores operativos.
     const updateClock = (): void => {
@@ -10484,24 +10515,32 @@ export default function TripsPage(): JSX.Element {
   const ridesVisibleInTrips = allRides.filter((ride) => {
     const effectiveStatus =
       getPassengerNoShowCompletedEffectiveStatus(ride);
+    const record = ride as RideRequestData & Record<string, unknown>;
 
-    return (
-      effectiveStatus !== "cancelled" ||
-      isPassengerCancelledRideVisibleForTenMinutes(
-        ride as RideRequestData & Record<string, unknown>,
+    if (effectiveStatus === "cancelled") {
+      return isPassengerCancelledRideVisibleForTenMinutes(
+        record,
         cancelledVisibilityNowMs,
-      )
-    );
+      );
+    }
+
+    if (effectiveStatus === "completed") {
+      return isPassengerCompletedRideVisibleForTenMinutes(
+        record,
+        cancelledVisibilityNowMs,
+      );
+    }
+
+    return true;
   });
 
   const filteredBeforePagination = ridesVisibleInTrips.filter((r) => {
     const effectiveStatus = getPassengerNoShowCompletedEffectiveStatus(r);
 
-    if (statusFilter === "all")       return true;
     if (statusFilter === "active")    return ACTIVE_STATUSES.includes(effectiveStatus);
     if (statusFilter === "completed") return effectiveStatus === "completed";
     if (statusFilter === "cancelled") return effectiveStatus === "cancelled";
-    return true;
+    return false;
   });
 
   const filtered = filteredBeforePagination.slice(0, page * PAGE_SIZE);
@@ -10749,7 +10788,6 @@ export default function TripsPage(): JSX.Element {
   }
 
   const counts = {
-    all:       ridesVisibleInTrips.length,
     active:    ridesVisibleInTrips.filter((r) => ACTIVE_STATUSES.includes(getPassengerNoShowCompletedEffectiveStatus(r))).length,
     completed: ridesVisibleInTrips.filter((r) => getPassengerNoShowCompletedEffectiveStatus(r) === "completed").length,
     cancelled: ridesVisibleInTrips.filter((r) => getPassengerNoShowCompletedEffectiveStatus(r) === "cancelled").length,
@@ -10987,15 +11025,15 @@ export default function TripsPage(): JSX.Element {
             aria-label="Filtrar viajes por estado"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: "8px",
               padding: "0 12px 10px",
               width: "100%",
               boxSizing: "border-box",
             }}
           >
-            {(["all", "active", "completed", "cancelled"] as const).map((f) => {
-              const labels = { all: "Todos", active: "Activos", completed: "Completados", cancelled: "Cancelados" };
+            {(["active", "completed", "cancelled"] as const).map((f) => {
+              const labels = { active: "Activos", completed: "Completados", cancelled: "Cancelados" };
               const active = statusFilter === f;
               return (
                 /* IonChip no es focalizable ni accionable por teclado por sí

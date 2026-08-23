@@ -57,7 +57,7 @@ describe("Google existing-account linking and cancelled cleanup", () => {
       "const ridesVisibleInTrips = allRides.filter",
     );
     expect(tripsSource).toContain(
-      "all:       ridesVisibleInTrips.length",
+      "isPassengerCompletedRideVisibleForTenMinutes",
     );
     expect(tripsSource).toContain(
       "El historial permanente sigue guardado en backend/BD",
