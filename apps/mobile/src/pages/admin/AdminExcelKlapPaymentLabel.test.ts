@@ -1,12 +1,5 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-
-const source = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "index.tsx"),
-  "utf8",
-);
+import source from "./index.tsx?raw";
 
 describe("Admin Excel — método de pago Klap", () => {
   it("etiqueta tarjeta como Klap, no Mercado Pago ni ProntoPaga", () => {
