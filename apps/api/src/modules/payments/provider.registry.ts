@@ -11,9 +11,11 @@ const providers: Record<string, PaymentProvider> = {
 const klapProvider = new KlapProvider();
 
 /**
- * Proveedor Klap alojado. Se mantiene fuera de PAYMENT_PROVIDER para no cambiar
- * los flujos históricos de Mercado Pago/ProntoPaga; la ruta dedicada de Klap lo
- * obtiene explícitamente.
+ * Proveedor Klap alojado.
+ *
+ * La ruta dedicada de Klap continúa obteniéndolo explícitamente mediante
+ * getKlapProvider(). getProvider("klap") también lo expone para flujos
+ * genéricos controlados, como RapaGo más veloz.
  */
 export function getKlapProvider(): KlapProvider {
   return klapProvider;
@@ -24,6 +26,7 @@ export const getKlapEmbeddedProvider = getKlapProvider;
 
 /** Return a provider by name. Throws if unknown. */
 export function getProvider(name: string): PaymentProvider {
+  if (name === "klap") return klapProvider;
   const provider = providers[name];
   if (!provider) throw new Error(`Unknown payment provider: "${name}"`);
   return provider;
