@@ -56,6 +56,12 @@ type AppleRequestMetadata = {
   requestId?: string;
 };
 
+type AppleLinkExistingOptions = {
+  payload?: AppleAuthRequest | undefined;
+  encryptedRefreshToken?: string | undefined;
+  requestId?: string | undefined;
+};
+
 /**
  * Safe diagnostic log for the Apple sign-in pipeline: correlation id + stage
  * + booleans/codes only. Never logs authorizationCode, identityToken, the
@@ -1151,11 +1157,7 @@ export class AppleAuthService {
    */
   private async tryLinkExistingVerifiedEmailAccount(
     identityClaims: VerifiedAppleClaims,
-    options: {
-      payload?: AppleAuthRequest;
-      encryptedRefreshToken?: string;
-      requestId?: string;
-    },
+    options: AppleLinkExistingOptions,
   ): Promise<AppleAuthResult | null> {
     const email = identityClaims.email?.toLowerCase().trim();
 
@@ -1321,11 +1323,7 @@ export class AppleAuthService {
     identityClaims: VerifiedAppleClaims,
     userId: string,
     identityId: string,
-    options: {
-      payload?: AppleAuthRequest;
-      encryptedRefreshToken?: string;
-      requestId?: string;
-    },
+    options: AppleLinkExistingOptions,
   ): Promise<AppleAuthResult> {
     if (options.payload) {
       return this.signInExisting(
