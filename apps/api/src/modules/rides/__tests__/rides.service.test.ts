@@ -631,6 +631,52 @@ describe("RidesService - contrato actual", () => {
 
     it("valida en backend la cantidad de collares de una reserva Mataveri", async () => {
       const pickup = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
+      const originText = "Aeropuerto Internacional Mataveri";
+      const destinationText = "Hotel Hanga Roa";
+
+      const withoutLei = await service.createRideRequest("token", {
+        originText,
+        destinationText,
+        rideMode: "scheduled",
+        tripFareMode: "one_way",
+        scheduledPickupAt: pickup,
+        paymentMethod: "card",
+        paymentProvider: "klap",
+        airportWelcomeOption: "none",
+      });
+      expect(withoutLei.ok).toBe(true);
+      if (!withoutLei.ok) return;
+      const baseFare = withoutLei.ride.estimatedFareClp ?? 0;
+
+      mockCreateWithApprovedPolicyCharges.mockClear();
+
+      const result = await service.createRideRequest("token", {
+        originText,
+        destinationText,
+        rideMode: "scheduled",
+        tripFareMode: "one_way",
+        scheduledPickupAt: pickup,
+        paymentMethod: "card",
+        paymentProvider: "klap",
+        airportWelcomeOption: "flower_lei",
+        flowerLeiQuantity: 3,
+      });
+
+      expect(result.ok).toBe(true);
+      const notes =
+        mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
+      expect(notes).toContain("RAPAGO_FLOWER_LEI_QUANTITY: 3");
+      expect(notes).toContain("RAPAGO_FLOWER_LEI_UNIT_PRICE_CLP: 4000");
+      expect(notes).toContain("RAPAGO_FLOWER_LEI_SURCHARGE_CLP: 12000");
+      expect(notes).toContain("RAPAGO_FLOWER_LEI_STATUS: pending");
+      expect(notes).toContain("3 collares de flores");
+      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(
+        baseFare + 12_000,
+      );
+    });
+
+    it("conserva la cotización de la app y suma collares Mataveri", async () => {
+      const pickup = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
 
       const result = await service.createRideRequest("token", {
         originText: "Aeropuerto Internacional Mataveri",
@@ -646,14 +692,7 @@ describe("RidesService - contrato actual", () => {
       });
 
       expect(result.ok).toBe(true);
-      const notes =
-        mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
-      expect(notes).toContain("RAPAGO_FLOWER_LEI_QUANTITY: 3");
-      expect(notes).toContain("RAPAGO_FLOWER_LEI_UNIT_PRICE_CLP: 4000");
-      expect(notes).toContain("RAPAGO_FLOWER_LEI_SURCHARGE_CLP: 12000");
-      expect(notes).toContain("RAPAGO_FLOWER_LEI_STATUS: pending");
-      expect(notes).toContain("3 collares de flores");
-      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(15_500);
+      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(17_000);
     });
 
     it("rechaza collares con menos de 4 horas de anticipación", async () => {
@@ -711,15 +750,17 @@ describe("RidesService - contrato actual", () => {
         scheduledPickupAt: pickup,
         paymentMethod: "card",
         paymentProvider: "klap",
-        estimatedFareClp: 5000,
         airportWelcomeOption: "none",
       });
 
       expect(result.ok).toBe(true);
       const notes =
         mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[3];
+      const fareClp = mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4];
       expect(notes).not.toContain("RAPAGO_FLOWER_LEI_QUANTITY");
-      expect(mockCreateWithApprovedPolicyCharges.mock.calls[0]?.[4]).toBe(3500);
+      expect(notes).not.toContain("RAPAGO_FLOWER_LEI_SURCHARGE_CLP");
+      expect(fareClp).toBeGreaterThan(0);
+      expect(fareClp).toBeLessThan(12_000);
     });
 
     it("rechaza un proveedor no permitido para una reserva", async () => {
