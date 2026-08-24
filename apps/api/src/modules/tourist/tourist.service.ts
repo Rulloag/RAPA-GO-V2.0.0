@@ -27,6 +27,13 @@ async function authenticate(accessToken: string): Promise<AuthResult> {
   try {
     payload = tokenService.verifyAccessToken(accessToken);
   } catch (err) {
+    console.warn(
+      JSON.stringify({
+        scope: "TOURIST",
+        event: "authenticate.token_rejected",
+        errorKind: err instanceof AppError ? err.code : "UNAUTHORIZED",
+      }),
+    );
     if (err instanceof AppError) {
       return { ok: false, code: err.code, message: err.message, statusCode: err.statusCode };
     }

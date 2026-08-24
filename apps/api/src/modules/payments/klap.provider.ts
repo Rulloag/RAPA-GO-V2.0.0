@@ -137,6 +137,53 @@ export function isKlapCaptureExecutionEnabled(): boolean {
   );
 }
 
+export type KlapEnvPresence =
+  | "DEFINED"
+  | "MISSING"
+  | "SANDBOX"
+  | "PRODUCTION";
+
+function presence(value: string | undefined): "DEFINED" | "MISSING" {
+  return String(value ?? "").trim() ? "DEFINED" : "MISSING";
+}
+
+/** Reports KLAP env keys without printing secrets. */
+export function inspectKlapEnvPresence(): Record<string, KlapEnvPresence> {
+  const environment = String(process.env["KLAP_ENVIRONMENT"] ?? "")
+    .trim()
+    .toLowerCase();
+
+  return {
+    KLAP_ENVIRONMENT:
+      environment === "sandbox"
+        ? "SANDBOX"
+        : environment === "production"
+          ? "PRODUCTION"
+          : "MISSING",
+    KLAP_API_KEY: presence(process.env["KLAP_API_KEY"]),
+    KLAP_SANDBOX_ORDERS_URL: presence(process.env["KLAP_SANDBOX_ORDERS_URL"]),
+    KLAP_PRODUCTION_ORDERS_URL: presence(
+      process.env["KLAP_PRODUCTION_ORDERS_URL"],
+    ),
+    KLAP_DEFERRED_CAPTURE_ENABLED: presence(
+      process.env["KLAP_DEFERRED_CAPTURE_ENABLED"],
+    ),
+    KLAP_CAPTURE_CONTRACT_CONFIRMED: presence(
+      process.env["KLAP_CAPTURE_CONTRACT_CONFIRMED"],
+    ),
+    KLAP_CAPTURE_DISCOVERY_MODE: presence(
+      process.env["KLAP_CAPTURE_DISCOVERY_MODE"],
+    ),
+    KLAP_WEBHOOK_CONFIRM_URL: presence(process.env["KLAP_WEBHOOK_CONFIRM_URL"]),
+    KLAP_WEBHOOK_REJECT_URL: presence(process.env["KLAP_WEBHOOK_REJECT_URL"]),
+  };
+}
+
+export function isRemoteKlapCapturedStatus(status: unknown): boolean {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "captured" || normalized === "paid";
+}
+
 function parseCaptureSuccessStatuses(value: string | undefined): string[] {
   return Array.from(
     new Set(

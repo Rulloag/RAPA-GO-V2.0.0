@@ -1,4 +1,5 @@
 import type { UserRole } from "@rapa-go/shared";
+import { normalizeRut, validateRut } from "@rapa-go/shared";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
@@ -159,32 +160,11 @@ function requiresPassportForFareType(value: ApplePassengerFareType): boolean {
 }
 
 function normalizeAppleRut(value: string | undefined): string {
-  return String(value ?? "")
-    .replace(/\./g, "")
-    .replace(/-/g, "")
-    .trim()
-    .toUpperCase();
+  return normalizeRut(value);
 }
 
 function isValidAppleRut(value: string): boolean {
-  if (!/^\d{7,8}[0-9K]$/.test(value)) return false;
-
-  const body = value.slice(0, -1);
-  const dv = value.slice(-1);
-
-  let sum = 0;
-  let multiplier = 2;
-
-  for (let i = body.length - 1; i >= 0; i -= 1) {
-    sum += Number(body[i]) * multiplier;
-    multiplier = multiplier === 7 ? 2 : multiplier + 1;
-  }
-
-  const expectedNumber = 11 - (sum % 11);
-  const expectedDv =
-    expectedNumber === 11 ? "0" : expectedNumber === 10 ? "K" : String(expectedNumber);
-
-  return dv === expectedDv;
+  return validateRut(value);
 }
 
 function normalizeApplePassport(value: string | undefined): string {
