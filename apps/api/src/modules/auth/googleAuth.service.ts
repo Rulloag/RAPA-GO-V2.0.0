@@ -1,4 +1,5 @@
 import type { UserRole } from "@rapa-go/shared";
+import { normalizeRut, validateRut } from "@rapa-go/shared";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "../../db/client.js";
@@ -91,36 +92,8 @@ function normalizeFareType(
     : null;
 }
 
-function normalizeRut(value: string | undefined): string {
-  return String(value ?? "")
-    .replace(/\./g, "")
-    .replace(/-/g, "")
-    .trim()
-    .toUpperCase();
-}
-
 function isValidRut(value: string): boolean {
-  if (!/^\d{7,8}[0-9K]$/.test(value)) return false;
-
-  const body = value.slice(0, -1);
-  const dv = value.slice(-1);
-  let sum = 0;
-  let multiplier = 2;
-
-  for (let index = body.length - 1; index >= 0; index -= 1) {
-    sum += Number(body[index]) * multiplier;
-    multiplier = multiplier === 7 ? 2 : multiplier + 1;
-  }
-
-  const expectedNumber = 11 - (sum % 11);
-  const expectedDv =
-    expectedNumber === 11
-      ? "0"
-      : expectedNumber === 10
-        ? "K"
-        : String(expectedNumber);
-
-  return dv === expectedDv;
+  return validateRut(value);
 }
 
 function normalizePassport(value: string | undefined): string {

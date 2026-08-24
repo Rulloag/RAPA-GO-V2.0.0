@@ -38,6 +38,9 @@
     type VehicleCategory,
     vehicleCategoryDisplay,
     vehicleCategoryLabel,
+    formatRut,
+    normalizeRut,
+    validateRut,
   } from "@rapa-go/shared";
 
   // Qué falta en cada etapa de la inscripción de conductor. El botón de avance
@@ -100,10 +103,6 @@
   function getSelectedFile(event: Event): File | null {
     const input = event.target as HTMLInputElement;
     return input.files?.[0] ?? null;
-  }
-
-  function normalizeRut(value: string): string {
-    return formatRut(value);
   }
 
   function isEmailValid(value: string): boolean {
@@ -169,30 +168,6 @@ function cleanPhone(value: string): string {
   return digits;
 }
 
-function cleanRut(value: string): string {
-  return onlyNumbers(value, 9);
-}
-
-function formatRut(value: string): string {
-  const clean = cleanRut(value);
-  if (clean.length <= 1) return clean;
-
-  const body = clean.slice(0, -1);
-  const dv = clean.slice(-1);
-
-  const grouped =
-    body
-      .split("")
-      .reverse()
-      .join("")
-      .match(/.{1,3}/g)
-      ?.map((part) => part.split("").reverse().join(""))
-      .reverse()
-      .join(".") ?? body;
-
-  return `${grouped}-${dv}`;
-}
-
 function cleanNumber(value: string, maxLength = 3): string {
   return onlyNumbers(value, maxLength);
 }
@@ -238,8 +213,7 @@ function isPhoneValid(value: string): boolean {
 }
 
 function isRutValid(value: string): boolean {
-  const digits = cleanRut(value);
-  return digits.length >= 8 && digits.length <= 9;
+  return validateRut(value);
 }
 
 function normalizeLicenseNumber(value: string): string {
@@ -1664,7 +1638,14 @@ function makeApplicationStyles() {
           setLastName(locked.lastName);
           setEmail(locked.email);
           setPhone(cleanPhone(locked.phone));
-          setRut(formatRut(locked.rut));
+          if (locked.rut && !validateRut(locked.rut)) {
+            setRut(formatRut(locked.rut) || String(locked.rut));
+            setIdentityError(
+              "El RUT registrado en tu cuenta no es válido. Solicita la corrección mediante soporte. No se corrige automáticamente.",
+            );
+          } else {
+            setRut(formatRut(locked.rut));
+          }
           setBirthDate((current) => current || locked.birthDate);
 
           if (
@@ -1672,10 +1653,14 @@ function makeApplicationStyles() {
             !locked.lastName ||
             !locked.email ||
             !cleanPhone(locked.phone) ||
-            !formatRut(locked.rut)
+            !locked.rut
           ) {
             setIdentityError(
               "Tu cuenta no tiene completos el nombre, apellido, correo, teléfono o RUT. Solicita la corrección mediante soporte.",
+            );
+          } else if (locked.rut && !validateRut(locked.rut)) {
+            setIdentityError(
+              "El RUT registrado en tu cuenta no es válido. Solicita la corrección mediante soporte. No se corrige automáticamente.",
             );
           }
         })
@@ -1906,7 +1891,7 @@ function makeApplicationStyles() {
         const cleanLastName = lastName.trim();
         const cleanEmail = email.trim().toLowerCase();
         const cleanPhoneValue = cleanPhone(phone);
-        const cleanRutValue = formatRut(rut);
+        const cleanRutValue = normalizeRut(rut) || formatRut(rut);
         const cleanLicenseNumber = normalizeLicenseNumber(licenseNumber);
 
         persistApplicationAutofill({
@@ -3392,7 +3377,14 @@ function makeApplicationStyles() {
 
               <IonItem style={styles.itemStyle}>
                 <IonLabel position="stacked" style={styles.labelStyle}>RUT *</IonLabel>
-                <IonInput style={styles.inputStyle} value={rut} onIonInput={(e) => setRut(String(e.detail.value ?? "").toUpperCase())} placeholder="12.345.678-9" />
+                <IonInput
+                  style={styles.inputStyle}
+                  value={rut}
+                  onIonInput={(e) => setRut(formatRut(String(e.detail.value ?? "")))}
+                  placeholder="12.345.678-K"
+                  inputmode="text"
+                  maxlength={16}
+                />
               </IonItem>
 
               <IonItem style={styles.itemStyle}>

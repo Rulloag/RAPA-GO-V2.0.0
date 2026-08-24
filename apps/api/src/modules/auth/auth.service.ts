@@ -20,6 +20,7 @@ import { MailService } from "./mail.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import type { UserRole } from "@rapa-go/shared";
+import { normalizeRut, validateRut } from "@rapa-go/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
@@ -119,10 +120,7 @@ type FacebookResidentPrecheckResult =
     };
 
 function normalizeResidentRut(value: unknown): string {
-  return String(value ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^0-9K]/g, "");
+  return normalizeRut(value);
 }
 
 function stripResidentDocumentMetadata(value: string): string {
@@ -740,7 +738,12 @@ export class AuthService {
         await tx.insert(passengerProfiles).values({
           userId: createdUser.id,
           phone: payload.phone ?? null,
-          rut: payload.rut?.trim() || null,
+          rut:
+            requestedFareType === "foreigner"
+              ? payload.passport?.trim() || payload.rut?.trim() || null
+              : payload.rut && validateRut(payload.rut)
+                ? normalizeRut(payload.rut)
+                : payload.rut?.trim() || null,
           requestedFareType,
           effectiveFareType,
           residenceVerificationStatus: verificationStatus,

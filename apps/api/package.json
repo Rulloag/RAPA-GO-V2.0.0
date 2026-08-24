@@ -13,6 +13,9 @@
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "dev": "tsx watch src/server.ts",
     "build": "npm run clean && tsc -p tsconfig.json",
+    "pretypecheck": "npm run build -w @rapa-go/shared",
+    "pretest": "npm run build -w @rapa-go/shared",
+    "prebuild": "npm run build -w @rapa-go/shared",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src --ext .ts",
     "start": "node dist/server.js",
@@ -37,7 +40,8 @@
     "jsonwebtoken": "9.0.3",
     "nodemailer": "6.9.16",
     "postgres": "3.4.9",
-    "zod": "3.23.8"
+    "zod": "3.23.8",
+    "@rapa-go/shared": "2.0.0"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "9.0.10",

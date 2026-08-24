@@ -42,6 +42,7 @@ import { PasswordResetService } from "./passwordReset.service.js";
 import { AppleAuthService } from "./appleAuth.service.js";
 import { GoogleAuthService } from "./googleAuth.service.js";
 import { getGoogleAuthConfig } from "./googleAuth.config.js";
+import { env } from "../../config/env.js";
 
 const authService = new AuthService();
 const passwordResetService = new PasswordResetService();
@@ -64,33 +65,7 @@ function getRequiredEnv(name: string): string {
 }
 
 function getFrontendUrl(): string {
-  const configured = process.env["FRONTEND_URL"]?.trim();
-  const fallback =
-    process.env["NODE_ENV"] === "production"
-      ? ""
-      : "http://localhost:5173";
-  const raw = configured || fallback;
-
-  if (!raw) {
-    throw new Error(
-      "Missing environment variable: FRONTEND_URL",
-    );
-  }
-
-  const parsed = new URL(raw);
-
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("FRONTEND_URL must use http or https.");
-  }
-
-  if (
-    process.env["NODE_ENV"] === "production" &&
-    parsed.protocol !== "https:"
-  ) {
-    throw new Error("FRONTEND_URL must use HTTPS in production.");
-  }
-
-  return parsed.origin;
+  return env.frontendUrl;
 }
 
 type FacebookPassengerFareType = "resident" | "chilean" | "foreigner";

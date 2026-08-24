@@ -1,3 +1,4 @@
+import { env } from "../../config/env.js";
 import {
   createHash,
   randomBytes,
@@ -55,16 +56,29 @@ function getRequestCooldownSeconds(): number {
   return Math.min(900, Math.max(30, Math.round(parsed)));
 }
 
-function getPasswordResetFrontendUrl(token: string): string {
+export function getPasswordResetFrontendUrl(token: string): string {
   const configured =
     process.env["PASSWORD_RESET_FRONTEND_URL"]?.trim();
 
-  const base = configured
-    ? configured.replace(/\/$/, "")
-    : `${(
-        process.env["FRONTEND_URL"] ||
-        "http://localhost:5173"
-      ).replace(/\/$/, "")}/auth/reset-password`;
+  let base: string;
+  if (configured) {
+    base = configured.replace(/\/$/, "");
+  } else {
+    try {
+      base = `${env.frontendUrl}/auth/reset-password`;
+    } catch {
+      throw new Error("Missing environment variable: FRONTEND_URL");
+    }
+  }
+
+  if (
+    env.nodeEnv === "production" &&
+    /localhost|127\.0\.0\.1/i.test(base)
+  ) {
+    throw new Error(
+      "PASSWORD_RESET_FRONTEND_URL/FRONTEND_URL must not fall back to localhost in production.",
+    );
+  }
 
   const separator = base.includes("?") ? "&" : "?";
 
@@ -173,7 +187,18 @@ export class PasswordResetService {
             delivery: "email",
           },
         });
-      } catch {
+      } catch (deliveryError) {
+        console.warn(
+          JSON.stringify({
+            scope: "AUTH",
+            event: "password_reset.delivery_failed",
+            userId: user.id,
+            errorKind:
+              deliveryError instanceof Error
+                ? deliveryError.name
+                : "unknown",
+          }),
+        );
         // An undelivered token must never remain usable.
         await passwordResetRepository
           .revokeByTokenHash(tokenHash)

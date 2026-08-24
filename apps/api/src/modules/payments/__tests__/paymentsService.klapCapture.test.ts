@@ -138,16 +138,42 @@ describe("PaymentsService.captureAuthorizedKlapPayment", () => {
     expect(mockCaptureOrder).not.toHaveBeenCalled();
   });
 
-  it.each(["capture_pending", "capture_unknown", "capture_failed"])(
-    "does not send a second capture while status is %s",
-    async (status) => {
-      mockFindById.mockResolvedValue(paymentFixture({ status }));
-      const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID);
-      expect(result).toEqual({ ok: true, status });
-      expect(mockClaimCapture).not.toHaveBeenCalled();
-      expect(mockCaptureOrder).not.toHaveBeenCalled();
-    },
-  );
+  it("does not send a second capture while status is capture_pending", async () => {
+    mockFindById.mockResolvedValue(paymentFixture({ status: "capture_pending" }));
+    const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID);
+    expect(result).toEqual({ ok: true, status: "capture_pending" });
+    expect(mockClaimCapture).not.toHaveBeenCalled();
+    expect(mockCaptureOrder).not.toHaveBeenCalled();
+  });
+
+  it("reconciles capture_unknown via GET and never recaptures if already captured", async () => {
+    mockFindById.mockResolvedValue(paymentFixture({ status: "capture_unknown" }));
+    mockGetOrder.mockResolvedValue({
+      order_id: ORDER_ID,
+      status: "captured",
+    });
+    mockMarkCapturedSuccess.mockResolvedValue(undefined);
+
+    const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID);
+
+    expect(result).toEqual({ ok: true, status: "success" });
+    expect(mockGetOrder).toHaveBeenCalledWith(ORDER_ID);
+    expect(mockCaptureOrder).not.toHaveBeenCalled();
+    expect(mockMarkCapturedSuccess).toHaveBeenCalled();
+  });
+
+  it("does not recapture capture_failed; GET captured recovers without a new capture", async () => {
+    mockFindById.mockResolvedValue(paymentFixture({ status: "capture_failed" }));
+    mockGetOrder.mockResolvedValue({
+      order_id: ORDER_ID,
+      status: "captured",
+    });
+
+    const result = await service.captureAuthorizedKlapPayment(PAYMENT_ID);
+
+    expect(result).toEqual({ ok: true, status: "success" });
+    expect(mockCaptureOrder).not.toHaveBeenCalled();
+  });
 
   it("rejects a payment that was never authorized (pending/processing)", async () => {
     mockFindById.mockResolvedValue(paymentFixture({ status: "pending" }));

@@ -5,6 +5,9 @@ import {
   loginRequestSchema,
   registerRequestSchema,
   residenceAccreditationSchema,
+  chileanRutSchema,
+  validateRut,
+  normalizeRut,
 } from "@rapa-go/shared";
 
 export { loginRequestSchema, registerRequestSchema, authSessionSchema };
@@ -103,11 +106,7 @@ const facebookResidentEmailSchema = z
   .max(255)
   .transform((value) => value.toLowerCase());
 
-const facebookResidentRutSchema = z
-  .string()
-  .trim()
-  .min(8, "Ingresa un RUT válido.")
-  .max(20, "El RUT es demasiado largo.");
+const facebookResidentRutSchema = chileanRutSchema;
 
 export const facebookResidentPrecheckSchema = z.object({
   provider: z.enum(["facebook", "email"]).optional(),
@@ -192,12 +191,12 @@ export const facebookAccountSetupSchema = z
     if (
       (value.passengerFareType === "resident" ||
         value.passengerFareType === "chilean") &&
-      !value.rut?.trim()
+      !validateRut(value.rut)
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["rut"],
-        message: "Ingresa tu RUT para continuar.",
+        message: "Ingresa un RUT chileno válido.",
       });
     }
 
@@ -330,6 +329,14 @@ export const googleAuthRequestSchema = z
         code: z.ZodIssueCode.custom,
         path: ["rut"],
         message: "No debes enviar RUT y pasaporte al mismo tiempo.",
+      });
+    }
+
+    if (value.rut && !validateRut(value.rut)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rut"],
+        message: "Ingresa un RUT chileno válido.",
       });
     }
   });

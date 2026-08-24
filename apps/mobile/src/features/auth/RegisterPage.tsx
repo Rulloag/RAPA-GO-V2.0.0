@@ -29,6 +29,9 @@ import { useRapagoSectionTheme } from "../../theme/rapagoTheme.js";
 import { useHistory } from "react-router-dom";
 import {
   registerRequestSchema,
+  formatRut,
+  normalizeRut,
+  validateRut,
   type LegalAcceptanceInput,
 } from "@rapa-go/shared";
 import { useAuth } from "./useAuth.js";
@@ -147,35 +150,6 @@ function cleanPersonName(value: string): string {
 
 function onlyNumbers(value: string, maxLength: number): string {
   return value.replace(/\D/g, "").slice(0, maxLength);
-}
-
-function cleanRut(value: string): string {
-  return onlyNumbers(value, 9);
-}
-
-function formatRut(value: string): string {
-  const clean = cleanRut(value);
-
-  if (clean.length <= 1) return clean;
-
-  const body = clean.slice(0, -1);
-  const dv = clean.slice(-1);
-
-  const grouped =
-    body
-      .split("")
-      .reverse()
-      .join("")
-      .match(/.{1,3}/g)
-      ?.map((part) => part.split("").reverse().join(""))
-      .reverse()
-      .join(".") ?? body;
-
-  return `${grouped}-${dv}`;
-}
-
-function normalizeRut(value: string): string {
-  return formatRut(value);
 }
 
 function cleanPhone(value: string): string {
@@ -428,14 +402,6 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(new Error("No se pudo leer el documento."));
     reader.readAsDataURL(file);
   });
-}
-
-function validateRut(value: string): boolean {
-  const digits = cleanRut(value);
-
-  // Para no bloquear registros válidos con DV K, aquí solo exigimos números y largo correcto.
-  // Si después quieres validar DV exacto, se puede agregar en backend.
-  return digits.length >= 8 && digits.length <= 9;
 }
 
 function normalizePassportForRegister(value: unknown): string {
@@ -884,7 +850,7 @@ export function RegisterPage(): JSX.Element {
       if (!cleanRutValue) {
         nextErrors.rut = "Ingresa tu RUT.";
       } else if (!validateRut(cleanRutValue)) {
-        nextErrors.rut = "El RUT debe tener 8 o 9 números.";
+        nextErrors.rut = "Ingresa un RUT chileno válido. Incluye el dígito verificador (número o K).";
       }
     }
 
@@ -1039,7 +1005,16 @@ export function RegisterPage(): JSX.Element {
           return;
         }
 
-        setServerError(result.message ?? "No se pudo crear la cuenta. Inténtalo de nuevo.");
+        if (result.code === "VALIDATION_ERROR") {
+          setServerError("Revisa los datos del formulario. El RUT o el pasaporte no son válidos.");
+          return;
+        }
+
+        setServerError(
+          result.message?.trim()
+            ? result.message
+            : "No se pudo completar el registro. Inténtalo de nuevo.",
+        );
         return;
       }
 
@@ -1099,9 +1074,11 @@ export function RegisterPage(): JSX.Element {
       }
 
       setServerError(
-        error instanceof Error
-          ? error.message
-          : "Error de conexión. Verifica tu red e inténtalo de nuevo.",
+        error instanceof Error && /network|fetch|timeout|conexión|conexion/i.test(error.message)
+          ? "Error de conexión. Verifica tu red e inténtalo de nuevo."
+          : error instanceof Error && error.message
+            ? error.message
+            : "Error de conexión. Verifica tu red e inténtalo de nuevo.",
       );
     } finally {
       setLoading(false);
@@ -1310,18 +1287,26 @@ export function RegisterPage(): JSX.Element {
             <IonItem className={`rapago-auth-field ${fieldErrors.rut ? "ion-invalid" : ""}`} style={registerItemStyle}>
               <IonLabel position="stacked" style={labelStyle}>RUT *</IonLabel>
               <IonInput
-                type="tel"
+                type="text"
                 value={rut}
                 onIonInput={(event) => {
                   setRut(formatRut(String(event.detail.value ?? "")));
                   clearFieldError("rut");
                 }}
-                placeholder="123456789"
+                onIonBlur={() => {
+                  if (rut.trim() && !validateRut(rut)) {
+                    setFieldErrors((current) => ({
+                      ...current,
+                      rut: "Ingresa un RUT chileno válido. Incluye el dígito verificador (número o K).",
+                    }));
+                  }
+                }}
+                placeholder="12.345.678-K"
                 style={inputStyle}
                 autocomplete="off"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                maxlength={12}
+                inputmode="text"
+                enterkeyhint="next"
+                maxlength={16}
                 disabled={loading}
                 required
               />

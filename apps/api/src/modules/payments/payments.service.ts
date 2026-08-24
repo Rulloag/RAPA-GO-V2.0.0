@@ -16,8 +16,10 @@ import type {
 import type { NormalizedWebhook } from "./payment.provider.js";
 import { KlapProviderError, KLAP_TRANSACTION_TYPE_AUTHORIZATION } from "./klap.types.js";
 import {
+  inspectKlapEnvPresence,
   isKlapCaptureDiscoveryModeEnabled,
   isKlapCaptureExecutionEnabled,
+  isRemoteKlapCapturedStatus,
   verifyKlapWebhookApikey,
 } from "./klap.provider.js";
 import {
@@ -953,11 +955,15 @@ async function reconcileStoredMercadoPagoPayment(
         activated = true;
       }
     } catch (err) {
-      console.warn("[MercadoPago] Pago ya aprobado, pero la reactivaciÃ³n no terminÃ³:", {
-        paymentId: payment.id,
-        rideRequestId: payment.rideRequestId,
-        error: String(err),
-      });
+      console.warn(
+        JSON.stringify({
+          scope: "PAYMENT",
+          event: "ride_reactivation_after_approved_payment_failed",
+          paymentId: payment.id,
+          rideId: payment.rideRequestId,
+          errorKind: err instanceof Error ? err.name : "unknown",
+        }),
+      );
     }
 
     return {
@@ -2678,10 +2684,28 @@ export class PaymentsService {
         "failed",
         "refunded",
         "capture_pending",
-        "capture_unknown",
-        "capture_failed",
       ].includes(payment.status)
     ) {
+      return {
+        ok: true,
+        status: payment.status,
+        providerStatus: payment.status,
+      };
+    }
+
+    if (
+      payment.status === "capture_unknown" ||
+      payment.status === "capture_failed"
+    ) {
+      const recovered = await this.reconcileUnresolvedKlapCapture(payment);
+      if (recovered?.ok) {
+        return {
+          ok: true,
+          status: recovered.status,
+          providerStatus: recovered.status,
+        };
+      }
+
       return {
         ok: true,
         status: payment.status,
@@ -2878,6 +2902,87 @@ export class PaymentsService {
       status: current?.status ?? payment.status,
       providerStatus: remoteOrder.status,
     };
+  }
+
+  /**
+   * GET-only recovery for capture_unknown / capture_failed.
+   * Never sends a second capture. If Klap already captured, marks success.
+   * If GET is unsupported, stays BLOCKED_EXTERNAL_KLAP_CONTRACT.
+   */
+  private async reconcileUnresolvedKlapCapture(
+    payment: {
+      id: string;
+      status: string;
+      providerOrderId?: string | null;
+      passengerUserId?: string | null;
+      rideRequestId?: string | null;
+      amountClp?: number | null;
+      authorizedAmountClp?: number | null;
+    },
+  ): Promise<Result<{ status: string }> | null> {
+    const orderId = String(payment.providerOrderId ?? "").trim();
+    if (!orderId) {
+      return null;
+    }
+
+    try {
+      const remoteOrder = await getKlapProvider().getOrder(orderId);
+      if (isRemoteKlapCapturedStatus(remoteOrder.status)) {
+        await paymentsRepo.markCapturedSuccess({
+          id: payment.id,
+          capturedAmountClp:
+            payment.authorizedAmountClp ?? payment.amountClp ?? 0,
+          providerPayload: {
+            source: "klap_capture_unknown_reconcile",
+            status: remoteOrder.status,
+            orderId: remoteOrder.order_id,
+          },
+        });
+
+        auditService.recordSafe({
+          eventType: "payment.klap_capture_reconciled_from_unknown",
+          entityType: "payment",
+          entityId: payment.id,
+          metadata: {
+            rideId: payment.rideRequestId ?? "",
+            provider: "klap",
+            providerStatus: remoteOrder.status,
+            previousStatus: payment.status,
+            klapEnv: inspectKlapEnvPresence(),
+          },
+        });
+
+        return { ok: true, status: "success" };
+      }
+
+      auditService.recordSafe({
+        eventType: "payment.klap_capture_unknown_unresolved",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId ?? "",
+          provider: "klap",
+          providerStatus: remoteOrder.status,
+          previousStatus: payment.status,
+          blocked: "BLOCKED_EXTERNAL_KLAP_CONTRACT",
+        },
+      });
+    } catch (error) {
+      auditService.recordSafe({
+        eventType: "payment.klap_capture_unknown_get_failed",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId ?? "",
+          provider: "klap",
+          errorKind:
+            error instanceof KlapProviderError ? error.kind : "unknown",
+          blocked: "BLOCKED_EXTERNAL_KLAP_CONTRACT",
+        },
+      });
+    }
+
+    return null;
   }
 
   /**
@@ -3324,6 +3429,18 @@ export class PaymentsService {
     }
 
     if (!isKlapCaptureExecutionEnabled()) {
+      auditService.recordSafe({
+        actorUserId: payment.passengerUserId,
+        eventType: "payment.klap_capture_fail_closed",
+        entityType: "payment",
+        entityId: payment.id,
+        metadata: {
+          rideId: payment.rideRequestId,
+          provider: "klap",
+          klapEnv: inspectKlapEnvPresence(),
+        },
+      });
+
       return {
         ok: false,
         code: "KLAP_DEFERRED_CAPTURE_DISABLED",
@@ -3340,12 +3457,31 @@ export class PaymentsService {
       return { ok: true, status: "success" };
     }
 
+    if (payment.status === "capture_pending") {
+      return { ok: true, status: payment.status };
+    }
+
     if (
-      payment.status === "capture_pending" ||
       payment.status === "capture_unknown" ||
       payment.status === "capture_failed"
     ) {
-      return { ok: true, status: payment.status };
+      const recovered = await this.reconcileUnresolvedKlapCapture(payment);
+      if (recovered) {
+        return recovered;
+      }
+
+      return {
+        ok: false,
+        code:
+          payment.status === "capture_unknown"
+            ? "CAPTURE_UNKNOWN"
+            : "CAPTURE_FAILED",
+        message:
+          payment.status === "capture_unknown"
+            ? "No se confirmó si Klap capturó el pago. Requiere conciliación; no se reintenta el cobro automáticamente."
+            : "La captura anterior falló. No se vuelve a capturar automáticamente.",
+        statusCode: 409,
+      };
     }
 
     if (payment.status !== "authorized") {
@@ -3477,6 +3613,7 @@ export class PaymentsService {
           resolutionKey: resolution.resolutionKey,
           remainingAuthorizedAmountClp:
             resolution.remainingAuthorizedAmountClp,
+          blocked: "BLOCKED_EXTERNAL_KLAP_CONTRACT",
         },
       });
 

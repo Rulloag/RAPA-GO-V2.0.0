@@ -31,6 +31,13 @@ async function authenticate(accessToken: string): Promise<AuthResult> {
   let payload;
   try { payload = tokenService.verifyAccessToken(accessToken); }
   catch (err) {
+    console.warn(
+      JSON.stringify({
+        scope: "REFERRALS",
+        event: "authenticate.token_rejected",
+        errorKind: err instanceof AppError ? err.code : "UNAUTHORIZED",
+      }),
+    );
     if (err instanceof AppError) return { ok: false, code: err.code, message: err.message, statusCode: err.statusCode };
     return { ok: false, code: "UNAUTHORIZED", message: "Invalid access token.", statusCode: 401 };
   }

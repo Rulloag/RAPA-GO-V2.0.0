@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { USER_ROLES } from "../constants/index.js";
+import { normalizeRut, validateRut } from "../utils/rut.js";
 
 export { z };
 
@@ -61,6 +62,50 @@ export const residenceAccreditationSchema = z.object({
     ),
 });
 
+export const chileanRutSchema = z
+  .string()
+  .trim()
+  .min(1, "Ingresa un RUT válido.")
+  .max(20, "El RUT es demasiado largo.")
+  .transform((value, context) => {
+    if (!validateRut(value)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Ingresa un RUT chileno válido.",
+      });
+      return z.NEVER;
+    }
+
+    return normalizeRut(value);
+  });
+
+export const optionalChileanRutSchema = z
+  .string()
+  .trim()
+  .max(20)
+  .optional()
+  .transform((value, context) => {
+    if (value == null || value === "") {
+      return undefined;
+    }
+
+    if (!validateRut(value)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Ingresa un RUT chileno válido.",
+      });
+      return z.NEVER;
+    }
+
+    return normalizeRut(value);
+  });
+
+const passportForAuthSchema = z
+  .string()
+  .trim()
+  .max(30)
+  .transform((value) => value.toUpperCase().replace(/[^A-Z0-9-]/g, ""));
+
 export const registerRequestSchema = z
   .object({
     email: z.string().email({ message: "Valid email is required." }),
@@ -90,6 +135,56 @@ export const registerRequestSchema = z
         message: "Debes adjuntar tu acreditación de residencia para continuar.",
       });
     }
+
+    const requiresChileanRut =
+      value.passengerFareType === "resident" ||
+      value.passengerFareType === "chilean";
+
+    if (requiresChileanRut) {
+      if (!value.rut?.trim()) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["rut"],
+          message: "Ingresa tu RUT para continuar.",
+        });
+      } else if (!validateRut(value.rut)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["rut"],
+          message: "Ingresa un RUT chileno válido.",
+        });
+      }
+    }
+
+    if (value.passengerFareType === "foreigner") {
+      const passport = String(value.passport ?? "")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9-]/g, "")
+        .replace(/-/g, "");
+
+      if (passport.length < 5 || passport.length > 15) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["passport"],
+          message: "Ingresa un pasaporte válido.",
+        });
+      }
+    }
+  })
+  .transform((value) => {
+    const requiresChileanRut =
+      value.passengerFareType === "resident" ||
+      value.passengerFareType === "chilean";
+
+    return {
+      ...value,
+      rut: requiresChileanRut && value.rut ? normalizeRut(value.rut) : value.rut,
+      passport:
+        value.passengerFareType === "foreigner" && value.passport
+          ? passportForAuthSchema.parse(value.passport)
+          : value.passport,
+    };
   });
 
 export const authUserSchema = z.object({

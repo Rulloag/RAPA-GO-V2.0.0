@@ -100,6 +100,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     genReqId: () => randomUUID(),
   });
 
+  fastify.addHook("onRequest", async (request, reply) => {
+    void reply.header("x-request-id", String(request.id));
+  });
+
   // ── Security & transport plugins ──────────────────────────────────────────
   await fastify.register(helmetPlugin);
   await fastify.register(cors, createCorsOptions());
