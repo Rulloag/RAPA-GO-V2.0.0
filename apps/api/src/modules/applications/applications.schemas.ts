@@ -1,10 +1,28 @@
 import { z } from "zod";
+import { validateRut, normalizeRut } from "@rapa-go/shared";
 
 const optionalPublicUrl = z.string().url().optional();
 const hourMinuteSchema = z.string().regex(
   /^(?:[01]\d|2[0-3]):[0-5]\d$/,
   "La hora debe usar el formato HH:MM.",
 );
+
+const chileanRutField = z
+  .string()
+  .trim()
+  .min(1, "Ingresa un RUT chileno válido.")
+  .max(20)
+  .transform((value, context) => {
+    if (!validateRut(value)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Ingresa un RUT chileno válido.",
+      });
+      return z.NEVER;
+    }
+
+    return normalizeRut(value);
+  });
 
 const personalFields = {
   firstName: z.string().trim().min(1),
@@ -67,6 +85,7 @@ export const applicationVehicleSchema = z.object({
 export const createDriverApplicationSchema = z.object({
   type: z.literal("driver"),
   ...personalFields,
+  rut: chileanRutField,
   birthDate: z
     .string()
     .trim()
@@ -93,6 +112,7 @@ export const createDriverApplicationSchema = z.object({
 export const createGuideApplicationSchema = z.object({
   type: z.literal("guide"),
   ...personalFields,
+  rut: chileanRutField,
   experienceYears: z.number().int().nonnegative().optional(),
   specialties: z.array(z.string()).optional(),
   offeredTours: z.array(z.string()).optional(),

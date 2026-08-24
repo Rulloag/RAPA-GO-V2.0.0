@@ -1,5 +1,11 @@
 import { useRef, type ChangeEvent, type CSSProperties } from "react";
 import {
+  formatRut,
+  isRutValid as isValidRut,
+  normalizeRut,
+  validateRut,
+} from "@rapa-go/shared";
+import {
   IonButton,
   IonCheckbox,
   IonContent,
@@ -48,44 +54,12 @@ export function requiresRutForPassengerCondition(
   return value === "turista_chileno" || value === "residente_rapa_nui";
 }
 
+export { formatRut, normalizeRut, validateRut, isValidRut };
+
 export function requiresPassportForPassengerCondition(
   value: PassengerCondition,
 ): boolean {
   return value === "turista_extranjero";
-}
-
-export function cleanRut(value: string): string {
-  return value.replace(/\./g, "").replace(/-/g, "").trim().toUpperCase();
-}
-
-export function formatRut(value: string): string {
-  const cleaned = cleanRut(value);
-  if (cleaned.length <= 1) return cleaned;
-  const body = cleaned.slice(0, -1);
-  const dv = cleaned.slice(-1);
-  return `${body}-${dv}`;
-}
-
-export function isValidRut(value: string): boolean {
-  const cleaned = cleanRut(value);
-  if (!/^\d{7,8}[0-9K]$/.test(cleaned)) return false;
-
-  const body = cleaned.slice(0, -1);
-  const dv = cleaned.slice(-1);
-
-  let sum = 0;
-  let multiplier = 2;
-
-  for (let i = body.length - 1; i >= 0; i -= 1) {
-    sum += Number(body[i]) * multiplier;
-    multiplier = multiplier === 7 ? 2 : multiplier + 1;
-  }
-
-  const expectedNumber = 11 - (sum % 11);
-  const expectedDv =
-    expectedNumber === 11 ? "0" : expectedNumber === 10 ? "K" : String(expectedNumber);
-
-  return dv === expectedDv;
 }
 
 export function normalizePassportForAuth(value: unknown): string {
@@ -631,12 +605,13 @@ export function PassengerSocialSetupForm({
                   type="text"
                   value={rut}
                   onIonInput={(e) => {
-                    onRutChange(String(e.detail.value ?? ""));
+                    onRutChange(formatRut(String(e.detail.value ?? "")));
                   }}
                   onIonBlur={() => onRutBlur?.()}
-                  placeholder="12345678-9"
+                  placeholder="12.345.678-K"
                   autocomplete="off"
                   inputmode="text"
+                  maxlength={16}
                   required
                 />
               </IonItem>

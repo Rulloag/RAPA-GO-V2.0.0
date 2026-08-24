@@ -11,6 +11,7 @@ import {
   isValidPassportForAuth,
   isValidRut,
   normalizePassportForAuth,
+  normalizeRut,
   requiresPassportForPassengerCondition,
   requiresRutForPassengerCondition,
   type PassengerCondition,
@@ -233,7 +234,7 @@ export function AppleAccountSetupModal({
       requiresPassportForPassengerCondition(passengerCondition);
     const cleanDisplayName = displayName.trim().replace(/\s+/g, " ");
     const cleanPhone = phone.replace(/[^\d+]/g, "").trim();
-    const cleanRut = formatRut(rut);
+    const cleanRut = normalizeRut(rut);
     const cleanPassport = normalizePassportForAuth(passport);
     const cleanContactEmail = contactEmail.trim().toLowerCase();
 

@@ -5,20 +5,24 @@
   "description": "RAPA GO — Tipos, schemas Zod y constantes compartidas entre mobile y API",
   "type": "module",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run"
   },
   "dependencies": {
     "zod": "3.23.8"
   },
   "devDependencies": {
-    "typescript": "5.4.5"
+    "typescript": "5.4.5",
+    "vitest": "1.6.0"
   }
 }

@@ -17,10 +17,11 @@ function optionalEnv(key: string, fallback: string): string {
 }
 
 export const env = {
-  nodeEnv: optionalEnv("NODE_ENV", "development") as
-    | "development"
-    | "staging"
-    | "production",
+  get nodeEnv(): "development" | "staging" | "production" {
+    const value = optionalEnv("NODE_ENV", "development");
+    if (value === "production" || value === "staging") return value;
+    return "development";
+  },
   port: Number(optionalEnv("PORT", "3000")),
   host: optionalEnv("HOST", "0.0.0.0"),
 
@@ -31,6 +32,35 @@ export const env = {
 
   // Platform
   platformCommissionPercent: Number(optionalEnv("PLATFORM_COMMISSION_PERCENT", "23")),
+
+  get frontendUrl(): string {
+    const configured = String(
+      process.env["FRONTEND_URL"] ?? "",
+    ).trim();
+
+    if (configured) {
+      const parsed = new URL(configured);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        throw new Error("FRONTEND_URL must use http or https.");
+      }
+      if (this.nodeEnv === "production" && parsed.protocol !== "https:") {
+        throw new Error("FRONTEND_URL must use HTTPS in production.");
+      }
+      if (
+        this.nodeEnv === "production" &&
+        /^(localhost|127\.0\.0\.1)$/i.test(parsed.hostname)
+      ) {
+        throw new Error("FRONTEND_URL must not use localhost in production.");
+      }
+      return parsed.origin;
+    }
+
+    if (this.nodeEnv === "production") {
+      throw new Error("Missing required environment variable: FRONTEND_URL");
+    }
+
+    return "http://localhost:5173";
+  },
 
   // WhatsApp Business Cloud API (Meta)
   // Credentials are only required when whatsapp.enabled = true.

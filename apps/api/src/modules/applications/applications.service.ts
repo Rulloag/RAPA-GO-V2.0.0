@@ -39,6 +39,7 @@ import type {
   ContractDeliveryResult,
 } from "./applications.types.js";
 import type { UserRole } from "@rapa-go/shared";
+import { normalizeRut, rutIdentityKey, validateRut } from "@rapa-go/shared";
 import { isApplicationTypeEnabled } from "../../config/features.js";
 import {
   resolveApplicationAssetUrl,
@@ -182,11 +183,53 @@ function splitLockedAccountName(name: string): {
   };
 }
 
-function normalizeLockedIdentityValue(value: string | null | undefined): string {
+function normalizeLockedPhoneValue(value: string | null | undefined): string {
   return String(value ?? "")
     .trim()
-    .toUpperCase()
-    .replace(/[^0-9A-Z]/g, "");
+    .replace(/\D/g, "");
+}
+
+function resolveLockedRut(
+  profileRut: string | null | undefined,
+  inputRut: string | null | undefined,
+):
+  | { ok: true; rut: string }
+  | { ok: false; code: string; message: string; statusCode: number } {
+  const lockedRaw = String(profileRut ?? "").trim();
+  const submittedRaw = String(inputRut ?? "").trim();
+  const source = lockedRaw || submittedRaw;
+
+  if (!source) {
+    return {
+      ok: false,
+      code: "PROFILE_IDENTITY_INCOMPLETE",
+      message:
+        "Tu cuenta no tiene completos el nombre, apellido, correo, teléfono o RUT. Solicita la corrección mediante soporte antes de postular como conductor.",
+      statusCode: 409,
+    };
+  }
+
+  if (!validateRut(source)) {
+    return {
+      ok: false,
+      code: "PROFILE_IDENTITY_INVALID_RUT",
+      message:
+        "El RUT registrado en tu cuenta no es válido. Solicita la corrección mediante soporte. No se corrige automáticamente.",
+      statusCode: 409,
+    };
+  }
+
+  if (lockedRaw && submittedRaw && rutIdentityKey(lockedRaw) !== rutIdentityKey(submittedRaw)) {
+    return {
+      ok: false,
+      code: "PROFILE_IDENTITY_MISMATCH",
+      message:
+        "El RUT enviado no coincide con el registrado en tu cuenta. Solicita cualquier corrección mediante soporte.",
+      statusCode: 409,
+    };
+  }
+
+  return { ok: true, rut: normalizeRut(lockedRaw || submittedRaw) };
 }
 
 type LockedDriverIdentity = {
@@ -219,7 +262,11 @@ async function resolveLockedDriverIdentity(
   const names = splitLockedAccountName(auth.name);
 
   const phone = profile?.phone?.trim() || input.phone.trim();
-  const rut = profile?.rut?.trim() || input.rut?.trim() || "";
+  const resolvedRut = resolveLockedRut(profile?.rut, input.rut);
+  if (!resolvedRut.ok) {
+    return resolvedRut;
+  }
+
   const birthDate =
     input.birthDate?.trim() || profile?.birthDate?.trim() || null;
 
@@ -227,8 +274,7 @@ async function resolveLockedDriverIdentity(
     !names.firstName ||
     !names.lastName ||
     !auth.email.trim() ||
-    !phone ||
-    !rut
+    !phone
   ) {
     return {
       ok: false,
@@ -240,25 +286,10 @@ async function resolveLockedDriverIdentity(
   }
 
   if (
-    profile?.rut &&
-    input.rut &&
-    normalizeLockedIdentityValue(profile.rut) !==
-      normalizeLockedIdentityValue(input.rut)
-  ) {
-    return {
-      ok: false,
-      code: "PROFILE_IDENTITY_MISMATCH",
-      message:
-        "El RUT enviado no coincide con el registrado en tu cuenta. Solicita cualquier corrección mediante soporte.",
-      statusCode: 409,
-    };
-  }
-
-  if (
     profile?.phone &&
     input.phone &&
-    normalizeLockedIdentityValue(profile.phone) !==
-      normalizeLockedIdentityValue(input.phone)
+    normalizeLockedPhoneValue(profile.phone) !==
+      normalizeLockedPhoneValue(input.phone)
   ) {
     return {
       ok: false,
@@ -274,7 +305,7 @@ async function resolveLockedDriverIdentity(
     lastName: names.lastName,
     email: auth.email.trim().toLowerCase(),
     phone,
-    rut,
+    rut: resolvedRut.rut,
     birthDate,
   };
 
@@ -284,7 +315,7 @@ async function resolveLockedDriverIdentity(
     .values({
       userId: auth.userId,
       phone,
-      rut,
+      rut: resolvedRut.rut,
       birthDate,
       updatedAt: now,
     })
@@ -292,7 +323,7 @@ async function resolveLockedDriverIdentity(
       target: passengerProfiles.userId,
       set: {
         phone,
-        rut,
+        rut: resolvedRut.rut,
         birthDate,
         updatedAt: now,
       },
