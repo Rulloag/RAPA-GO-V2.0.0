@@ -73,6 +73,44 @@ const PAYMENT_ALLOWED_RIDE_STATUSES = new Set([
   "completed",
 ]);
 
+function rideChargeAmountClp(ride: {
+  estimatedFareClp?: number | null;
+}): number {
+  return Math.max(0, Math.round(Number(ride.estimatedFareClp ?? 0)));
+}
+
+function fareCoveredByWalletBenefit(ride: {
+  estimatedFareClp?: number | null;
+  walletBenefitAppliedClp?: number | null;
+}): boolean {
+  return (
+    rideChargeAmountClp(ride) <= 0 &&
+    Math.max(0, Math.round(Number(ride.walletBenefitAppliedClp ?? 0))) > 0
+  );
+}
+
+function invalidRideFareResult(ride: {
+  estimatedFareClp?: number | null;
+  walletBenefitAppliedClp?: number | null;
+}): Fail {
+  if (fareCoveredByWalletBenefit(ride)) {
+    return {
+      ok: false,
+      code: "FARE_COVERED_BY_WALLET",
+      message:
+        "Este viaje ya quedó cubierto con tu Beneficio. No hay cobro con tarjeta.",
+      statusCode: 409,
+    };
+  }
+
+  return {
+    ok: false,
+    code: "PAYMENT_INVALID_AMOUNT",
+    message: "Ride has no valid fare amount.",
+    statusCode: 422,
+  };
+}
+
 const RAPAGO_FAST_SEARCH_FEE_CLP = 800;
 const RAPAGO_FAST_SEARCH_MARKER = "RAPAGO_FAST_SEARCH_ACTIVE: true";
 
@@ -2057,15 +2095,10 @@ export class PaymentsService {
     const amountClp =
       paymentPurpose === "fast_search"
         ? RAPAGO_FAST_SEARCH_FEE_CLP
-        : Math.max(0, Math.round(Number(ride.estimatedFareClp ?? 0)));
+        : rideChargeAmountClp(ride);
 
     if (amountClp <= 0) {
-      return {
-        ok: false,
-        code: "PAYMENT_INVALID_AMOUNT",
-        message: "Ride has no valid fare amount.",
-        statusCode: 422,
-      };
+      return invalidRideFareResult(ride);
     }
 
     const user = await usersRepo.findById(auth.userId);
@@ -2499,15 +2532,10 @@ export class PaymentsService {
     const amountClp =
       paymentPurpose === "fast_search"
         ? RAPAGO_FAST_SEARCH_FEE_CLP
-        : Math.max(0, Math.round(Number(ride.estimatedFareClp ?? 0)));
+        : rideChargeAmountClp(ride);
 
     if (!Number.isInteger(amountClp) || amountClp <= 0) {
-      return {
-        ok: false,
-        code: "PAYMENT_INVALID_AMOUNT",
-        message: "Ride has no valid fare amount.",
-        statusCode: 422,
-      };
+      return invalidRideFareResult(ride);
     }
 
     const user = await usersRepo.findById(auth.userId);
