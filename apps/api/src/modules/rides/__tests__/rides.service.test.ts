@@ -474,6 +474,56 @@ describe("RidesService - contrato actual", () => {
       );
     });
 
+    it("cobra la cotización de la app si es mayor que el estimado interno", async () => {
+      const withoutQuote = await service.createRideRequest("token", {
+        originText: "Hanga Roa",
+        destinationText: "Anakena",
+        paymentMethod: "card",
+        paymentProvider: "klap",
+      });
+      expect(withoutQuote.ok).toBe(true);
+      if (!withoutQuote.ok) return;
+      const internalFare = withoutQuote.ride.estimatedFareClp ?? 0;
+      expect(internalFare).toBeGreaterThan(0);
+      expect(internalFare).toBeLessThan(6000);
+
+      const withQuote = await service.createRideRequest("token", {
+        originText: "Hanga Roa",
+        destinationText: "Anakena",
+        paymentMethod: "card",
+        paymentProvider: "klap",
+        estimatedFareClp: 6000,
+      });
+      expect(withQuote.ok).toBe(true);
+      if (!withQuote.ok) return;
+      expect(withQuote.ride.estimatedFareClp).toBe(6000);
+      expect(mockCreateWithApprovedPolicyCharges).toHaveBeenLastCalledWith(
+        "user-123",
+        "Hanga Roa",
+        "Anakena",
+        expect.any(String),
+        6000,
+        "pending_payment",
+        expect.objectContaining({
+          paymentMethod: "card",
+          paymentProvider: "klap",
+        }),
+      );
+    });
+
+    it("no deja bajar la tarifa por debajo del estimado interno", async () => {
+      const result = await service.createRideRequest("token", {
+        originText: "Hanga Roa",
+        destinationText: "Anakena",
+        paymentMethod: "card",
+        paymentProvider: "klap",
+        estimatedFareClp: 500,
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.ride.estimatedFareClp).toBeGreaterThan(500);
+    });
+
     it("permite usar Beneficio en un viaje con tarjeta", async () => {
       const result = await service.createRideRequest("token", {
         originText: "Hanga Roa",
