@@ -8642,6 +8642,18 @@ function getBorrowedVehicleRemainingText(
   return `Se borrará automáticamente en ${days} día${days === 1 ? "" : "s"}`;
 }
 
+function mapDriverAvailabilityError(message: string): string {
+  if (
+    /only drivers/i.test(message) ||
+    /cuenta de conductor aprobado/i.test(message) ||
+    /cuenta de pasajero/i.test(message)
+  ) {
+    return "Esta cuenta es de pasajero. No se puede poner Disponible. Entra con una cuenta de conductor ya aprobada, o postula y espera la aprobación.";
+  }
+
+  return message;
+}
+
 export function DriverHomePage(): JSX.Element {
   const { session } = useAuth();
   const { theme, isDark, toggleTheme } = useRapagoSectionTheme("driver-home");
@@ -8745,10 +8757,19 @@ export function DriverHomePage(): JSX.Element {
     restBlocked,
   ]);
 
+  const isPassengerAccount = session?.user?.role === "passenger";
   const isDriverAvailable =
     driverAvailability === "available" &&
     !driverConnection.blocked &&
-    !restBlocked;
+    !restBlocked &&
+    !isPassengerAccount;
+
+  useEffect(() => {
+    if (!isPassengerAccount) return;
+    setAvailabilityError(
+      "Esta cuenta es de pasajero. No se puede poner Disponible. Entra con una cuenta de conductor ya aprobada, o postula y espera la aprobación.",
+    );
+  }, [isPassengerAccount]);
   const [pendingReservationCount, setPendingReservationCount] = useState(
     () =>
       readDriverScheduledReservationOffers(
@@ -8908,9 +8929,11 @@ export function DriverHomePage(): JSX.Element {
       setDriverAvailability("unavailable");
       saveDriverAvailability("unavailable", driverAvailabilityUser);
       setAvailabilityError(
-        caught instanceof Error
-          ? caught.message
-          : "No se pudo actualizar tu disponibilidad.",
+        mapDriverAvailabilityError(
+          caught instanceof Error
+            ? caught.message
+            : "No se pudo actualizar tu disponibilidad.",
+        ),
       );
     } finally {
       setAvailabilitySaving(false);
@@ -9015,7 +9038,7 @@ export function DriverHomePage(): JSX.Element {
             <DriverAvailabilityControl
               value={isDriverAvailable ? "available" : "unavailable"}
               onChange={handleAvailabilityChange}
-              disabled={availabilitySaving}
+              disabled={availabilitySaving || isPassengerAccount}
             />
 
             <DriverSwitchToPassengerCard compact />

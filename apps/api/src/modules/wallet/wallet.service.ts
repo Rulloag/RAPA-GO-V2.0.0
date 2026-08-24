@@ -823,8 +823,19 @@ export class WalletService {
     }
 
     const amountFromRide = Math.round(Number(ride.estimatedFareClp ?? 0));
+    const walletAppliedClp = Math.round(Number(ride.walletBenefitAppliedClp ?? 0));
 
     if (!Number.isFinite(amountFromRide) || amountFromRide <= 0) {
+      if (walletAppliedClp > 0) {
+        return {
+          ok: false as const,
+          code: "FARE_COVERED_BY_WALLET",
+          message:
+            "Este viaje ya quedó cubierto con tu Beneficio. No hay cobro con tarjeta.",
+          statusCode: 409,
+        };
+      }
+
       return {
         ok: false as const,
         code: "PAYMENT_INVALID_AMOUNT",

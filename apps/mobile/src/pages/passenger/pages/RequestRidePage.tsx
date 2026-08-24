@@ -11385,7 +11385,16 @@ export default function RequestRidePage(): JSX.Element {
               Record<string, unknown>)
           : null;
 
-      if (String(activePaymentMethod) === "card" && selectedFareAmount > 0) {
+      const remainingAfterWalletClp = Math.max(
+        0,
+        Math.round(
+          Number(
+            createdRideResponse.estimatedFareClp ?? selectedFareAmount,
+          ),
+        ),
+      );
+
+      if (String(activePaymentMethod) === "card" && remainingAfterWalletClp > 0) {
         if (!createdRideId) {
           throw new Error(
             "El viaje se creó, pero no se pudo obtener el ID para iniciar Klap.",
@@ -11406,7 +11415,7 @@ export default function RequestRidePage(): JSX.Element {
           paymentId: order.paymentId,
           orderId: order.publicCheckoutData.orderId,
           redirectUrl: order.publicCheckoutData.redirectUrl,
-          amountClp: selectedFareAmount,
+          amountClp: remainingAfterWalletClp,
           provider: "klap",
           createdAt: new Date().toISOString(),
           originText: resolved.origin.text,

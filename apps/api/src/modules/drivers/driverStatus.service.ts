@@ -66,7 +66,7 @@ export class DriverStatusService {
   async getMyStatus(accessToken: string) {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
-    if (auth.role !== "driver") return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can access driver status.", statusCode: 403 };
+    if (auth.role !== "driver") return { ok: false, code: "AUTH_FORBIDDEN", message: "Solo una cuenta de conductor aprobado puede ver o cambiar disponibilidad.", statusCode: 403 };
 
     let status = await driverStatusRepo.findByDriverId(auth.userId);
     if (!status) {
@@ -104,7 +104,7 @@ export class DriverStatusService {
   async updateMyStatus(accessToken: string, availability: string, currentZone?: string | null) {
     const auth = await authenticate(accessToken);
     if (!auth.ok) return auth;
-    if (auth.role !== "driver") return { ok: false, code: "AUTH_FORBIDDEN", message: "Only drivers can update driver status.", statusCode: 403 };
+    if (auth.role !== "driver") return { ok: false, code: "AUTH_FORBIDDEN", message: "Solo una cuenta de conductor aprobado puede marcarte Disponible. Una cuenta de pasajero no puede hacerlo.", statusCode: 403 };
 
     if (!["available", "unavailable"].includes(availability)) {
       return { ok: false, code: "VALIDATION_ERROR", message: "availability must be 'available' or 'unavailable'.", statusCode: 400 };
