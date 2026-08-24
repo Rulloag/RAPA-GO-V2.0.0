@@ -1238,9 +1238,17 @@ export class RidesService {
       requestedCategory,
     );
 
-    // Tarifa autoritativa server-side: el cliente no puede reducir el monto
-    // manipulando estimatedFareClp ni multiplicadores de categoría.
-    const baseFare = authoritativeFare;
+    // Piso server-side: el cliente no puede cobrar menos que la tarifa
+    // autoritativa. Si la cotización de la app (km reales) es mayor —el
+    // estimado interno usa largo de texto, no la ruta—, cobramos lo que
+    // el pasajero vio en "A pagar ahora" / total original.
+    const requestedFareClp = Number.isFinite(Number(input.estimatedFareClp))
+      ? roundFareUpTo500(Math.round(Number(input.estimatedFareClp)))
+      : null;
+    const baseFare =
+      requestedFareClp != null && requestedFareClp > authoritativeFare
+        ? requestedFareClp
+        : authoritativeFare;
 
     let finalFare = baseFare;
     let discountInfo:
