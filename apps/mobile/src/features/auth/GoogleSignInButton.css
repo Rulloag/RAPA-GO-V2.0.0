@@ -73,19 +73,23 @@
 }
 
 /*
- * Contenedor del botón oficial de Google (VISIBLE).
- * No usar opacity:0: Google Identity Services no dispara el login si el
- * botón oficial queda invisible (FedCM / gesto de usuario).
+ * El recuadro blanco “Continuar como…” es el botón personalizado de Google
+ * (iframe). No se puede pintar de negro desde CSS. Encima mostramos la misma
+ * pieza negra que Apple; el control oficial queda encima casi transparente
+ * para recibir el clic (FedCM no acepta opacity: 0).
  */
 .rapago-google-button__official {
-  position: relative;
-  z-index: 2;
+  position: absolute;
+  inset: 0;
+  z-index: 3;
   display: flex;
   justify-content: center;
   align-items: center;
   width: 100%;
   max-width: 100%;
   height: 100%;
+  opacity: 0.02;
+  overflow: hidden;
 }
 
 /*
@@ -144,10 +148,12 @@
    producir ningún salto de color, porque el color nunca cambia de dueño.
    (El botón nativo .rapago-google-button__custom sí lleva los suyos: ese no
    está dentro de un shell, es una pieza autónoma.) */
+.rapago-google-button__look,
 .rapago-google-button__placeholder {
   position: absolute;
   inset: 0;
   z-index: 1;
+  pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -297,6 +303,7 @@
  */
 @media (max-width: 360px) {
   .rapago-google-button__custom,
+  .rapago-google-button__look,
   .rapago-google-button__placeholder {
     padding-inline: 12px;
     font-size: 0.88rem;
@@ -305,6 +312,7 @@
 
 @media (min-width: 1024px) {
   .rapago-google-button__custom,
+  .rapago-google-button__look,
   .rapago-google-button__placeholder {
     font-size: 1rem;
   }

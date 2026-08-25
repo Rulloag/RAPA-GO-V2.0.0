@@ -325,21 +325,19 @@ export function GoogleSignInButton({
         className="rapago-google-button__shell"
         ref={shellRef}
       >
-        {!scriptReady ? (
-          <div className="rapago-google-button__placeholder">
-            {loading ? (
-              <span
-                aria-hidden="true"
-                className="rapago-google-button__spinner"
-              />
-            ) : (
-              <GoogleLogo />
-            )}
-            <span className="rapago-google-button__label">
-              {renderError ? "Google no pudo cargar" : visibleLabel}
-            </span>
-          </div>
-        ) : null}
+        <div className="rapago-google-button__look" aria-hidden="true">
+          {loading || !scriptReady ? (
+            <span
+              aria-hidden="true"
+              className="rapago-google-button__spinner"
+            />
+          ) : (
+            <GoogleLogo />
+          )}
+          <span className="rapago-google-button__label">
+            {renderError ? "Google no pudo cargar" : visibleLabel}
+          </span>
+        </div>
 
         <div
           className="rapago-google-button__official"

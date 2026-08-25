@@ -13,13 +13,11 @@ describe("Login welcome — Google button, legal links, language", () => {
     expect(loginSource).toContain("ROUTES.PUBLIC.SUPPORT");
   });
 
-  it("inicializa Google Identity Services una sola vez y mantiene el botón oficial visible", () => {
+  it("inicializa Google Identity Services una sola vez y deja el clic en el botón oficial", () => {
     expect(googleButtonSource).toContain("gisInitializedClientId");
     expect(googleButtonSource).toContain("ensureGisInitialized");
     expect(googleButtonSource).toContain("renderButton");
-    expect(googleButtonSource).not.toContain(
-      "rapago-google-button__official--overlay",
-    );
-    expect(googleButtonSource).not.toContain("rapago-google-button__face");
+    expect(googleButtonSource).toContain("rapago-google-button__official");
+    expect(googleButtonSource).toContain("rapago-google-button__look");
   });
 });
