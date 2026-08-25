@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:prod": "tsc && vite build --mode production",
+    "build:staging": "tsc && vite build --mode staging",
     "pretypecheck": "npm run build -w @rapa-go/shared",
     "pretest": "npm run build -w @rapa-go/shared",
     "prebuild": "npm run build -w @rapa-go/shared",
