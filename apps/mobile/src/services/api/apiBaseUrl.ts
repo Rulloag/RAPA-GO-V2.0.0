@@ -4,19 +4,31 @@ function normalizeConfiguredValue(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
 
+/**
+ * Fallback when VITE_API_* is missing on a published build.
+ * Uses static `import.meta.env.MODE` (always set by Vite --mode) so Rollup
+ * dead-code-eliminates the other environment's API origin from the bundle.
+ */
+function productionSafeFallbackOrigin(): string {
+  if (import.meta.env.MODE === "staging") {
+    return "https://backend-staging.rapago.cl";
+  }
+  return "https://backend.rapago.cl";
+}
+
 function readConfiguredValue(): string {
   const rawValue = String(
-    import.meta.env["VITE_API_URL"] ??
-      import.meta.env["VITE_API_BASE_URL"] ??
+    import.meta.env.VITE_API_URL ??
+      import.meta.env.VITE_API_BASE_URL ??
       "",
   ).trim();
 
   if (!rawValue) {
-    // En producción el frontend está alojado en api.rapago.cl, mientras que
-    // la API real vive en backend.rapago.cl. Este respaldo evita que una
-    // compilación sin archivo .env intente enviar /api al servidor estático.
+    // En builds publicados el frontend está en un host estático; sin VITE_API_*
+    // no debe caer en /api del CDN. El respaldo respeta VITE_ENV para no
+    // mezclar staging → producción.
     if (import.meta.env.PROD) {
-      return "https://backend.rapago.cl";
+      return productionSafeFallbackOrigin();
     }
 
     if (Capacitor.isNativePlatform()) {
@@ -56,6 +68,7 @@ function readConfiguredValue(): string {
  *
  * Ejemplos:
  * - Navegador local: /api
+ * - Staging: https://backend-staging.rapago.cl/api
  * - Producción: https://backend.rapago.cl/api
  */
 export function getApiBaseUrl(): string {

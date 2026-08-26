@@ -108,3 +108,43 @@ describe("global CORS headers reach sibling routes", () => {
     expect(res.headers["access-control-allow-credentials"]).toBe("true");
   });
 });
+
+describe("staging APP_ENV CORS defaults", () => {
+  const STAGING_ORIGIN = "https://staging.rapago.cl";
+  let previousAppEnv: string | undefined;
+  let previousCors: string | undefined;
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    previousAppEnv = process.env["APP_ENV"];
+    previousCors = process.env["CORS_ORIGIN"];
+    process.env["APP_ENV"] = "staging";
+    delete process.env["CORS_ORIGIN"];
+
+    app = Fastify({ logger: false });
+    await app.register(helmetPlugin);
+    await app.register(cors, createCorsOptions());
+    await app.register(rateLimitPlugin);
+    app.setErrorHandler(globalErrorHandler);
+    app.get("/sibling", async () => ({ ok: true }));
+    await app.ready();
+  });
+
+  afterEach(async () => {
+    await app.close();
+    if (previousAppEnv === undefined) delete process.env["APP_ENV"];
+    else process.env["APP_ENV"] = previousAppEnv;
+    if (previousCors === undefined) delete process.env["CORS_ORIGIN"];
+    else process.env["CORS_ORIGIN"] = previousCors;
+  });
+
+  it("allows https://staging.rapago.cl when APP_ENV=staging", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/sibling",
+      headers: { origin: STAGING_ORIGIN },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["access-control-allow-origin"]).toBe(STAGING_ORIGIN);
+  });
+});

@@ -1,10 +1,14 @@
 import type { FastifyCorsOptions } from "@fastify/cors";
 
 /**
- * Orígenes autorizados oficialmente por RAPA GO.
+ * Orígenes autorizados oficialmente por RAPA GO (producción / compartidos).
  *
  * CORS_ORIGIN y FRONTEND_URL pueden añadir más direcciones
  * separadas por comas sin eliminar estos valores predeterminados.
+ *
+ * Nota: https://staging.rapago.cl NO está aquí a propósito.
+ * Solo se añade automáticamente cuando APP_ENV=staging (backend staging aislado).
+ * No modificar env de producción para “habilitar” staging FE → prod API.
  */
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://api.rapago.cl",
@@ -24,6 +28,9 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost",
   "https://localhost",
 ] as const;
+
+/** Solo cuando APP_ENV=staging en el Node app de backend-staging. */
+const STAGING_DEFAULT_ORIGINS = ["https://staging.rapago.cl"] as const;
 
 function normalizeOrigin(value: string): string | null {
   const cleanValue = value.trim();
@@ -51,13 +58,25 @@ function readConfiguredOrigins(): string[] {
     .filter((value): value is string => value !== null);
 }
 
+function isStagingAppEnv(): boolean {
+  const appEnv = (process.env["APP_ENV"] ?? "").trim().toLowerCase();
+  return appEnv === "staging";
+}
+
 export function getAllowedCorsOrigins(): ReadonlySet<string> {
   const defaultOrigins = DEFAULT_ALLOWED_ORIGINS
     .map((origin) => normalizeOrigin(origin))
     .filter((origin): origin is string => origin !== null);
 
+  const stagingOrigins = isStagingAppEnv()
+    ? STAGING_DEFAULT_ORIGINS
+        .map((origin) => normalizeOrigin(origin))
+        .filter((origin): origin is string => origin !== null)
+    : [];
+
   return new Set([
     ...defaultOrigins,
+    ...stagingOrigins,
     ...readConfiguredOrigins(),
   ]);
 }

@@ -1,5 +1,10 @@
 # RAPA GO V2.0.01 — Web Fase 2: plan de configuración externa (staging)
 
+> **SUPERSEDED (2026-08-25):** El aislamiento real exige
+> `staging.rapago.cl → https://backend-staging.rapago.cl/api` (DB/Klap/SMTP separados).
+> Ver `docs/release/TRUE_STAGING_ISOLATION_RUNBOOK_20260825.md`.
+> Este documento conservaba el modelo legacy FE staging → `backend.rapago.cl` (shared prod).
+
 Fecha: 2026-08-25  
 Rama: `rodrigo/web-white-label-readiness-20260825`  
 Ámbito: **READ/PLAN ONLY**. Sin deploy, DNS live, Google Console, Apple Developer, Klap, migraciones prod, commit ni push.

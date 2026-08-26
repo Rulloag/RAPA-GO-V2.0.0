@@ -1,5 +1,8 @@
 # RAPA GO — Web marcha blanca pasajero (Phase 1 readiness)
 
+> **Update 2026-08-25:** True isolation → `docs/release/TRUE_STAGING_ISOLATION_RUNBOOK_20260825.md`.
+> Staging FE API = `https://backend-staging.rapago.cl/api` (no `backend.rapago.cl`).
+
 Fecha: 2026-08-25  
 Base: `origin/main`  
 Ámbito: preparación local (docs/config). **Sin** deploy, DNS, Google Console, Apple Developer, migraciones prod ni pagos reales.
@@ -10,14 +13,14 @@ Solo `VITE_*` en el bundle del SPA. Secretos de servidor **nunca** con prefijo `
 
 | Variable | Staging | Production | Notas |
 |----------|---------|------------|-------|
-| `VITE_API_BASE_URL` / `VITE_API_URL` | `https://backend.rapago.cl/api` (o API staging) | `https://backend.rapago.cl/api` | Cliente acepta ambas |
+| `VITE_API_BASE_URL` / `VITE_API_URL` | `https://backend-staging.rapago.cl/api` | `https://backend.rapago.cl/api` | Vite guard falla si staging apunta a prod |
 | `VITE_ENV` | `staging` | `production` | |
 | `VITE_GOOGLE_MAPS_API_KEY` | clave browser + referrer `https://staging.rapago.cl/*` | referrers `https://app.rapago.cl/*` (+ `https://api.rapago.cl/*` hasta cutover) | Rotar si estuvo en Git sin restricción |
 | `VITE_GOOGLE_WEB_CLIENT_ID` | OAuth Web Client | mismo o cliente dedicado | Orígenes JS en Google Console |
-| `VITE_KLAP_*` | script sandbox + flag | script prod + flag | Return/webhook en backend |
-| Apple web | N/A en VITE_ | N/A en VITE_ | Backend: `APPLE_WEB_CLIENT_ID`, `APPLE_WEB_REDIRECT_URI`, `APPLE_WEB_FRONTEND_URL` |
+| `VITE_KLAP_*` | script sandbox + flag | script prod + flag | Return/webhook en backend-staging |
+| Apple web | N/A en VITE_ | N/A en VITE_ | Backend staging: `APPLE_WEB_*` → backend-staging |
 
-Plantillas: `apps/mobile/.env.example`, `.env.template`, `.env.staging.template`, `.env.production.template`.
+Plantillas: `apps/mobile/.env.example`, `.env.template`, `.env.staging.template`, `.env.production.template`; API staging: `apps/api/.env.staging.template`.
 
 ## Hostnames (evidencia código/docs; sin DNS)
 

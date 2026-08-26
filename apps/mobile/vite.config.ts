@@ -11,9 +11,18 @@ function viteEnvBlob(env: Record<string, string>): string {
     .join("\n");
 }
 
+/** Production API host — staging builds must never target this. */
+const PROD_API_HOST = "backend.rapago.cl";
+/** Isolated staging API host — required for mode=staging. */
+const STAGING_API_HOST = "backend-staging.rapago.cl";
+
 /**
  * Fail fast when staging/production env files point at the wrong hosts.
  * Minimal guards — no secret scanning here (handled in CI grep step).
+ *
+ * Isolation rule (true staging):
+ *   staging.rapago.cl → backend-staging.rapago.cl/api → DB/Klap/SMTP staging
+ *   Never share backend.rapago.cl (prod) from a staging SPA build.
  */
 function assertBuildEnv(mode: string, env: Record<string, string>): void {
   if (mode !== "staging" && mode !== "production") return;
@@ -21,6 +30,7 @@ function assertBuildEnv(mode: string, env: Record<string, string>): void {
   const blob = viteEnvBlob(env);
   const appEnv =
     env.VITE_ENV ?? env.VITE_APP_ENV ?? (mode === "production" ? "production" : mode);
+  const apiBase = (env.VITE_API_BASE_URL ?? env.VITE_API_URL ?? "").trim();
 
   if (mode === "staging") {
     if (appEnv !== "staging") {
@@ -34,17 +44,33 @@ function assertBuildEnv(mode: string, env: Record<string, string>): void {
         "[vite] staging build must not reference app.rapago.cl (production frontend).",
       );
     }
-    if (!/\bbackend\.rapago\.cl\b/i.test(blob)) {
+    // Hard fail: staging SPA must never talk to production API.
+    if (new RegExp(`\\b${PROD_API_HOST.replace(/\./g, "\\.")}\\b`, "i").test(blob)) {
       throw new Error(
-        "[vite] staging build must point API to backend.rapago.cl (VITE_API_*).",
+        `[vite] staging build must NOT point API to ${PROD_API_HOST} (production). ` +
+          `Use https://${STAGING_API_HOST}/api (isolated staging backend).`,
+      );
+    }
+    if (
+      !new RegExp(`\\b${STAGING_API_HOST.replace(/\./g, "\\.")}\\b`, "i").test(blob) &&
+      !/https?:\/\/backend-staging\.rapago\.cl\/api/i.test(apiBase)
+    ) {
+      throw new Error(
+        `[vite] staging build must point API to ${STAGING_API_HOST} ` +
+          `(VITE_API_BASE_URL=https://${STAGING_API_HOST}/api).`,
       );
     }
   }
 
   if (mode === "production") {
-    if (/\bstaging\.rapago\.cl\b/i.test(blob)) {
+    if (/\bstaging\.rapago\.cl\b/i.test(blob) || /\bbackend-staging\.rapago\.cl\b/i.test(blob)) {
       throw new Error(
-        "[vite] production build must not reference staging.rapago.cl.",
+        "[vite] production build must not reference staging.rapago.cl or backend-staging.rapago.cl.",
+      );
+    }
+    if (!new RegExp(`\\b${PROD_API_HOST.replace(/\./g, "\\.")}\\b`, "i").test(blob)) {
+      throw new Error(
+        `[vite] production build must point API to ${PROD_API_HOST} (VITE_API_*).`,
       );
     }
   }
